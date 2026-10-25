@@ -236,7 +236,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ staff, committees = 
 
             {/* Main Info */}
             <div className="space-y-1.5 mt-2">
-              <h2 className="text-xl font-bold text-slate-900 tracking-normal leading-snug">
+              <h2 className="text-xl font-bold text-slate-900 tracking-normal leading-snug uppercase">
                 {staff.Nama}
               </h2>
               <div className="flex items-center gap-2 flex-wrap">

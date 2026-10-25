@@ -104,7 +104,7 @@ export const CommitteeModal: React.FC<CommitteeModalProps> = ({ staff, committee
                     {matchedCommittees.length} Jawatankuasa
                   </span>
                 </div>
-                <h3 className="text-lg font-black tracking-tight leading-snug line-clamp-1">
+                <h3 className="text-lg font-black tracking-tight leading-snug line-clamp-1 uppercase">
                   {staff.Nama}
                 </h3>
                 <p className="text-xs text-white/80 font-medium line-clamp-1">
