@@ -6,32 +6,22 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Search,
-  Database, 
-  UserPlus, 
   Filter, 
   X, 
   RotateCcw, 
-  Briefcase, 
   UserCheck, 
-  ShieldAlert, 
-  MapPin,
-  Clock,
-  ExternalLink,
-  ChevronRight,
   Sparkles,
   Settings,
   Lock,
   Pencil,
-  Smartphone,
-  Download
+  FileSpreadsheet,
+  Upload
 } from 'lucide-react';
-import { Staff, DivisionType, SyncConfig, StaffCommittee, AuthorizedAdmin } from './types';
+import { Staff, DivisionType, StaffCommittee, AuthorizedAdmin } from './types';
 import { INITIAL_STAFF_DATA } from './data/initialStaff';
 import { STAFF_GRADE_MAP, determineBahagian } from './utils/staffGrade';
 import { getDistrictState } from './utils/stateMapping';
-import { parseCommitteeRows, generateDefaultCommitteesForStaff } from './utils/committeeService';
-import { fetchStaffDataFromRemote, fetchCommitteeDataFromRemote } from './utils/gasFetcher';
-import { GAS_CONFIG } from './config/gasConfig';
+import { generateDefaultCommitteesForStaff } from './utils/committeeService';
 import { StaffCard } from './components/StaffCard';
 import { ProfileModal } from './components/ProfileModal';
 import { CommitteeModal } from './components/CommitteeModal';
@@ -58,9 +48,10 @@ export default function App() {
   const [committees, setCommittees] = useState<StaffCommittee[]>([]);
   const [committeeStaff, setCommitteeStaff] = useState<Staff | null>(null);
 
-  const fetchCommitteesFromGAS = async (currentStaffList: Staff[]) => {
+  // Load committee data from Firestore / LocalStorage / Fallback
+  const loadCommitteesData = async (currentStaffList: Staff[]) => {
     try {
-      // Check Firebase Firestore first for persistent committee data
+      // 1. Check Firebase Firestore for persistent committee data
       const firestoreCommittees = await fetchCommitteesFromFirestore();
       if (firestoreCommittees && firestoreCommittees.length > 0) {
         setCommittees(firestoreCommittees);
@@ -68,26 +59,30 @@ export default function App() {
         return;
       }
 
-      const remoteCommittees = await fetchCommitteeDataFromRemote();
-      if (remoteCommittees && remoteCommittees.length > 0) {
-        setCommittees(remoteCommittees);
-        saveCommitteesToFirestore(remoteCommittees).catch(console.warn);
-        localStorage.setItem('kpmbp_smarthub_committees', JSON.stringify(remoteCommittees));
-        return;
+      // 2. Check localStorage
+      const cachedCommittees = localStorage.getItem('kpmbp_smarthub_committees');
+      if (cachedCommittees) {
+        const parsed = JSON.parse(cachedCommittees);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setCommittees(parsed);
+          saveCommitteesToFirestore(parsed).catch(console.warn);
+          return;
+        }
       }
     } catch (err) {
-      console.warn('Committee fetch error:', err);
+      console.warn('Committee loading error:', err);
     }
-    // Fallback default committee generator if empty or unpopulated
+
+    // 3. Fallback default generated committees
     const defaultComm = generateDefaultCommitteesForStaff(currentStaffList);
     setCommittees(defaultComm);
   };
 
   useEffect(() => {
     if (staffList.length > 0) {
-      fetchCommitteesFromGAS(staffList);
+      loadCommitteesData(staffList);
     }
-  }, [staffList]);
+  }, [staffList.length]);
   
   // Modals & Panel States
   const [editingStaff, setEditingStaff] = useState<Staff | null>(null);
@@ -108,17 +103,14 @@ export default function App() {
     return () => clearTimeout(handler);
   }, [searchQuery]);
   
-  // Admin & Sync States
+  // Admin States
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [currentAdmin, setCurrentAdmin] = useState<AuthorizedAdmin | null>(null);
   const [isAdminPinOpen, setIsAdminPinOpen] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [syncError, setSyncError] = useState<string | null>(null);
 
   // PWA Install Prompt State
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isPwaInstalled, setIsPwaInstalled] = useState(false);
-  const [isPwaGuideOpen, setIsPwaGuideOpen] = useState(false);
 
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: Event) => {
@@ -153,7 +145,7 @@ export default function App() {
         setIsPwaInstalled(true);
       }
     } else {
-      setIsPwaGuideOpen(true);
+      setIsSettingsOpen(true);
     }
   };
 
@@ -181,19 +173,8 @@ export default function App() {
     setSelectedDepartment('Semua');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
-  
-  const DEFAULT_SYNC_CONFIG: SyncConfig = {
-    apiUrl: GAS_CONFIG.webAppUrl,
-    sheetId: GAS_CONFIG.spreadsheetId,
-    scriptId: GAS_CONFIG.scriptId,
-    sheetName: 'Staff',
-    isConnected: true,
-    lastSyncTime: new Date().toLocaleTimeString('ms-MY', { hour: '2-digit', minute: '2-digit' }),
-  };
 
-  const [syncConfig, setSyncConfig] = useState<SyncConfig>(DEFAULT_SYNC_CONFIG);
-
-  // Save changes to localstorage and Firebase Firestore
+  // Save changes to localStorage and Firebase Firestore
   const saveStaffList = (updatedList: Staff[]) => {
     setStaffList(updatedList);
     localStorage.setItem('kpmbp_smarthub_staff', JSON.stringify(updatedList));
@@ -202,127 +183,14 @@ export default function App() {
     });
   };
 
-  const handleSaveConfig = (newConfig: Partial<SyncConfig>) => {
-    const updated = { ...syncConfig, ...newConfig };
-    setSyncConfig(updated);
-    localStorage.setItem('kpmbp_smarthub_config', JSON.stringify(updated));
-  };
-
-  // Sync Action: fetch data from Google Apps Script Web App API or fallbacks
-  const fetchStaffFromGAS = async (isManual = false) => {
-    setIsSyncing(true);
-    setSyncError(null);
-
-    try {
-      const rawArray = await fetchStaffDataFromRemote();
-
-      if (!rawArray || rawArray.length === 0) {
-        throw new Error('Tiada rekod staf ditemui daripada Google Apps Script / Google Sheets.');
-      }
-
-      const nowTimestamp = new Date().toISOString().replace('T', ' ').substring(0, 16);
-
-      const validatedList: Staff[] = rawArray.map((item: any, idx: number) => {
-        const rawId = String(item.staff_id || item.ID || `ST${String(idx + 1).padStart(3, '0')}`).trim();
-        const cleanId = rawId.toUpperCase().replace(/^STF-/i, 'ST').replace(/^STF/i, 'ST');
-        const gradeVal = String(item.grade || item.Gred || STAFF_GRADE_MAP[cleanId] || STAFF_GRADE_MAP[rawId] || '');
-        const jawatanVal = String(item.Jawatan || item.position || 'Pensyarah');
-        const rawBahagian = item.Bahagian || item.division;
-        const bahagianVal = determineBahagian(jawatanVal, rawBahagian);
-
-        return {
-          ID: cleanId,
-          staff_id: cleanId,
-          Bahagian: bahagianVal,
-          DepartmentID: String(item.DepartmentID || item.department || item.Jabatan || 'JTM'),
-          Nama: String(item.Nama || item.name || 'Tiada Nama'),
-          NamaPendek: String(item.NamaPendek || item.short_name || ''),
-          DaerahAsal: String(item.DaerahAsal || item.home_town || ''),
-          TahunLahir: item.TahunLahir ? String(item.TahunLahir) : '',
-          NoPlat: String(item.NoPlat || item.plate_no || ''),
-          Gred: gradeVal,
-          grade: gradeVal,
-          Jawatan: jawatanVal,
-          Kelulusan: String(item.Kelulusan || item.qualification || ''),
-          Pengkhususan: String(item.Pengkhususan || item.specialisation || ''),
-          Telefon: item.Telefon ? String(item.Telefon) : '',
-          WhatsApp: item.WhatsApp ? String(item.WhatsApp) : '',
-          Sambungan: item.Sambungan ? String(item.Sambungan) : '',
-          Email: String(item.Email || item.email || ''),
-          'URL Profil': String(item['URL Profil'] || item.profile_url || ''),
-          Sumber: 'Google Apps Script / Sheets',
-          Status: String(item.Status || item.status || 'Aktif'),
-          LastSync: nowTimestamp,
-        };
-      });
-
-      // Replace current local staff dataset and sync to Firebase
-      saveStaffList(validatedList);
-
-      // Update active profile modal if open
-      if (selectedStaff) {
-        const updatedSelected = validatedList.find((s) => s.ID === selectedStaff.ID || s.staff_id === selectedStaff.staff_id);
-        if (updatedSelected) {
-          setSelectedStaff(updatedSelected);
-        }
-      }
-
-      const syncTime = new Date().toLocaleTimeString('ms-MY', { hour: '2-digit', minute: '2-digit' });
-      handleSaveConfig({
-        isConnected: true,
-        lastSyncTime: syncTime,
-        apiUrl: GAS_CONFIG.webAppUrl,
-        sheetId: GAS_CONFIG.spreadsheetId,
-        scriptId: GAS_CONFIG.scriptId,
-      });
-
-      console.log(`Data Source:\nGoogle Apps Script / Sheets\n\nRecords Loaded:\n${validatedList.length}\n\nLast Sync:\n${nowTimestamp}`);
-
-      if (isManual) {
-        alert(`Penyamaan Berjaya!\nDikemaskini ${validatedList.length} rekod staf.`);
-      }
-    } catch (err: any) {
-      console.error('GAS Fetch Error:', err);
-      const errMsg = err.message || 'Ralat menyambung ke Google Apps Script / Google Sheets';
-      setSyncError(errMsg);
-      if (isManual) {
-        alert(`Penyamaan Gagal: ${errMsg}`);
-      }
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  const handleSyncNow = async () => {
-    await fetchStaffFromGAS(true);
-  };
-
-  // Load staff & config on mount directly from Google Apps Script
+  // Load initial staff dataset from LocalStorage and Firebase Firestore on mount
   useEffect(() => {
-    const cachedConfig = localStorage.getItem('kpmbp_smarthub_config');
-    if (cachedConfig) {
-      try {
-        const parsed = JSON.parse(cachedConfig);
-        setSyncConfig({
-          ...DEFAULT_SYNC_CONFIG,
-          ...parsed,
-          sheetId: GAS_CONFIG.spreadsheetId,
-          scriptId: GAS_CONFIG.scriptId,
-          apiUrl: GAS_CONFIG.webAppUrl,
-        });
-      } catch (e) {
-        setSyncConfig(DEFAULT_SYNC_CONFIG);
-      }
-    } else {
-      localStorage.setItem('kpmbp_smarthub_config', JSON.stringify(DEFAULT_SYNC_CONFIG));
-    }
-
     const cachedStaff = localStorage.getItem('kpmbp_smarthub_staff');
     if (cachedStaff) {
       try {
-        const parsedList: Staff[] = JSON.parse(cachedStaff);
-        if (parsedList && parsedList.length >= 70) {
-          const enriched = parsedList.map((s) => {
+        const parsed = JSON.parse(cachedStaff);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const enriched = parsed.map((s) => {
             const g = s.grade || s.Gred || STAFF_GRADE_MAP[s.staff_id || s.ID] || '';
             const b = s.Bahagian || determineBahagian(s.Jawatan, s.Bahagian);
             return {
@@ -347,9 +215,9 @@ export default function App() {
       saveStaffListToFirestore(INITIAL_STAFF_DATA).catch(() => {});
     }
 
-    // Prioritize loading stored records from Firebase Firestore
+    // Load stored records from Firebase Firestore
     fetchStaffListFromFirestore().then((fbStaff) => {
-      if (fbStaff && fbStaff.length >= 70) {
+      if (fbStaff && fbStaff.length > 0) {
         const enriched = fbStaff.map((s) => {
           const g = s.grade || s.Gred || STAFF_GRADE_MAP[s.staff_id || s.ID] || '';
           const b = s.Bahagian || determineBahagian(s.Jawatan, s.Bahagian);
@@ -362,25 +230,19 @@ export default function App() {
         });
         setStaffList(enriched);
         localStorage.setItem('kpmbp_smarthub_staff', JSON.stringify(enriched));
-      } else {
-        saveStaffListToFirestore(INITIAL_STAFF_DATA).catch(() => {});
       }
-    }).catch(() => {});
+    }).catch((err) => {
+      console.warn('Firestore fetch notice:', err);
+    });
   }, []);
 
-  // CRUD handlers
+  // Update existing staff handler (Manual new staff registration is removed; done via CSV import)
   const handleSaveStaff = (staff: Staff) => {
     const finalStaff = {
       ...staff,
       Bahagian: determineBahagian(staff.Jawatan, staff.Bahagian),
     };
-    const exists = staffList.some((s) => s.ID === finalStaff.ID);
-    let updated: Staff[];
-    if (exists) {
-      updated = staffList.map((s) => (s.ID === finalStaff.ID ? finalStaff : s));
-    } else {
-      updated = [finalStaff, ...staffList];
-    }
+    const updated = staffList.map((s) => (s.ID === finalStaff.ID ? finalStaff : s));
     saveStaffList(updated);
   };
 
@@ -390,11 +252,6 @@ export default function App() {
     if (selectedStaff?.ID === id) {
       setSelectedStaff(null);
     }
-  };
-
-  const handleAddNewStaff = () => {
-    setEditingStaff(null);
-    setIsAddEditOpen(true);
   };
 
   const handleResetStaffData = () => {
@@ -411,7 +268,7 @@ export default function App() {
 
   const handleResetCommitteeData = () => {
     localStorage.removeItem('kpmbp_smarthub_committees');
-    fetchCommitteesFromGAS(staffList);
+    loadCommitteesData(staffList);
   };
 
   // Build pre-computed searchable index on staff dataset load/change
@@ -420,34 +277,34 @@ export default function App() {
       const district = String(staff.DaerahAsal || '');
       const state = getDistrictState(district);
 
-      // Collect all vehicle plates: PlatNo1, PlatNo2, PlatNo3, PlatMotor1, PlatMotor2, NoPlat
+      // Collect all vehicle plates (PlatNo1, PlatNo2, PlatNo3)
       const allPlates = [
         staff.PlatNo1,
         staff.PlatNo2,
         staff.PlatNo3,
-        staff.PlatMotor1,
-        staff.PlatMotor2,
         staff.NoPlat,
       ].filter(Boolean) as string[];
 
       const platesNormalized = allPlates.map((p) => String(p).toLowerCase().trim());
       const platesNoSpace = allPlates.map((p) => String(p).toLowerCase().replace(/\s+/g, ''));
 
-      // Combine all searchable staff fields into a single normalized index text
+      // Combine searchable staff fields matching the 17 official columns
       const searchableText = [
         staff.Nama,
         staff.NamaPendek,
+        staff.StaffID,
         staff.ID,
         staff.staff_id,
+        staff.Kategori,
+        staff.Bahagian,
         staff.Jawatan,
+        staff.Unit,
+        staff.DepartmentID,
         staff.Gred,
         staff.grade,
-        staff.DepartmentID,
-        staff.Bahagian,
         staff.Email,
         staff.Telefon,
         staff.Sambungan,
-        staff.WhatsApp,
         ...platesNormalized,
         ...platesNoSpace,
         staff.TahunLahir,
@@ -456,7 +313,6 @@ export default function App() {
         state,
         staff.Kelulusan,
         staff.Pengkhususan,
-        staff.Sumber,
       ]
         .filter(Boolean)
         .map((val) => String(val).toLowerCase().trim())
@@ -572,11 +428,11 @@ export default function App() {
               )}
             </button>
 
-            {/* Single Consolidated Database Settings Button - Icon Only */}
+            {/* Single Consolidated Database & CSV Management Settings Button */}
             <button
               onClick={() => setIsSettingsOpen(true)}
-              title="Pengurusan Admin & Database"
-              aria-label="Pengurusan Admin & Database"
+              title="Pengurusan Data & Import CSV"
+              aria-label="Pengurusan Data & Import CSV"
               className={`relative p-2 rounded-2xl transition-all border cursor-pointer flex items-center justify-center ${
                 isSettingsOpen 
                   ? 'bg-gradient-to-r from-indigo-600 via-violet-600 to-indigo-700 text-white border-transparent shadow-md shadow-indigo-200' 
@@ -620,24 +476,6 @@ export default function App() {
 
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 relative z-10">
-        {syncError && (
-          <div className="mb-6 bg-red-50 border border-red-200 text-red-800 rounded-2xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-2xs text-left">
-            <div className="flex items-center gap-3">
-              <ShieldAlert className="w-5 h-5 text-red-600 shrink-0" />
-              <div>
-                <p className="font-extrabold text-xs uppercase tracking-wide text-red-900">Ralat Sambungan Google Apps Script</p>
-                <p className="text-xs text-red-700 mt-0.5">{syncError}</p>
-              </div>
-            </div>
-            <button
-              onClick={() => fetchStaffFromGAS(true)}
-              className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs shrink-0 cursor-pointer"
-            >
-              Cuba Lagi
-            </button>
-          </div>
-        )}
-
         {activeHub === 'directory' ? (
           <div className="space-y-6">
             
@@ -699,7 +537,7 @@ export default function App() {
                 )}
               </div>
 
-              {/* Row 2: Horizonal Division (Bahagian) Filter Tabs */}
+              {/* Row 2: Horizontal Division (Bahagian) Filter Tabs */}
               <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none border-t border-slate-100/80 pt-3">
                 {(['Semua', 'Pengurusan', 'Akademik', 'Sokongan Akademik', 'Pentadbiran'] as DivisionType[]).map((div) => {
                   const isActive = selectedDivision === div;
@@ -762,17 +600,17 @@ export default function App() {
                   <div>
                     <h4 className="text-xs font-extrabold text-amber-950">Mod Suntingan Admin Aktif</h4>
                     <p className="text-[11px] text-amber-800 font-medium">
-                      Klik ikon pensel/padam pada mana-mana kad staf untuk kemaskini atau hapus rekod secara terus.
+                      Pendaftaran staf baharu dilakukan melalui import CSV. Klik ikon pensel pada kad staf untuk kemaskini profil.
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={handleAddNewStaff}
+                    onClick={() => setIsSettingsOpen(true)}
                     className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-extrabold shadow-2xs transition-all cursor-pointer flex items-center gap-1.5"
                   >
-                    <UserPlus className="w-3.5 h-3.5" />
-                    <span>+ Daftarkan Staf</span>
+                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                    <span>Urus / Import CSV</span>
                   </button>
                   <button
                     onClick={() => setIsSettingsOpen(true)}
@@ -784,65 +622,64 @@ export default function App() {
               </div>
             )}
 
-          {/* Staff Grid Header with Add Staff button */}
-          <div className="flex items-center justify-between px-2 pt-2 text-left">
-            <div>
-              <h2 className="text-[11px] font-extrabold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
-                Senarai Kakitangan & Pensyarah ({filteredStaff.length})
-              </h2>
+            {/* Staff Grid Header */}
+            <div className="flex items-center justify-between px-2 pt-2 text-left">
+              <div>
+                <h2 className="text-[11px] font-extrabold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
+                  Senarai Kakitangan & Pensyarah ({filteredStaff.length})
+                </h2>
+              </div>
+              {isAdminMode && (
+                <button
+                  onClick={() => setIsSettingsOpen(true)}
+                  title="Pendaftaran kakitangan baharu dilaksanakan melalui import fail CSV"
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-extrabold transition-all shadow-md shadow-indigo-200 cursor-pointer active:scale-95"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Import CSV Staf Baharu</span>
+                </button>
+              )}
             </div>
-            {isAdminMode && (
-              <button
-                onClick={() => {
-                  setEditingStaff(null);
-                  setIsAddEditOpen(true);
-                }}
-                className="flex items-center gap-1.5 px-4.5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-extrabold transition-all shadow-md shadow-indigo-200 cursor-pointer active:scale-95"
-              >
-                <UserPlus className="w-4 h-4" /> Daftarkan Staf Baru
-              </button>
-            )}
-          </div>
 
-          {/* Staff Cards Grid */}
-          {filteredStaff.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4.5">
-              {filteredStaff.map((staff) => (
-                <div key={staff.ID} className="relative">
-                  <StaffCard
-                    staff={staff}
-                    onClick={(stf) => setSelectedStaff(stf)}
-                    isAdminMode={isAdminMode}
-                    onEdit={(stf) => {
-                      setEditingStaff(stf);
-                      setIsAddEditOpen(true);
-                    }}
-                    onOpenCommittee={(stf) => setCommitteeStaff(stf)}
-                  />
+            {/* Staff Cards Grid */}
+            {filteredStaff.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4.5">
+                {filteredStaff.map((staff) => (
+                  <div key={staff.ID} className="relative">
+                    <StaffCard
+                      staff={staff}
+                      onClick={(stf) => setSelectedStaff(stf)}
+                      isAdminMode={isAdminMode}
+                      onEdit={(stf) => {
+                        setEditingStaff(stf);
+                        setIsAddEditOpen(true);
+                      }}
+                      onOpenCommittee={(stf) => setCommitteeStaff(stf)}
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              /* Empty State */
+              <div className="glass-panel rounded-3xl p-12 text-center max-w-md mx-auto space-y-4 border border-slate-100 shadow-sm bg-white/50">
+                <div className="w-16 h-16 bg-white border border-slate-100 rounded-full flex items-center justify-center mx-auto text-indigo-600 shadow-sm">
+                  <Search className="w-6 h-6" />
                 </div>
-              ))}
-            </div>
-          ) : (
-            /* Empty State */
-            <div className="glass-panel rounded-3xl p-12 text-center max-w-md mx-auto space-y-4 border border-slate-100 shadow-sm bg-white/50">
-              <div className="w-16 h-16 bg-white border border-slate-100 rounded-full flex items-center justify-center mx-auto text-indigo-600 shadow-sm">
-                <Search className="w-6 h-6" />
+                <div className="space-y-1">
+                  <h3 className="font-extrabold text-slate-900 text-base">Tiada staf ditemui.</h3>
+                  <p className="text-xs text-slate-500 leading-relaxed font-semibold">
+                    Sila cuba lagi dengan kata kunci yang berbeza.
+                  </p>
+                </div>
+                <button
+                  onClick={resetFilters}
+                  className="py-2.5 px-5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-extrabold shadow-md shadow-indigo-200 transition-all cursor-pointer"
+                >
+                  Kosongkan Saringan
+                </button>
               </div>
-              <div className="space-y-1">
-                <h3 className="font-extrabold text-slate-900 text-base">No matching staff found.</h3>
-                <p className="text-xs text-slate-500 leading-relaxed font-semibold">
-                  Sila cuba lagi dengan kata kunci yang berbeza.
-                </p>
-              </div>
-              <button
-                onClick={resetFilters}
-                className="py-2.5 px-5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-extrabold shadow-md shadow-indigo-200 transition-all cursor-pointer"
-              >
-                Kosongkan Saringan
-              </button>
-            </div>
-          )}
+            )}
 
           </div>
         ) : (
@@ -866,7 +703,7 @@ export default function App() {
                   Statistik Direktori KPMBP
                 </h3>
                 <p className="text-[11px] text-slate-500 font-medium mt-0.5">
-                  Ringkasan data bilangan kakitangan dan kepakaran Kolej Profesional MARA Batu Pahat
+                  Ringkasan data bilangan kakitangan dan kepakaran Kolej Profesional MARA Bandar Penawar
                 </p>
               </div>
               <div className="grid grid-cols-3 gap-3 w-full md:w-auto">
@@ -939,14 +776,6 @@ export default function App() {
         onClose={() => setIsSettingsOpen(false)}
         isAdminMode={isAdminMode}
         onToggleAdminMode={handleToggleAdminMode}
-        onOpenAddStaffModal={() => {
-          setEditingStaff(null);
-          setIsAddEditOpen(true);
-        }}
-        config={syncConfig}
-        onSaveConfig={handleSaveConfig}
-        onSyncNow={handleSyncNow}
-        isSyncing={isSyncing}
         onImportStaffData={(imported) => saveStaffList(imported)}
         onImportCommitteeData={handleImportCommitteeData}
         totalStaffCount={staffList.length}

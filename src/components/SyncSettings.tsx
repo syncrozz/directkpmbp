@@ -6,36 +6,24 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
-  Settings, 
-  RefreshCw, 
   Database, 
   Copy, 
   Check, 
   Info, 
-  FileText, 
-  Link2, 
-  Wifi, 
-  WifiOff, 
-  ExternalLink, 
   FileSpreadsheet, 
   Upload, 
-  Table, 
   X, 
   UserCheck, 
-  UserPlus, 
   RotateCcw,
   Smartphone,
   Download,
   FileDown,
-  Shield,
   ShieldCheck,
   Trash2,
-  Key,
   Mail,
   Hash
 } from 'lucide-react';
-import { SyncConfig, Staff, StaffCommittee, AuthorizedAdmin } from '../types';
-import { GAS_CONFIG } from '../config/gasConfig';
+import { Staff, StaffCommittee, AuthorizedAdmin } from '../types';
 import { saveStaffListToFirestore, saveCommitteesToFirestore } from '../config/firebase';
 import { getAuthorizedAdmins, addAuthorizedAdmin, removeAuthorizedAdmin } from '../utils/adminAuthService';
 
@@ -44,11 +32,6 @@ interface SyncSettingsProps {
   onClose?: () => void;
   isAdminMode?: boolean;
   onToggleAdminMode?: () => void;
-  onOpenAddStaffModal?: () => void;
-  config: SyncConfig;
-  onSaveConfig: (newConfig: Partial<SyncConfig>) => void;
-  onSyncNow: () => Promise<void>;
-  isSyncing: boolean;
   onImportStaffData?: (importedList: Staff[]) => void;
   onImportCommitteeData?: (importedList: StaffCommittee[]) => void;
   totalStaffCount?: number;
@@ -89,11 +72,6 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
   onClose,
   isAdminMode = false,
   onToggleAdminMode,
-  onOpenAddStaffModal,
-  config,
-  onSaveConfig,
-  onSyncNow,
-  isSyncing,
   onImportStaffData,
   onImportCommitteeData,
   totalStaffCount = 0,
@@ -105,14 +83,6 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
   onInstallPWA,
   canInstallPWA = false,
 }) => {
-  const [apiUrl, setApiUrl] = useState(config.apiUrl || GAS_CONFIG.webAppUrl);
-  const [sheetId, setSheetId] = useState(config.sheetId || GAS_CONFIG.spreadsheetId);
-  const [scriptId, setScriptId] = useState(config.scriptId || GAS_CONFIG.scriptId);
-  const [sheetName, setSheetName] = useState(config.sheetName || 'Staff');
-  const [copied, setCopied] = useState(false);
-  const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'failed'>('idle');
-  const [errorMessage, setErrorMessage] = useState('');
-  
   // Importer states
   const [showImporter, setShowImporter] = useState(true);
   const [importType, setImportType] = useState<'staff' | 'committee'>('staff');
@@ -148,62 +118,6 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
     setAdminAuthStatus(res);
     setAuthorizedAdmins(getAuthorizedAdmins());
     setTimeout(() => setAdminAuthStatus(null), 3000);
-  };
-
-  const targetSheetUrl = `https://docs.google.com/spreadsheets/d/${sheetId || GAS_CONFIG.spreadsheetId}`;
-  const targetScriptUrl = `https://script.google.com/d/${scriptId || GAS_CONFIG.scriptId}/edit`;
-
-  const handleSave = () => {
-    onSaveConfig({
-      apiUrl,
-      sheetId,
-      scriptId,
-      sheetName,
-    });
-  };
-
-  const testConnection = async () => {
-    const urlToTest = apiUrl || GAS_CONFIG.webAppUrl;
-    if (!urlToTest) {
-      setTestStatus('failed');
-      setErrorMessage('Sambungan gagal');
-      return;
-    }
-
-    setTestStatus('testing');
-    setErrorMessage('');
-    try {
-      let res: Response;
-      try {
-        const proxyUrl = `/api/gas-proxy?url=${encodeURIComponent(urlToTest)}`;
-        const controller = new AbortController();
-        const id = setTimeout(() => controller.abort(), 6000);
-        res = await fetch(proxyUrl, {
-          method: 'GET',
-          signal: controller.signal,
-        });
-        clearTimeout(id);
-      } catch (proxyErr) {
-        const controller = new AbortController();
-        const id = setTimeout(() => controller.abort(), 6000);
-        res = await fetch(urlToTest, {
-          method: 'GET',
-          signal: controller.signal,
-        });
-        clearTimeout(id);
-      }
-
-      if (res.ok || res.status === 200 || res.type === 'opaque') {
-        setTestStatus('success');
-        onSaveConfig({ isConnected: true, apiUrl: urlToTest });
-      } else {
-        throw new Error('Sambungan gagal');
-      }
-    } catch (err: any) {
-      console.warn('Connection test error:', err);
-      setTestStatus('failed');
-      setErrorMessage('Sambungan gagal');
-    }
   };
 
   // Helper to parse CSV/TSV text respecting quotes and multiline fields
@@ -251,7 +165,7 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
     return lines.filter((r) => r.some((cell) => cell.length > 0));
   };
 
-  // Parse CSV/TSV for StaffCommittee and save to localStorage
+  // Parse CSV/TSV for StaffCommittee and save to Firestore & state
   const handleParseAndImportCommittee = (overrideText?: string) => {
     const textToUse = overrideText || rawText;
     if (!textToUse.trim()) {
@@ -275,12 +189,11 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
       };
 
       const staffIdIdx = findIdx(['StaffID', 'staff_id', 'Staff ID', 'No Staf', 'ID', 'No. Staf']);
+      const namaIdx = findIdx(['Nama', 'Nama Staf', 'staff_nama', 'Name']);
       const kategoriIdx = findIdx(['Kategori', 'peringkat', 'Peringkat', 'Category', 'Level']);
       const jawatanIdx = findIdx(['Jawatan', 'peranan', 'Peranan', 'Role', 'Position']);
       const unitIdx = findIdx(['Unit', 'jawatankuasa', 'Jawatankuasa', 'Committee', 'Nama Jawatankuasa']);
-      const tahunIdx = findIdx(['Tahun', 'tahun', 'Year']);
       const statusIdx = findIdx(['Status', 'catatan', 'Catatan', 'Note']);
-      const namaIdx = findIdx(['Nama', 'Nama Staf', 'staff_nama', 'Name']);
 
       const importedList: StaffCommittee[] = [];
 
@@ -295,21 +208,21 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
         };
 
         const staffIdVal = getCell(staffIdIdx, 1);
-        const unitVal = getCell(unitIdx, 4);
-        const jawatanVal = getCell(jawatanIdx, 3);
-        const kategoriVal = getCell(kategoriIdx, 2);
+        const namaVal = getCell(namaIdx, 2);
+        const kategoriVal = getCell(kategoriIdx, 3);
+        const jawatanVal = getCell(jawatanIdx, 4);
+        const unitVal = getCell(unitIdx, 5);
 
         if (!staffIdVal && !unitVal) continue;
 
         importedList.push({
           id: `c-imp-${i}-${Math.random().toString(36).substring(2, 6)}`,
           staff_id: staffIdVal.toUpperCase().trim(),
-          staff_nama: getCell(namaIdx),
+          staff_nama: namaVal,
           jawatankuasa: unitVal || 'Jawatankuasa Kolej',
           peranan: jawatanVal || 'Ahli',
           peringkat: kategoriVal || 'Kolej',
-          tahun: getCell(tahunIdx, 5),
-          catatan: getCell(statusIdx, 6),
+          catatan: getCell(statusIdx),
         });
       }
 
@@ -323,11 +236,11 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
         
         saveCommitteesToFirestore(importedList)
           .then(() => {
-            setImportMessage(`✓ Berjaya mengimport ${importedList.length} rekod Jawatankuasa & tersimpan kekal di Firebase Firestore 🔥!`);
+            setImportMessage(`✓ Berjaya mengimport ${importedList.length} rekod Jawatankuasa & disimpan ke Firebase Firestore 🔥!`);
           })
           .catch((err) => {
             console.warn('Firebase save warning:', err);
-            setImportMessage(`✓ Berjaya mengimport ${importedList.length} rekod Jawatankuasa ke dalam memori tempatan.`);
+            setImportMessage(`✓ Berjaya mengimport ${importedList.length} rekod Jawatankuasa ke dalam storan tempatan.`);
           });
 
         setRawText('');
@@ -339,11 +252,11 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
     }
   };
 
-  // Parse CSV/TSV text directly copied or exported from Google Sheets
+  // Parse CSV/TSV text directly copied or uploaded from CSV file (Official & Only Method for Staff Registration)
   const handleParseAndImport = (overrideText?: string) => {
     const textToUse = overrideText || rawText;
     if (!textToUse.trim()) {
-      setImportMessage('Sila tampal teks CSV / TSV daripada Google Sheets.');
+      setImportMessage('Sila pilih fail CSV atau tampal data CSV kakitangan.');
       return;
     }
 
@@ -403,131 +316,111 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
         const kategori = getCol(['Kategori', 'Bahagian'], 3) || 'Akademik';
         const jawatan = getCol(['Jawatan', 'position'], 4) || 'Pensyarah';
         const unit = getCol(['Unit', 'DepartmentID', 'Jabatan'], 5) || 'Pengurusan';
-        const tahun = getCol(['Tahun'], 6) || '2026';
-        const status = getCol(['Status'], 7) || 'Aktif';
-        const kelulusan = getCol(['Kelulusan', 'qualification'], 8);
-        const pengkhususan = getCol(['Pengkhususan', 'specialisation'], 9);
-        const daerahAsal = getCol(['DaerahAsal', 'Daerah Asal', 'Asal'], 10);
-        const telefon = getCol(['Telefon'], 11);
-        const sambungan = getCol(['Sambungan'], 12);
-        const whatsApp = getCol(['WhatsApp'], 13);
-        const email = getCol(['Email', 'Emel'], 14);
-        const urlProfil = getCol(['URL Profil', 'ProfileUrl'], 15);
-        const sumber = getCol(['Sumber'], 16) || 'CSV Import';
-        const lastSync = getCol(['LastSync'], 18) || new Date().toISOString().replace('T', ' ').substring(0, 16);
-        const gred = getCol(['Gred', 'Grade'], 19);
-        const tahunLahir = getCol(['Tahun Lahir', 'Tahun Lahir ', 'TahunLahir'], 20);
-        const platNo1 = getCol(['PlatNo1', 'NoPlat', 'Plat 1'], 21);
-        const platNo2 = getCol(['PlatNo2', 'Plat 2'], 22);
-        const platNo3 = getCol(['PlatNo3', 'Plat 3'], 23);
-        const platMotor1 = getCol(['PlatMotor1', 'Plat Motor 1'], 24);
-        const platMotor2 = getCol(['PlatMotor2', 'Plat Motor 2'], 25);
+        const kelulusan = getCol(['Kelulusan', 'qualification'], 6);
+        const pengkhususan = getCol(['Pengkhususan', 'specialisation'], 7);
+        const daerahAsal = getCol(['DaerahAsal', 'Daerah Asal', 'Asal'], 8);
+        const telefon = getCol(['Telefon'], 9);
+        const sambungan = getCol(['Sambungan'], 10);
+        const email = getCol(['Email', 'Emel'], 11);
+        const gred = getCol(['Gred', 'Grade'], 12);
+        const tahunLahir = getCol(['Tahun Lahir', 'TahunLahir', 'Tahun Lahir '], 13);
+        const platNo1 = getCol(['PlatNo1', 'Plat 1', 'NoPlat'], 14);
+        const platNo2 = getCol(['PlatNo2', 'Plat 2'], 15);
+        const platNo3 = getCol(['PlatNo3', 'Plat 3'], 16);
 
-        const allPlates = [platNo1, platNo2, platNo3, platMotor1, platMotor2].filter(Boolean);
+        const allPlates = [platNo1, platNo2, platNo3].filter(Boolean);
 
         importedStaff.push({
+          Bil: bil || String(i),
+          StaffID: staffId,
           ID: staffId,
           staff_id: staffId,
-          Bil: bil || String(i),
           Nama: nama,
           Kategori: kategori,
           Bahagian: kategori,
           Jawatan: jawatan,
           Unit: unit,
           DepartmentID: unit,
-          Tahun: tahun,
-          Status: status,
           Kelulusan: kelulusan,
           Pengkhususan: pengkhususan,
           DaerahAsal: daerahAsal,
           Telefon: telefon,
           Sambungan: sambungan,
-          WhatsApp: whatsApp,
           Email: email,
-          'URL Profil': urlProfil,
-          Sumber: sumber,
-          LastSync: lastSync,
           Gred: gred,
           grade: gred,
-          TahunLahir: tahunLahir,
           'Tahun Lahir': tahunLahir,
+          TahunLahir: tahunLahir,
           PlatNo1: platNo1,
           PlatNo2: platNo2,
           PlatNo3: platNo3,
-          PlatMotor1: platMotor1,
-          PlatMotor2: platMotor2,
           NoPlat: allPlates.join(', '),
+          Status: 'Aktif',
         });
       }
 
       if (importedStaff.length > 0) {
         if (onImportStaffData) {
           onImportStaffData(importedStaff);
+        } else {
+          localStorage.setItem('kpmbp_smarthub_staff', JSON.stringify(importedStaff));
         }
-        setImportMessage(`✓ Mengimport ${importedStaff.length} rekod kakitangan. Menyimpan ke Firebase...`);
+        setImportMessage(`✓ Mengimport ${importedStaff.length} rekod kakitangan baharu. Menyimpan ke Firebase...`);
 
         saveStaffListToFirestore(importedStaff)
           .then(() => {
-            setImportMessage(`✓ Berjaya mengimport ${importedStaff.length} rekod kakitangan & tersimpan kekal di Firebase Firestore 🔥!`);
+            setImportMessage(`✓ Pendaftaran ${importedStaff.length} rekod staf selesai & selamat disimpan ke Firebase Firestore 🔥!`);
           })
           .catch((err) => {
             console.warn('Firebase staff save warning:', err);
-            setImportMessage(`✓ Berjaya mengimport ${importedStaff.length} rekod kakitangan!`);
+            setImportMessage(`✓ Berjaya mendaftarkan ${importedStaff.length} rekod kakitangan via CSV ke dalam sistem!`);
           });
 
         setRawText('');
-        onSaveConfig({
-          isConnected: true,
-          lastSyncTime: new Date().toLocaleTimeString('ms-MY', { hour: '2-digit', minute: '2-digit' }),
-        });
       } else {
-        setImportMessage('⚠ Ralat: Tiada rekod sepadan ditemui. Pastikan baris pertama mengandungi tajuk lajur (Nama, Jawatan, dll).');
+        setImportMessage('⚠ Ralat: Tiada rekod sepadan ditemui. Pastikan baris pertama mengandungi tajuk lajur yang sah (cth: Bil, StaffID, Nama, Kategori, Jawatan, Unit...).');
       }
     } catch (e: any) {
-      setImportMessage(`⚠ Ralat memproses data: ${e.message}`);
+      setImportMessage(`⚠ Ralat memproses data CSV: ${e.message}`);
     }
   };
 
   // State for copying header names
   const [copiedHeaders, setCopiedHeaders] = useState<'staff' | 'committee' | null>(null);
 
-  // Copy Headers to Clipboard
+  // Copy Headers to Clipboard - Strictly without Tahun
   const handleCopyHeaders = (type: 'staff' | 'committee') => {
     const textToCopy = type === 'staff'
-      ? 'Bil,StaffID,Nama,Kategori,Jawatan,Unit,Tahun,Kelulusan,Pengkhususan,DaerahAsal,Telefon,Sambungan,WhatsApp,Email,URL Profil,Sumber,LastSync,Gred,Tahun Lahir ,PlatNo1,PlatNo2,PlatNo3,PlatMotor1,PlatMotor2'
-      : 'Bil,StaffID,Nama,Kategori,Jawatan,Unit,Tahun';
+      ? 'Bil,StaffID,Nama,Kategori,Jawatan,Unit,Kelulusan,Pengkhususan,DaerahAsal,Telefon,Sambungan,Email,Gred,Tahun Lahir,PlatNo1,PlatNo2,PlatNo3'
+      : 'Bil,StaffID,Nama,Kategori,Jawatan,Unit';
     
     navigator.clipboard.writeText(textToCopy);
     setCopiedHeaders(type);
     setTimeout(() => setCopiedHeaders(null), 2500);
   };
 
-  // Muat Turun Templat CSV Kakitangan
+  // Muat Turun Templat CSV Kakitangan - Strictly 17 columns as specified
   const handleDownloadStaffTemplate = () => {
     const headers = [
-      'Bil', 'StaffID', 'Nama', 'Kategori', 'Jawatan', 'Unit', 'Tahun',
-      'Kelulusan', 'Pengkhususan', 'DaerahAsal', 'Telefon', 'Sambungan', 'WhatsApp',
-      'Email', 'URL Profil', 'Sumber', 'LastSync', 'Gred', 'Tahun Lahir ',
-      'PlatNo1', 'PlatNo2', 'PlatNo3', 'PlatMotor1', 'PlatMotor2'
+      'Bil', 'StaffID', 'Nama', 'Kategori', 'Jawatan', 'Unit',
+      'Kelulusan', 'Pengkhususan', 'DaerahAsal', 'Telefon', 'Sambungan',
+      'Email', 'Gred', 'Tahun Lahir', 'PlatNo1', 'PlatNo2', 'PlatNo3'
     ];
     const sampleRows = [
       [
-        '1', 'ST001', 'Muhammad Fazly Bin Jamaluddin', 'Pengurusan', 'Pengarah', 'Pengurusan', '2026',
-        '', '', 'Kuantan, Pahang', '013-9500149', '201', '60139500149',
-        'fazly.jamaluddin@mara.gov.my', '', 'Sistem KPMBP', '2026-09-04 00:00', 'DG13', '',
-        'WUL3110', 'WB1782D', 'A7306A', '', ''
+        '1', 'ST001', 'Muhammad Fazly Bin Jamaluddin', 'Pengurusan', 'Pengarah', 'Pengurusan',
+        '', '', 'Kuantan, Pahang', '013-9500149', '201', 'fazly.jamaluddin@mara.gov.my',
+        'DG13', '', 'WUL3110', 'WB1782D', 'A7306A'
       ],
       [
-        '2', 'ST002', 'Mohd Hakim Bin Hafiz', 'Pengurusan', 'Timb. Pengarah HEP', 'Pentadbiran', '2026',
-        '', '', '', '018-3854235', '208', '60183854235',
-        'hakim.hafiz@mara.gov.my', '', 'Sistem KPMBP', '2026-09-04 00:00', 'DG12', '1986',
-        'SJ8684', '', '', '', ''
+        '2', 'ST002', 'Mohd Hakim Bin Hafiz', 'Pengurusan', 'Timb. Pengarah HEP', 'Pentadbiran',
+        '', '', '', '018-3854235', '208', 'hakim.hafiz@mara.gov.my',
+        'DG12', '1986', 'SJ8684', '', ''
       ],
       [
-        '6', 'ST010', 'Norhasnah Binti Mohd Nordin CMILT, M.T.A.M', 'Pengurusan', 'Ketua Jabatan', 'Sains Kuantitatif', '2026',
-        'Sarjana Teknologi Pendidikan, UTM', 'Teknologi Maklumat', '', '012-7278737', '244', '60127278737',
-        'norhasnah2@gmail.com', '', 'Sistem KPMBP', '2026-09-04 00:00', 'DG12', '',
-        'JGK6336', '', '', '', ''
+        '3', 'ST003', 'Dr. Hj. Musa Bin Muhamad Ali CMILT', 'Pengurusan', 'Timb. Pengarah HEA', 'Pentadbiran',
+        '', '', 'Batu Pahat, Johor', '017-4693512', '202', 'musa.ali@mara.gov.my',
+        'DG13', '', 'RAT3417', 'WRL3417', ''
       ]
     ];
 
@@ -539,7 +432,7 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
     downloadCSVFile(csvRows.join('\r\n'), 'templat_kakitangan_kpmbp.csv');
   };
 
-  // Eksport Semua Data Kakitangan Semasa (.CSV)
+  // Eksport Semua Data Kakitangan Semasa (.CSV) - Strictly 17 columns as specified
   const handleExportStaffData = () => {
     let dataToExport = staffList;
     if (!dataToExport || dataToExport.length === 0) {
@@ -556,37 +449,29 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
     }
 
     const headers = [
-      'Bil', 'StaffID', 'Nama', 'Kategori', 'Jawatan', 'Unit', 'Tahun',
-      'Kelulusan', 'Pengkhususan', 'DaerahAsal', 'Telefon', 'Sambungan', 'WhatsApp',
-      'Email', 'URL Profil', 'Sumber', 'LastSync', 'Gred', 'Tahun Lahir ',
-      'PlatNo1', 'PlatNo2', 'PlatNo3', 'PlatMotor1', 'PlatMotor2'
+      'Bil', 'StaffID', 'Nama', 'Kategori', 'Jawatan', 'Unit',
+      'Kelulusan', 'Pengkhususan', 'DaerahAsal', 'Telefon', 'Sambungan',
+      'Email', 'Gred', 'Tahun Lahir', 'PlatNo1', 'PlatNo2', 'PlatNo3'
     ];
 
     const rows = dataToExport.map((s, idx) => {
       const bil = s.Bil || String(idx + 1);
-      const staffId = s.ID || s.staff_id || `ST${String(idx + 1).padStart(3, '0')}`;
+      const staffId = s.StaffID || s.ID || s.staff_id || `ST${String(idx + 1).padStart(3, '0')}`;
       const nama = s.Nama || '';
       const kategori = s.Kategori || s.Bahagian || 'Akademik';
       const jawatan = s.Jawatan || '';
       const unit = s.Unit || s.DepartmentID || '';
-      const tahun = s.Tahun || '2026';
       const kelulusan = s.Kelulusan || '';
       const pengkhususan = s.Pengkhususan || '';
       const daerahAsal = s.DaerahAsal || '';
       const telefon = s.Telefon || '';
       const sambungan = s.Sambungan || '';
-      const whatsApp = s.WhatsApp || '';
       const email = s.Email || '';
-      const urlProfil = s['URL Profil'] || '';
-      const sumber = s.Sumber || 'Sistem KPMBP';
-      const lastSync = s.LastSync || new Date().toISOString().replace('T', ' ').substring(0, 16);
       const gred = s.Gred || s.grade || '';
-      const tahunLahir = s.TahunLahir || s['Tahun Lahir'] || '';
+      const tahunLahir = s['Tahun Lahir'] || s.TahunLahir || '';
       const platNo1 = s.PlatNo1 || '';
       const platNo2 = s.PlatNo2 || '';
       const platNo3 = s.PlatNo3 || '';
-      const platMotor1 = s.PlatMotor1 || '';
-      const platMotor2 = s.PlatMotor2 || '';
 
       return [
         bil,
@@ -595,24 +480,17 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
         kategori,
         jawatan,
         unit,
-        tahun,
         kelulusan,
         pengkhususan,
         daerahAsal,
         telefon,
         sambungan,
-        whatsApp,
         email,
-        urlProfil,
-        sumber,
-        lastSync,
         gred,
         tahunLahir,
         platNo1,
         platNo2,
-        platNo3,
-        platMotor1,
-        platMotor2
+        platNo3
       ];
     });
 
@@ -625,13 +503,13 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
     downloadCSVFile(csvContent, `senarai_kakitangan_kpmbp_${todayStr}.csv`);
   };
 
-  // Muat Turun Templat CSV Jawatankuasa
+  // Muat Turun Templat CSV Jawatankuasa (Tanpa lajur Tahun)
   const handleDownloadCommitteeTemplate = () => {
-    const headers = ['Bil', 'StaffID', 'Nama', 'Kategori', 'Jawatan', 'Unit', 'Tahun'];
+    const headers = ['Bil', 'StaffID', 'Nama', 'Kategori', 'Jawatan', 'Unit'];
     const sampleRows = [
-      ['1', 'ST001', 'Ts. Dr. Ahmad bin Abdullah', 'Pengurusan', 'Pengerusi', 'JK Pengurusan Kolej (JPK)', '2025'],
-      ['2', 'ST001', 'Ts. Dr. Ahmad bin Abdullah', 'Pengurusan', 'Pengerusi', 'JK Keselamatan & Kesihatan Pekerjaan Kolej (JKKP)', '2025'],
-      ['3', 'ST002', 'Siti Aminah binti Kassim', 'Akademik', 'Setiausaha', 'JK Peperiksaan & Penilaian', '2025']
+      ['1', 'ST001', 'Ts. Dr. Ahmad bin Abdullah', 'Pengurusan', 'Pengerusi', 'JK Pengurusan Kolej (JPK)'],
+      ['2', 'ST001', 'Ts. Dr. Ahmad bin Abdullah', 'Pengurusan', 'Pengerusi', 'JK Keselamatan & Kesihatan Pekerjaan Kolej (JKKP)'],
+      ['3', 'ST002', 'Siti Aminah binti Kassim', 'Akademik', 'Setiausaha', 'JK Peperiksaan & Penilaian']
     ];
 
     const csvContent = [
@@ -642,7 +520,7 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
     downloadCSVFile(csvContent, 'templat_jawatankuasa_kpmbp.csv');
   };
 
-  // Eksport Semua Data Jawatankuasa Semasa (.CSV)
+  // Eksport Semua Data Jawatankuasa Semasa (.CSV) (Tanpa lajur Tahun)
   const handleExportCommitteeData = () => {
     let dataToExport = committeeList;
     if (!dataToExport || dataToExport.length === 0) {
@@ -658,15 +536,14 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
       return;
     }
 
-    const headers = ['Bil', 'StaffID', 'Nama', 'Kategori', 'Jawatan', 'Unit', 'Tahun'];
+    const headers = ['Bil', 'StaffID', 'Nama', 'Kategori', 'Jawatan', 'Unit'];
     const rows = dataToExport.map((c, idx) => [
       String(idx + 1),
       c.staff_id || '',
       c.staff_nama || '',
       c.peringkat || '',
       c.peranan || '',
-      c.jawatankuasa || '',
-      c.tahun || ''
+      c.jawatankuasa || ''
     ]);
 
     const csvContent = [
@@ -697,73 +574,6 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
     reader.readAsText(file);
   };
 
-  const googleAppsScriptCode = `// Deploy as Web App in your Google Apps Script:
-// 1. Open Google Sheet with name "Staff"
-// 2. Click Extensions > Apps Script
-// 3. Paste this code and click Deploy > New Deployment > Web App (Set access: "Anyone")
-
-function doGet(e) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Staff");
-  if (!sheet) {
-    return ContentService.createTextOutput(JSON.stringify({error: "Sheet 'Staff' not found"}))
-                         .setMimeType(ContentService.MimeType.JSON);
-  }
-  
-  var data = sheet.getDataRange().getValues();
-  var headers = data[0];
-  var jsonArray = [];
-  
-  for (var i = 1; i < data.length; i++) {
-    var row = data[i];
-    var obj = {};
-    for (var j = 0; j < headers.length; j++) {
-      obj[headers[j]] = row[j];
-    }
-    jsonArray.push(obj);
-  }
-  
-  return ContentService.createTextOutput(JSON.stringify(jsonArray))
-                       .setMimeType(ContentService.MimeType.JSON)
-                       .setHeader("Access-Control-Allow-Origin", "*");
-}
-
-function doPost(e) {
-  // Handle sync updates from Directory KPMBP to Google Sheets
-  try {
-    var rawData = e.postData.contents;
-    var payload = JSON.parse(rawData);
-    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Staff");
-    
-    // Simple overwrite implementation for v0.3 Foundation sync
-    if (payload && payload.staffList) {
-      sheet.clearContents();
-      // Set headers
-      var headers = ["ID", "Bahagian", "DepartmentID", "Nama", "Jawatan", "Kelulusan", "Pengkhususan", "Telefon", "WhatsApp", "Sambungan", "Email", "URL Profil", "Sumber", "LastSync"];
-      sheet.appendRow(headers);
-      
-      payload.staffList.forEach(function(stf) {
-        sheet.appendRow([
-          stf.ID, stf.Bahagian, stf.DepartmentID, stf.Nama, stf.Jawatan,
-          stf.Kelulusan, stf.Pengkhususan, stf.Telefon, stf.WhatsApp,
-          stf.Sambungan, stf.Email, stf["URL Profil"], stf.Sumber,
-          stf.LastSync
-        ]);
-      });
-      return ContentService.createTextOutput(JSON.stringify({success: true, count: payload.staffList.length}))
-                           .setMimeType(ContentService.MimeType.JSON);
-    }
-  } catch(err) {
-    return ContentService.createTextOutput(JSON.stringify({error: err.toString()}))
-                         .setMimeType(ContentService.MimeType.JSON);
-  }
-}`;
-
-  const handleCopyCode = () => {
-    navigator.clipboard.writeText(googleAppsScriptCode);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
   if (!isOpen) return null;
 
   return (
@@ -779,14 +589,14 @@ function doPost(e) {
           <div className="flex items-center justify-between border-b border-slate-100 pb-4">
             <div className="flex items-center gap-3">
               <div className="p-3 bg-gradient-to-br from-indigo-600 to-violet-700 text-white rounded-2xl shadow-md shadow-indigo-200">
-                <Settings className="w-6 h-6 animate-spin-slow" />
+                <Database className="w-6 h-6" />
               </div>
               <div>
                 <h3 className="font-sans font-extrabold text-slate-900 text-base md:text-lg leading-tight">
-                  Pusat Pengurusan Admin & Database Google Sheets
+                  Pusat Pengurusan Data & Admin KPMBP
                 </h3>
                 <p className="text-xs text-slate-500 font-medium">
-                  Urus rekod kakitangan, mod suntingan, & integrasi Google Sheets kolej
+                  Pendaftaran staf via import CSV rasmi, otorisasi pentadbir & storan Firebase Firestore
                 </p>
               </div>
             </div>
@@ -815,114 +625,42 @@ function doPost(e) {
             </div>
           </div>
 
-          {/* Quick Admin Actions Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {/* Action 1: Admin Mode Toggle */}
-            <div className={`p-4 rounded-2xl border transition-all flex flex-col justify-between ${
-              isAdminMode 
-                ? 'bg-amber-50/90 border-amber-200/80 text-amber-950 shadow-xs' 
-                : 'bg-slate-50 border-slate-100 text-slate-800'
-            }`}>
+          {/* Admin Mode Control */}
+          <div className={`p-4 rounded-2xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+            isAdminMode 
+              ? 'bg-amber-50/90 border-amber-200/80 text-amber-950 shadow-xs' 
+              : 'bg-slate-50 border-slate-100 text-slate-800'
+          }`}>
+            <div className="flex items-center gap-3">
+              <div className={`p-2.5 rounded-xl ${isAdminMode ? 'bg-amber-100 text-amber-900' : 'bg-white text-slate-500 border border-slate-200'}`}>
+                <UserCheck className="w-5 h-5" />
+              </div>
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-extrabold flex items-center gap-1.5">
-                    <UserCheck className={`w-4 h-4 ${isAdminMode ? 'text-amber-600' : 'text-slate-400'}`} />
-                    Admin Mode (Suntingan)
-                  </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-extrabold">Mod Admin (Kemaskini Rekod)</span>
                   <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md ${
                     isAdminMode ? 'bg-amber-200 text-amber-900' : 'bg-slate-200 text-slate-700'
                   }`}>
                     {isAdminMode ? 'AKTIF' : 'MATI'}
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-500 font-medium mb-3 leading-snug">
-                  Paparkan butang kemaskini & hapus pada kad direktori.
+                <p className="text-[11px] text-slate-500 font-medium">
+                  {isAdminMode 
+                    ? 'Mod suntingan aktif: Butang kemaskini maklumat kakitangan dipaparkan pada kad direktori.' 
+                    : 'Aktifkan mod admin untuk membuat sebarang kemaskini profil kakitangan sedia ada.'}
                 </p>
               </div>
-              <button
-                onClick={onToggleAdminMode}
-                className={`w-full py-2 px-3 rounded-xl text-xs font-extrabold transition-all cursor-pointer ${
-                  isAdminMode 
-                    ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-xs' 
-                    : 'bg-slate-800 hover:bg-slate-900 text-white'
-                }`}
-              >
-                {isAdminMode ? 'Matikan Admin Mode' : 'Aktifkan Admin Mode'}
-              </button>
             </div>
-
-            {/* Action 2: Add New Staff */}
-            <div className="p-4 bg-indigo-50/90 border border-indigo-100 rounded-2xl text-indigo-950 flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs font-extrabold flex items-center gap-1.5">
-                    <UserPlus className="w-4 h-4 text-indigo-600" />
-                    Daftar Staf Baru
-                  </span>
-                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-800">
-                    {totalStaffCount} Staf
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-500 font-medium mb-3 leading-snug">
-                  Buka borang untuk pendaftaran staf atau pensyarah baru.
-                </p>
-              </div>
-              <button
-                onClick={() => {
-                  if (onOpenAddStaffModal) onOpenAddStaffModal();
-                  if (onClose) onClose();
-                }}
-                className="w-full py-2 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-extrabold shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
-              >
-                <UserPlus className="w-3.5 h-3.5" />
-                <span>Buka Borang Daftar</span>
-              </button>
-            </div>
-
-            {/* Action 3: Google Sheets & Script Links */}
-            <div className="p-4 bg-emerald-50/90 border border-emerald-100 rounded-2xl text-emerald-950 flex flex-col justify-between space-y-2">
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs font-extrabold flex items-center gap-1.5">
-                    <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-                    Google Integrasi
-                  </span>
-                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800">
-                    Aktif
-                  </span>
-                </div>
-                <div className="space-y-1 mb-2">
-                  <p className="text-[10px] font-mono text-slate-600 truncate bg-white px-2 py-1 rounded border border-emerald-200/60">
-                    Sheet: {sheetId || '1D5LCyHw...'}
-                  </p>
-                  <p className="text-[10px] font-mono text-slate-600 truncate bg-white px-2 py-1 rounded border border-emerald-200/60">
-                    Script: {scriptId || '16lBiFFg...'}
-                  </p>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-1.5">
-                <a
-                  href={targetSheetUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="py-1.5 px-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-extrabold shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1 text-center"
-                  title="Buka Google Sheet"
-                >
-                  <span>Sheet</span>
-                  <ExternalLink className="w-3 h-3" />
-                </a>
-                <a
-                  href={targetScriptUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="py-1.5 px-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-[11px] font-extrabold shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1 text-center"
-                  title="Buka Google Script Editor"
-                >
-                  <span>Script</span>
-                  <ExternalLink className="w-3 h-3" />
-                </a>
-              </div>
-            </div>
+            <button
+              onClick={onToggleAdminMode}
+              className={`py-2 px-4 rounded-xl text-xs font-extrabold transition-all cursor-pointer shrink-0 ${
+                isAdminMode 
+                  ? 'bg-amber-600 hover:bg-amber-700 text-white shadow-xs' 
+                  : 'bg-slate-800 hover:bg-slate-900 text-white'
+              }`}
+            >
+              {isAdminMode ? 'Matikan Admin Mode' : 'Aktifkan Admin Mode'}
+            </button>
           </div>
 
           {/* Otorisasi Akses Admin (Emel MARA & 4 Digit PIN IC) */}
@@ -934,7 +672,7 @@ function doPost(e) {
                   <span>Otorisasi Akses Admin (Emel MARA & 4 Digit PIN IC)</span>
                 </h4>
                 <p className="text-[11px] text-slate-500 font-medium mt-0.5">
-                  Master Admin boleh membenarkan pegawai mengakses Admin Mode untuk melihat maklumat sensitif (Daerah Asal, Tahun Lahir, No. Plat Kenderaan).
+                  Master Admin boleh membenarkan pegawai mengakses Admin Mode untuk melihat maklumat sulit (Daerah Asal, Tahun Lahir, No. Plat Kenderaan).
                 </p>
               </div>
               <span className="text-[10px] font-black px-2.5 py-1 rounded-lg bg-indigo-100 text-indigo-900 border border-indigo-200 self-start sm:self-auto shrink-0">
@@ -1060,7 +798,7 @@ function doPost(e) {
 
                     <div className="flex items-center gap-1.5 shrink-0">
                       <span className="hidden sm:inline-block text-[10px] text-slate-400 font-mono">
-                        {admin.addedAt ? new Date(admin.addedAt).toLocaleDateString('ms-MY') : ''}
+                        {admin.createdAt ? new Date(admin.createdAt).toLocaleDateString('ms-MY') : ''}
                       </span>
                       <button
                         type="button"
@@ -1077,15 +815,15 @@ function doPost(e) {
             </div>
           </div>
 
-          {/* Direct Data Importer & Exporter (CSV/TSV) */}
+          {/* Direct Data Importer & Exporter (CSV) - Single Official Method for Registration */}
           <div className="p-4 bg-gradient-to-br from-indigo-50/70 to-amber-50/40 rounded-2xl border border-indigo-100/80 shadow-xs space-y-3 text-left">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h4 className="text-xs font-extrabold text-indigo-950 flex items-center gap-1.5">
-                  <FileSpreadsheet className="w-4 h-4 text-indigo-600" /> Pengurusan Data CSV (Import & Eksport)
+                  <FileSpreadsheet className="w-4 h-4 text-indigo-600" /> Pendaftaran Staf Baharu & Pengurusan CSV
                 </h4>
                 <p className="text-[11px] text-slate-500 font-medium">
-                  Muat turun templat CSV rasmi dengan susunan header yang tepat, eksport data semasa, atau muat naik fail CSV.
+                  Pendaftaran staf baharu hanya menggunakan kaedah import CSV. Muat turun templat rasmi, muat naik fail CSV atau eksport data semasa.
                 </p>
               </div>
 
@@ -1135,7 +873,7 @@ function doPost(e) {
                         : 'text-slate-700 hover:bg-indigo-50'
                     }`}
                   >
-                    <span>👤 Kakitangan (Staff)</span>
+                    <span>👤 Kakitangan (Staff CSV)</span>
                     <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-white/20 font-mono">
                       {totalStaffCount || staffList.length}
                     </span>
@@ -1153,7 +891,7 @@ function doPost(e) {
                         : 'text-slate-700 hover:bg-amber-50'
                     }`}
                   >
-                    <span>🏅 Jawatankuasa (StaffCommittee)</span>
+                    <span>🏅 Jawatankuasa (Committee CSV)</span>
                     <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-white/20 font-mono">
                       {totalCommitteeCount || committeeList.length}
                     </span>
@@ -1172,7 +910,7 @@ function doPost(e) {
                             Format Header CSV Kakitangan & Muat Turun
                           </span>
                           <p className="text-[10.5px] text-slate-500 font-medium">
-                            Gunakan templat CSV untuk memasukkan rekod staf dengan format lajur yang betul.
+                            Gunakan templat CSV rasmi untuk mendaftar rekod kakitangan dengan susunan lajur yang betul.
                           </p>
                         </div>
                         <button
@@ -1197,7 +935,7 @@ function doPost(e) {
 
                       <div className="p-2 bg-white rounded-lg border border-indigo-100 text-[11px] font-mono text-slate-800 break-all select-all">
                         <span className="text-indigo-800 font-bold">Header Sah: </span>
-                        Bil, StaffID, Nama, Kategori, Jawatan, Unit, Tahun, Kelulusan, Pengkhususan, DaerahAsal, Telefon, Sambungan, WhatsApp, Email, URL Profil, Sumber, LastSync, Gred, Tahun Lahir , PlatNo1, PlatNo2, PlatNo3, PlatMotor1, PlatMotor2
+                        Bil, StaffID, Nama, Kategori, Jawatan, Unit, Kelulusan, Pengkhususan, DaerahAsal, Telefon, Sambungan, Email, Gred, Tahun Lahir, PlatNo1, PlatNo2, PlatNo3
                       </div>
 
                       {/* Export Actions Buttons */}
@@ -1227,7 +965,7 @@ function doPost(e) {
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                         <label className="text-[11px] font-extrabold text-slate-800 flex items-center gap-1.5">
                           <Upload className="w-3.5 h-3.5 text-indigo-600" />
-                          <span>Muat Naik atau Tampal Data Kakitangan:</span>
+                          <span>Muat Naik atau Tampal Fail CSV Pendaftaran Staf:</span>
                         </label>
 
                         <label className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white rounded-xl font-extrabold text-xs shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 shrink-0 self-start sm:self-auto">
@@ -1246,7 +984,7 @@ function doPost(e) {
                         rows={5}
                         value={rawText}
                         onChange={(e) => setRawText(e.target.value)}
-                        placeholder={`Bil,StaffID,Nama,Kategori,Jawatan,Unit,Tahun...\nTampal baris data staf terus dari fail CSV atau Google Sheets di sini`}
+                        placeholder={`Bil,StaffID,Nama,Kategori,Jawatan,Unit,Kelulusan,Pengkhususan,DaerahAsal,Telefon,Sambungan,Email,Gred,Tahun Lahir,PlatNo1,PlatNo2,PlatNo3\n1,ST001,Muhammad Fazly Bin Jamaluddin,Pengurusan,Pengarah,Pengurusan,,,"Kuantan, Pahang",013-9500149,201,fazly.jamaluddin@mara.gov.my,DG13,,WUL3110,WB1782D,A7306A`}
                         className="w-full p-3 bg-indigo-50/20 border border-indigo-100 rounded-xl text-xs font-mono focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none leading-relaxed"
                       />
 
@@ -1255,7 +993,7 @@ function doPost(e) {
                         onClick={() => handleParseAndImport()}
                         className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white rounded-xl text-xs font-extrabold shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
                       >
-                        <Check className="w-4 h-4" /> Proses & Kemaskini Data Staf Ke Sistem & Firebase
+                        <Check className="w-4 h-4" /> Proses Pendaftaran Staf & Simpan Ke Firebase
                       </button>
                     </div>
                   </div>
@@ -1296,7 +1034,7 @@ function doPost(e) {
 
                       <div className="p-2 bg-white rounded-lg border border-amber-200/60 text-[11px] font-mono text-slate-800 break-all select-all">
                         <span className="text-amber-800 font-bold">Header Sah: </span>
-                        Bil, StaffID, Nama, Kategori, Jawatan, Unit, Tahun
+                        Bil, StaffID, Nama, Kategori, Jawatan, Unit
                       </div>
 
                       {/* Export Actions Buttons */}
@@ -1345,7 +1083,7 @@ function doPost(e) {
                         rows={5}
                         value={rawText}
                         onChange={(e) => setRawText(e.target.value)}
-                        placeholder={`Bil,StaffID,Nama,Kategori,Jawatan,Unit,Tahun\n1,ST001,Ts. Dr. Ahmad bin Abdullah,Pengurusan,Pengerusi,JK Pengurusan Kolej (JPK),2025\n2,ST001,Ts. Dr. Ahmad bin Abdullah,Pengurusan,Pengerusi,JK Keselamatan & Kesihatan Pekerjaan Kolej (JKKP),2025`}
+                        placeholder={`Bil,StaffID,Nama,Kategori,Jawatan,Unit\n1,ST001,Ts. Dr. Ahmad bin Abdullah,Pengurusan,Pengerusi,JK Pengurusan Kolej (JPK)`}
                         className="w-full p-3 bg-amber-50/30 border border-amber-200/80 rounded-xl text-xs font-mono focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none leading-relaxed"
                       />
 
@@ -1354,7 +1092,7 @@ function doPost(e) {
                         onClick={() => handleParseAndImportCommittee()}
                         className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 active:scale-[0.99] text-white rounded-xl text-xs font-black shadow-sm transition-all cursor-pointer flex items-center justify-center gap-2"
                       >
-                        <Check className="w-4 h-4" /> Proses & Kemaskini Jawatankuasa Ke Sistem & Firebase
+                        <Check className="w-4 h-4" /> Proses & Kemaskini Jawatankuasa Ke Firebase
                       </button>
                     </div>
                   </div>
@@ -1371,139 +1109,6 @@ function doPost(e) {
                 )}
               </div>
             )}
-          </div>
-
-          {/* Input Configuration for API */}
-          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-4">
-            <h4 className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
-              <Link2 className="w-4 h-4 text-indigo-600" /> Konfigurasi API Web App (Google Apps Script)
-            </h4>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-600">URL Web App Google Apps Script</label>
-              <input
-                type="text"
-                placeholder="https://script.google.com/macros/s/.../exec"
-                value={apiUrl}
-                onChange={(e) => setApiUrl(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500/15 focus:border-indigo-500 focus:outline-none transition-all placeholder:text-slate-400 text-xs font-mono"
-              />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-600">Nama Helaian (Sheet)</label>
-                <input
-                  type="text"
-                  placeholder="Staff"
-                  value={sheetName}
-                  onChange={(e) => setSheetName(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500/15 focus:border-indigo-500 focus:outline-none transition-all text-xs"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-600">ID Google Sheet</label>
-                <input
-                  type="text"
-                  placeholder="Google Sheet ID"
-                  value={sheetId}
-                  onChange={(e) => setSheetId(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500/15 focus:border-indigo-500 focus:outline-none transition-all text-xs font-mono"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-600">ID Google Script</label>
-                <input
-                  type="text"
-                  placeholder="Google Script ID"
-                  value={scriptId}
-                  onChange={(e) => setScriptId(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-white focus:ring-2 focus:ring-indigo-500/15 focus:border-indigo-500 focus:outline-none transition-all text-xs font-mono"
-                />
-              </div>
-            </div>
-
-            {/* Buttons */}
-            <div className="flex gap-2 pt-1">
-              <button
-                onClick={handleSave}
-                className="flex-1 py-2.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-extrabold shadow-sm transition-all cursor-pointer"
-              >
-                Simpan Konfigurasi
-              </button>
-              
-              <button
-                onClick={testConnection}
-                disabled={testStatus === 'testing'}
-                className="px-4 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-extrabold transition-all cursor-pointer shadow-xs"
-              >
-                {testStatus === 'testing' ? 'Menguji...' : 'Uji Sambungan'}
-              </button>
-            </div>
-
-            {/* Test connection alert status */}
-            {testStatus === 'success' && (
-              <p className="text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-200 p-2.5 rounded-xl flex items-center gap-1.5 font-bold shadow-xs">
-                ✓ Sambungan berjaya disahkan
-              </p>
-            )}
-            {testStatus === 'failed' && (
-              <p className="text-[11px] text-red-600 bg-red-50 border border-red-200 p-2.5 rounded-xl font-bold shadow-xs">
-                ⚠ Sambungan gagal
-              </p>
-            )}
-          </div>
-
-          {/* Sync Action Area */}
-          <div className="p-4 bg-indigo-950 text-white rounded-2xl flex items-center justify-between gap-4">
-            <div className="text-left">
-              <h4 className="text-xs font-extrabold text-white flex items-center gap-1.5">
-                <RefreshCw className="w-3.5 h-3.5 text-indigo-400" />
-                Segerakkan Rekod
-              </h4>
-              <p className="text-[11px] text-indigo-200/80 font-medium">
-                {config.lastSyncTime ? `Terakhir disegerak: ${config.lastSyncTime}` : 'Belum pernah disegerakkan'}
-              </p>
-            </div>
-            <button
-              onClick={onSyncNow}
-              disabled={isSyncing}
-              className="flex items-center gap-1.5 py-2.5 px-4 bg-indigo-500 hover:bg-indigo-600 text-white rounded-xl text-xs font-extrabold transition-all shadow-md cursor-pointer shrink-0"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-              {isSyncing ? 'Menyinkron...' : 'Sync Sekarang'}
-            </button>
-          </div>
-
-          {/* Script deployment guides */}
-          <div className="space-y-3 pt-2">
-            <div className="flex items-center justify-between">
-              <h4 className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
-                <FileText className="w-4 h-4 text-indigo-600" /> Kod Backend Google Apps Script (GAS)
-              </h4>
-              <button
-                onClick={handleCopyCode}
-                className="text-[11px] font-extrabold text-indigo-700 hover:text-indigo-900 flex items-center gap-1 bg-indigo-50 border border-indigo-100 px-3 py-1.5 rounded-xl shadow-2xs transition-all cursor-pointer"
-              >
-                {copied ? (
-                  <>
-                    <Check className="w-3.5 h-3.5 text-emerald-600" /> Ditulis!
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3.5 h-3.5" /> Salin Kod GAS
-                  </>
-                )}
-              </button>
-            </div>
-            <p className="text-[11px] text-slate-500 leading-normal">
-              Salin kod di atas & tampal ke <strong>Extensions &gt; Apps Script</strong> dalam Google Sheets anda, kemudian Deploy sebagai Web App.
-            </p>
-            <div className="bg-slate-900 rounded-2xl p-3 overflow-x-auto max-h-40 border border-slate-800 text-left">
-              <pre className="text-[10px] font-mono text-slate-300 whitespace-pre leading-relaxed">
-                {googleAppsScriptCode}
-              </pre>
-            </div>
           </div>
 
           {/* Bottom Controls */}

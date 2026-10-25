@@ -5,11 +5,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Phone, MessageCircle, Mail, GraduationCap, Award, Building2, HelpCircle, ArrowUpRight, Hash, Pencil, Camera, ChevronRight, Calendar, ExternalLink, Car, Bike, MapPin, Lock, ShieldCheck } from 'lucide-react';
+import { X, MessageCircle, Mail, GraduationCap, Award, Building2, Hash, Pencil, Camera, ChevronRight, Calendar, ExternalLink, Car, MapPin, Lock } from 'lucide-react';
 import { Staff, StaffCommittee } from '../types';
 import { getGredBadgeStyle } from '../utils/gredColors';
 import { getBahagianTheme } from '../utils/bahagianColors';
 import { getStaffGrade } from '../utils/staffGrade';
+import { sortCommitteesBySeniority } from '../utils/committeeService';
 import { StaffAvatar } from './StaffAvatar';
 
 interface ProfileModalProps {
@@ -87,7 +88,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ staff, committees = 
   const theme = getBahagianTheme(staff.Bahagian);
   const staffNameClean = (staff.Nama || '').toLowerCase().trim();
 
-  const matchedCommittees = (committees || []).filter((c) => {
+  const rawMatchedCommittees = (committees || []).filter((c) => {
     const cStaffId = (c.staff_id || '').toUpperCase().trim();
     const cStaffNama = (c.staff_nama || '').toLowerCase().trim();
 
@@ -99,6 +100,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ staff, committees = 
     }
     return false;
   });
+
+  const matchedCommittees = sortCommitteesBySeniority(rawMatchedCommittees);
 
   const getInitials = (name: string) => {
     const cleanName = name
@@ -113,12 +116,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ staff, committees = 
 
   const initials = getInitials(staff.Nama);
 
-  const profileUrl = staff['URL Profil'];
-  const isDirectImage = profileUrl && (
-    /\.(jpg|jpeg|png|webp|avif|svg)(\?.*)?$/i.test(profileUrl) || 
-    profileUrl.startsWith('data:image/')
-  );
-
   const triggerJadual = () => {
     if (timetableUrl) {
       window.open(timetableUrl, '_blank');
@@ -126,23 +123,25 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ staff, committees = 
   };
 
   const triggerCall = () => {
-    window.location.href = `tel:${staff.Telefon}`;
+    if (staff.Telefon) {
+      window.location.href = `tel:${staff.Telefon}`;
+    }
   };
 
   const triggerWhatsApp = () => {
-    const cleanWa = staff.WhatsApp ? staff.WhatsApp.replace(/\D/g, '') : '';
-    const waUrl = cleanWa ? `https://wa.me/${cleanWa.startsWith('6') ? cleanWa : '60' + cleanWa}` : `https://wa.me/6${staff.Telefon.replace(/\D/g, '')}`;
+    const rawNumber = staff.Telefon || '';
+    const cleanWa = rawNumber.replace(/\D/g, '');
+    if (!cleanWa) return;
+    const waUrl = cleanWa.startsWith('60')
+      ? `https://wa.me/${cleanWa}`
+      : cleanWa.startsWith('0')
+        ? `https://wa.me/6${cleanWa}`
+        : `https://wa.me/60${cleanWa}`;
     window.open(waUrl, '_blank');
   };
 
   const triggerEmail = () => {
     if (staff.Email) window.location.href = `mailto:${staff.Email}`;
-  };
-
-  const triggerProfileUrl = () => {
-    if (staff['URL Profil']) {
-      window.open(staff['URL Profil'], '_blank');
-    }
   };
 
   return (
@@ -237,7 +236,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ staff, committees = 
 
             {/* Main Info */}
             <div className="space-y-1.5 mt-2">
-              <h2 className="text-xl font-extrabold text-slate-900 tracking-tight leading-snug">
+              <h2 className="text-xl font-bold text-slate-900 tracking-normal leading-snug">
                 {staff.Nama}
               </h2>
               <div className="flex items-center gap-2 flex-wrap">
@@ -343,40 +342,28 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ staff, committees = 
                 )
               ) : null}
 
-              {/* Maklumat Kenderaan (Plat Kereta & Motosikal - Akses Admin Mode Sahaja) */}
+              {/* Maklumat Kenderaan (PlatNo1, PlatNo2, PlatNo3 - Akses Admin Mode Sahaja) */}
               {isAdminMode ? (
                 (() => {
                   const carPlates = [staff.PlatNo1, staff.PlatNo2, staff.PlatNo3].filter(Boolean) as string[];
-                  const bikePlates = [staff.PlatMotor1, staff.PlatMotor2].filter(Boolean) as string[];
-                  const otherPlates = (!carPlates.length && !bikePlates.length && staff.NoPlat) ? [staff.NoPlat] : [];
+                  const otherPlates = (!carPlates.length && staff.NoPlat) ? [staff.NoPlat] : [];
+                  const allPlates = [...carPlates, ...otherPlates];
 
-                  if (carPlates.length === 0 && bikePlates.length === 0 && otherPlates.length === 0) return null;
+                  if (allPlates.length === 0) return null;
 
                   return (
                     <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100 space-y-2">
                       <div className="flex items-center justify-between">
                         <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
                           <Car className="w-3.5 h-3.5 text-slate-600" />
-                          <span>Nombor Pendaftaran Kenderaan</span>
+                          <span>Nombor Pendaftaran Kenderaan (PlatNo)</span>
                         </h4>
                         <span className="px-1.5 py-0.2 bg-indigo-100 text-indigo-700 text-[9px] font-black rounded-md uppercase">Admin Mode</span>
                       </div>
                       <div className="flex flex-wrap gap-2 pt-1">
-                        {carPlates.map((plate, idx) => (
+                        {allPlates.map((plate, idx) => (
                           <span key={idx} className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-black text-slate-900 shadow-2xs font-mono">
                             <Car className="w-3 h-3 text-indigo-600" />
-                            {plate}
-                          </span>
-                        ))}
-                        {bikePlates.map((plate, idx) => (
-                          <span key={idx} className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-black text-slate-900 shadow-2xs font-mono">
-                            <Bike className="w-3 h-3 text-emerald-600" />
-                            {plate}
-                          </span>
-                        ))}
-                        {otherPlates.map((plate, idx) => (
-                          <span key={idx} className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-black text-slate-900 shadow-2xs font-mono">
-                            <Car className="w-3 h-3 text-slate-600" />
                             {plate}
                           </span>
                         ))}
@@ -480,7 +467,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ staff, committees = 
                         Maklumat Jawatankuasa Staf
                       </h4>
                       <p className="text-[10px] text-amber-800/90 font-medium">
-                        Sumber Sheet: <span className="font-bold">StaffCommittee</span>
+                        Rekod Rasmi: <span className="font-bold">Jawatankuasa KPMBP</span>
                       </p>
                     </div>
                   </div>
@@ -509,7 +496,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ staff, committees = 
                   </div>
                 ) : (
                   <p className="text-xs text-amber-900/70 font-medium italic pt-1">
-                    Tiada rekod jawatankuasa khusus ditemui dalam sheet StaffCommittee.
+                    Tiada rekod jawatankuasa khusus didaftarkan.
                   </p>
                 )}
 
@@ -583,22 +570,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ staff, committees = 
                 </div>
               </div>
             </div>
-
-            {/* Footer Status Indicators */}
-            <div className="mt-5 pt-3 border-t border-slate-100 flex items-center justify-between text-[10px] text-slate-400 font-mono">
-              <span>Sumber: {staff.Sumber || 'Google Sheets'}</span>
-              <span>Terakhir Disah: {staff.LastSync}</span>
-            </div>
-
-            {/* Profile URL button */}
-            {staff['URL Profil'] && (
-              <button
-                onClick={triggerProfileUrl}
-                className={`w-full mt-4 py-3 px-4 rounded-xl font-extrabold text-xs flex items-center justify-center gap-1.5 transition-all shadow-md cursor-pointer ${theme.buttonPrimary}`}
-              >
-                Pautan Profil KPMBP <ArrowUpRight className="w-4 h-4" />
-              </button>
-            )}
           </div>
         </motion.div>
       </div>

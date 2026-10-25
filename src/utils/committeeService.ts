@@ -150,3 +150,175 @@ export function parseCommitteeRows(rows: any[]): StaffCommittee[] {
     };
   });
 }
+
+/**
+ * Menentukan tahap kekananan (senioriti) peranan jawatankuasa:
+ * Nombor rank lebih kecil = kedudukan lebih tinggi/kanan (dipaparkan paling atas).
+ *
+ * Rank 10 : Penaung, Pengerusi, Pengerusi Tetap, "Ketua Jabatan / Pegawai Pengelas"
+ * Rank 20 : Pengerusi Silih Ganti, Timbalan Pengerusi / Timb. Pengerusi,
+ *           Naib Timbalan Pengerusi Tetap, Pegawai Pengelas
+ * Rank 30 : Ketua (tepat) dan semua yang bermula "Ketua"
+ *           (Ketua Unit ..., Ketua Program ..., Ketua Felo), YDP Muafakat,
+ *           NYDP Muafakat, Komander Insiden
+ * Rank 35 : Timb. Ketua Felo
+ * Rank 40 : Setiausaha dan variasinya (Setiausaha I, Setiausaha II, Setiausaha JSK,
+ *           Setiausaha JPP, Setiausaha Jurucakap ...)
+ *           KECUALI yang bermula "Pen." atau "Penolong"
+ * Rank 50 : Bendahari dan variasinya (Bendahari JSK, Bendahari JPP ...)
+ *           KECUALI yang bermula "Pen." atau "Penolong"
+ * Rank 60 : Pen. Setiausaha, Pen. Bendahari, Penolong
+ * Rank 70 : Peranan khusus lain dan peranan yang tidak dikenali (DEFAULT), contohnya
+ *           Penasihat ..., Pegawai ..., Juruaudit Dalaman ..., Panel Penilai,
+ *           Pasukan ..., Wakil ..., Urus Setia, Teknikal, Logistik, SA 1 hingga SA 6
+ * Rank 90 : Ahli, Ahli Unit ..., AJK ..., Felo (paling bawah)
+ */
+export function getRoleRank(peranan: string): number {
+  const p = (peranan || '').toLowerCase().trim().replace(/\s+/g, ' ');
+  if (!p) return 70;
+
+  // Rank 10: Penaung, Pengerusi, Pengerusi Tetap, "Ketua Jabatan / Pegawai Pengelas"
+  if (
+    p === 'penaung' ||
+    p.startsWith('penaung ') ||
+    p.includes('ketua jabatan / pegawai pengelas') ||
+    p.includes('ketua jabatan/pegawai pengelas') ||
+    p === 'pengerusi tetap' ||
+    p === 'pengerusi' ||
+    (p.startsWith('pengerusi') && !p.startsWith('pengerusi silih ganti'))
+  ) {
+    return 10;
+  }
+
+  // Rank 20: Pengerusi Silih Ganti, Timbalan Pengerusi / Timb. Pengerusi,
+  //          Naib Timbalan Pengerusi Tetap, Pegawai Pengelas
+  if (
+    p.startsWith('pengerusi silih ganti') ||
+    p.startsWith('timbalan pengerusi') ||
+    p.startsWith('timb. pengerusi') ||
+    p.startsWith('timb pengerusi') ||
+    p.includes('naib timbalan pengerusi') ||
+    p.includes('naib timb. pengerusi') ||
+    p.includes('naib timb pengerusi') ||
+    p === 'pegawai pengelas' ||
+    p.startsWith('pegawai pengelas ')
+  ) {
+    return 20;
+  }
+
+  // Rank 35: Timb. Ketua Felo (disemak sebelum Rank 30)
+  if (
+    p.startsWith('timb. ketua felo') ||
+    p.startsWith('timb ketua felo') ||
+    p.startsWith('timbalan ketua felo')
+  ) {
+    return 35;
+  }
+
+  // Rank 30: Ketua (tepat) dan semua yang bermula "Ketua"
+  // (Ketua Unit ..., Ketua Program ..., Ketua Felo), YDP Muafakat,
+  // NYDP Muafakat, Komander Insiden
+  if (
+    p === 'ketua' ||
+    p.startsWith('ketua ') ||
+    p.startsWith('ketua-') ||
+    p.startsWith('ketua/') ||
+    p === 'ydp muafakat' ||
+    p.startsWith('ydp muafakat') ||
+    p === 'nydp muafakat' ||
+    p.startsWith('nydp muafakat') ||
+    p === 'komander insiden' ||
+    p.startsWith('komander insiden')
+  ) {
+    return 30;
+  }
+
+  const isPenolong = p.startsWith('pen.') || p.startsWith('pen ') || p.startsWith('penolong');
+
+  // Rank 40: Setiausaha dan variasinya (Setiausaha I, Setiausaha II, Setiausaha JSK,
+  // Setiausaha JPP, Setiausaha Jurucakap ...)
+  // KECUALI yang bermula "Pen." atau "Penolong"
+  if (
+    !isPenolong &&
+    (p === 'setiausaha' ||
+      p.startsWith('setiausaha ') ||
+      p.startsWith('setiausaha-') ||
+      p.startsWith('setiausaha/') ||
+      (p.includes('setiausaha') && !p.includes('timbalan') && !p.includes('timb.')))
+  ) {
+    return 40;
+  }
+
+  // Rank 50: Bendahari dan variasinya (Bendahari JSK, Bendahari JPP ...)
+  // KECUALI yang bermula "Pen." atau "Penolong"
+  if (
+    !isPenolong &&
+    (p === 'bendahari' ||
+      p.startsWith('bendahari ') ||
+      p.startsWith('bendahari-') ||
+      p.startsWith('bendahari/') ||
+      (p.includes('bendahari') && !p.includes('timbalan') && !p.includes('timb.')))
+  ) {
+    return 50;
+  }
+
+  // Rank 60: Pen. Setiausaha, Pen. Bendahari, Penolong
+  if (
+    p.startsWith('pen. setiausaha') ||
+    p.startsWith('pen setiausaha') ||
+    p.startsWith('penolong setiausaha') ||
+    p.startsWith('pen. bendahari') ||
+    p.startsWith('pen bendahari') ||
+    p.startsWith('penolong bendahari') ||
+    p === 'penolong' ||
+    p.startsWith('penolong ') ||
+    p.startsWith('pen. ')
+  ) {
+    return 60;
+  }
+
+  // Rank 90: Ahli, Ahli Unit ..., AJK ..., Felo (paling bawah)
+  if (
+    p === 'ahli' ||
+    p.startsWith('ahli ') ||
+    p.startsWith('ahli-') ||
+    p.startsWith('ahli/') ||
+    p.startsWith('ahli') ||
+    p === 'ajk' ||
+    p.startsWith('ajk ') ||
+    p.startsWith('ajk-') ||
+    p.startsWith('ajk/') ||
+    p.startsWith('ajk') ||
+    p === 'felo' ||
+    p.startsWith('felo ')
+  ) {
+    return 90;
+  }
+
+  // Rank 70: Peranan khusus lain dan peranan yang tidak dikenali (DEFAULT)
+  // Contoh: Penasihat ..., Pegawai ..., Juruaudit Dalaman ..., Panel Penilai,
+  // Pasukan ..., Wakil ..., Urus Setia, Teknikal, Logistik, SA 1 hingga SA 6
+  return 70;
+}
+
+/**
+ * Menyusun senarai jawatankuasa mengikut kekananan peranan:
+ * - Menyalin array terlebih dahulu ([...list]) tanpa mengubah array asal
+ * - Nombor rank lebih kecil dipaparkan di atas
+ * - Jika rank sama, urutan asal dalam data dikekalkan (stable sort)
+ */
+export function sortCommitteesBySeniority(list: StaffCommittee[]): StaffCommittee[] {
+  if (!Array.isArray(list) || list.length <= 1) {
+    return Array.isArray(list) ? [...list] : [];
+  }
+
+  return [...list]
+    .map((item, index) => ({ item, index, rank: getRoleRank(item?.peranan || '') }))
+    .sort((a, b) => {
+      if (a.rank !== b.rank) {
+        return a.rank - b.rank;
+      }
+      return a.index - b.index;
+    })
+    .map(({ item }) => item);
+}

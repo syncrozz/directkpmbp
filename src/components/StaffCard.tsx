@@ -35,14 +35,6 @@ export const StaffCard: React.FC<StaffCardProps> = ({ staff, onClick, isAdminMod
   };
 
   const initials = getInitials(staff.Nama);
-
-  // Check if profile URL is a direct image
-  const profileUrl = staff['URL Profil'];
-  const isDirectImage = profileUrl && (
-    /\.(jpg|jpeg|png|webp|avif|svg)(\?.*)?$/i.test(profileUrl) || 
-    profileUrl.startsWith('data:image/')
-  );
-
   const gred = getStaffGrade(staff);
 
   return (
@@ -81,7 +73,7 @@ export const StaffCard: React.FC<StaffCardProps> = ({ staff, onClick, isAdminMod
 
           {/* Name & Jawatan */}
           <div className="flex-1 min-w-0 pt-0.5 space-y-1">
-            <h3 className="font-sans font-extrabold text-slate-900 text-sm md:text-[15px] group-hover:text-indigo-600 transition-colors leading-snug tracking-tight line-clamp-2">
+            <h3 className="font-sans font-bold text-slate-900 text-sm md:text-[15px] group-hover:text-indigo-600 transition-colors leading-snug tracking-tight line-clamp-2">
               {staff.Nama}
             </h3>
             <div className="flex items-center gap-1.5 flex-wrap pt-0.5">

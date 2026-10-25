@@ -4,40 +4,34 @@
  */
 
 export interface Staff {
-  ID: string;
-  staff_id?: string;
   Bil?: number | string;
-  Bahagian: string; // e.g. "Pengurusan", "Akademik", "Sokongan Akademik", "Pentadbiran"
-  Kategori?: string; // e.g. "Pengurusan", "Akademik", "Pentadbiran"
-  DepartmentID: string; // e.g. "JTM", "JKA", "JPA", "HEP", "Kewangan", "Pentadbiran", "Pengurusan", etc.
-  Unit?: string; // e.g. "Pengurusan", "Pentadbiran", "Sains Kuantitatif", "Pengurusan Perniagaan", etc.
+  StaffID: string;
+  ID: string; // alias for StaffID
+  staff_id?: string; // alias for StaffID
   Nama: string;
   NamaPendek?: string;
+  Kategori: string; // "Pengurusan", "Akademik", "Sokongan Akademik", "Pentadbiran"
+  Bahagian?: string; // alias for Kategori
+  Jawatan: string;
+  Unit: string; // e.g. "Pengurusan", "Pentadbiran", "Sains Kuantitatif", "Pengurusan Perniagaan", "Perakaunan", etc.
+  DepartmentID?: string; // alias for Unit
+  Kelulusan?: string;
+  Pengkhususan?: string;
   DaerahAsal?: string;
-  TahunLahir?: string;
+  Telefon: string; // Office/General Phone
+  Sambungan?: string; // Extension
+  Email: string;
+  Gred?: string;
+  grade?: string; // alias for Gred
   'Tahun Lahir'?: string;
-  NoPlat?: string;
+  TahunLahir?: string; // alias for 'Tahun Lahir'
   PlatNo1?: string;
   PlatNo2?: string;
   PlatNo3?: string;
-  PlatMotor1?: string;
-  PlatMotor2?: string;
-  Gred?: string;
-  grade?: string;
-  Jawatan: string;
-  Tahun?: string;
-  Kelulusan: string;
-  Pengkhususan: string;
-  Telefon: string; // Office/General Phone
-  WhatsApp: string; // WhatsApp Number/Link
-  Sambungan: string; // Extension
-  Email: string;
-  'URL Profil': string; // Profile URL
-  Foto?: string; // Photo URL
-  Gambar?: string; // Photo URL alternative
-  Sumber: string; // e.g. "Google Sheets", "Sistem KPMBP", "Manual"
-  Status: string; // "Aktif", "Cuti", "Bersara"
-  LastSync: string;
+  NoPlat?: string; // combined vehicle plates
+  Foto?: string;
+  Gambar?: string;
+  Status?: string;
 }
 
 export interface StaffCommittee {
@@ -52,15 +46,6 @@ export interface StaffCommittee {
 }
 
 export type DivisionType = 'Semua' | 'Pengurusan' | 'Akademik' | 'Sokongan Akademik' | 'Pentadbiran';
-
-export interface SyncConfig {
-  apiUrl: string;
-  sheetId: string;
-  scriptId?: string;
-  sheetName: string;
-  isConnected: boolean;
-  lastSyncTime: string | null;
-}
 
 export interface AuthorizedAdmin {
   id: string;

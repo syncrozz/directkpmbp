@@ -5,9 +5,10 @@
 
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Award, Calendar, Layers, CheckCircle2, Users, Building2, Tag } from 'lucide-react';
+import { X, Award, CheckCircle2, Users, Building2 } from 'lucide-react';
 import { Staff, StaffCommittee } from '../types';
 import { getBahagianTheme } from '../utils/bahagianColors';
+import { sortCommitteesBySeniority } from '../utils/committeeService';
 import { StaffAvatar } from './StaffAvatar';
 
 interface CommitteeModalProps {
@@ -25,7 +26,7 @@ export const CommitteeModal: React.FC<CommitteeModalProps> = ({ staff, committee
   const staffIdClean = (staff.ID || staff.staff_id || '').toUpperCase().trim();
   const staffNameClean = (staff.Nama || '').toLowerCase().trim();
 
-  const matchedCommittees = committees.filter((c) => {
+  const rawMatchedCommittees = (committees || []).filter((c) => {
     const cStaffId = (c.staff_id || '').toUpperCase().trim();
     const cStaffNama = (c.staff_nama || '').toLowerCase().trim();
 
@@ -37,6 +38,8 @@ export const CommitteeModal: React.FC<CommitteeModalProps> = ({ staff, committee
     }
     return false;
   });
+
+  const matchedCommittees = sortCommitteesBySeniority(rawMatchedCommittees);
 
   const getRoleBadgeStyle = (role: string) => {
     const r = (role || '').toLowerCase();
@@ -121,7 +124,7 @@ export const CommitteeModal: React.FC<CommitteeModalProps> = ({ staff, committee
                 </h4>
               </div>
               <span className="text-xs text-slate-400 font-semibold">
-                Sheet: StaffCommittee
+                Pangkalan Data Jawatankuasa KPMBP
               </span>
             </div>
 
@@ -132,7 +135,7 @@ export const CommitteeModal: React.FC<CommitteeModalProps> = ({ staff, committee
                   Tiada maklumat jawatankuasa direkodkan untuk staf ini.
                 </p>
                 <p className="text-[11px] text-slate-400">
-                  Maklumat diisi melalui Google Sheet (Tab: StaffCommittee)
+                  Maklumat dikemaskini melalui Import CSV Jawatankuasa
                 </p>
               </div>
             ) : (
@@ -159,12 +162,6 @@ export const CommitteeModal: React.FC<CommitteeModalProps> = ({ staff, committee
                             <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-white text-slate-600 border border-slate-200 flex items-center gap-1">
                               <Building2 className="w-3 h-3 text-slate-400" />
                               {item.peringkat}
-                            </span>
-                          )}
-                          {item.tahun && (
-                            <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-slate-200/70 text-slate-700 flex items-center gap-1">
-                              <Calendar className="w-3 h-3 text-slate-400" />
-                              {item.tahun}
                             </span>
                           )}
                         </div>
