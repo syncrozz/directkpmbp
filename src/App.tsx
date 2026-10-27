@@ -192,6 +192,7 @@ export default function App() {
     if (isAdminMode) {
       setIsAdminMode(false);
       setCurrentAdmin(null);
+      setIsSettingsOpen(false);
     } else {
       setIsAdminPinOpen(true);
     }
@@ -508,19 +509,21 @@ export default function App() {
               )}
             </button>
 
-            {/* Single Consolidated Database & CSV Management Settings Button */}
-            <button
-              onClick={() => setIsSettingsOpen(true)}
-              title="Pengurusan Data & Import CSV"
-              aria-label="Pengurusan Data & Import CSV"
-              className={`relative p-2 rounded-2xl transition-all border cursor-pointer flex items-center justify-center ${
-                isSettingsOpen 
-                  ? 'bg-gradient-to-r from-indigo-600 via-violet-600 to-indigo-700 text-white border-transparent shadow-md shadow-indigo-200' 
-                  : 'bg-white/80 text-slate-700 hover:text-indigo-600 border-slate-200/80 hover:bg-white shadow-2xs'
-              }`}
-            >
-              <Settings className={`w-5 h-5 transition-transform duration-300 hover:rotate-90 ${isSettingsOpen ? 'text-white' : 'text-indigo-600'}`} />
-            </button>
+            {/* Single Consolidated Database & CSV Management Settings Button (Hanya muncul semasa Admin Mode Aktif) */}
+            {isAdminMode && (
+              <button
+                onClick={() => setIsSettingsOpen(true)}
+                title="Pengurusan Data & Import CSV"
+                aria-label="Pengurusan Data & Import CSV"
+                className={`relative p-2 rounded-2xl transition-all border cursor-pointer flex items-center justify-center ${
+                  isSettingsOpen 
+                    ? 'bg-gradient-to-r from-indigo-600 via-violet-600 to-indigo-700 text-white border-transparent shadow-md shadow-indigo-200' 
+                    : 'bg-white/80 text-slate-700 hover:text-indigo-600 border-slate-200/80 hover:bg-white shadow-2xs'
+                }`}
+              >
+                <Settings className={`w-5 h-5 transition-transform duration-300 hover:rotate-90 ${isSettingsOpen ? 'text-white' : 'text-indigo-600'}`} />
+              </button>
+            )}
           </div>
 
         </div>
