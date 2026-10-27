@@ -919,6 +919,27 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
                   <span>Kongsi melalui WhatsApp</span>
                 </a>
               </div>
+
+              {/* OGI Social Sharing Card Preview */}
+              <div className="pt-2.5 border-t border-indigo-100/60">
+                <div className="text-[10.5px] font-extrabold text-slate-600 mb-1.5 flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  <span>Pratonton Kad Perkongsian Rasmi (Open Graph Image):</span>
+                </div>
+                <div className="rounded-xl overflow-hidden border border-slate-200 bg-white shadow-2xs max-w-sm">
+                  <img
+                    src="https://raw.githubusercontent.com/syncrozz/syncrozz-assets/main/OGI/OGI.DIRECTKpmbp.jpg"
+                    alt="Pratonton OGI Rasmi KPMBP"
+                    className="w-full h-auto object-cover aspect-[1200/630]"
+                    loading="lazy"
+                  />
+                  <div className="p-2.5 bg-slate-50 border-t border-slate-100">
+                    <p className="text-[9.5px] font-mono text-slate-400 uppercase tracking-wider">bpenawar.kpm.edu.my</p>
+                    <h5 className="text-[11.5px] font-extrabold text-slate-900 truncate">Directory KPMBP – Direktori Rasmi Kolej Profesional MARA Bandar Penawar</h5>
+                    <p className="text-[10px] text-slate-500 line-clamp-1">Direktori Rasmi Kakitangan & Pensyarah Kolej Profesional MARA Bandar Penawar</p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
