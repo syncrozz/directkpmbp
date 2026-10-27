@@ -16,7 +16,7 @@ interface AdminPinModalProps {
 }
 
 export const AdminPinModal: React.FC<AdminPinModalProps> = ({ isOpen, onClose, onSuccess }) => {
-  const [authTab, setAuthTab] = useState<'maraEmail' | 'masterPin'>('maraEmail');
+  const [authTab, setAuthTab] = useState<'maraEmail' | 'masterPin'>('masterPin');
   const [email, setEmail] = useState('');
   const [pin, setPin] = useState('');
   const [masterPin, setMasterPin] = useState('');
@@ -47,12 +47,13 @@ export const AdminPinModal: React.FC<AdminPinModalProps> = ({ isOpen, onClose, o
     setMasterPin('');
     setErrorMessage('');
     setShake(false);
+    setAuthTab('masterPin');
 
     const focusTimer = setTimeout(() => {
-      if (authTab === 'maraEmail') {
-        emailInputRef.current?.focus();
-      } else {
+      if (authTab === 'masterPin') {
         masterPinInputRef.current?.focus();
+      } else {
+        emailInputRef.current?.focus();
       }
     }, 100);
 
@@ -302,20 +303,6 @@ export const AdminPinModal: React.FC<AdminPinModalProps> = ({ isOpen, onClose, o
                       : 'border-slate-200 bg-slate-50/80 text-slate-900 placeholder:text-slate-400 placeholder:tracking-normal placeholder:font-semibold placeholder:text-xs focus:border-indigo-600 focus:bg-white focus:ring-3 focus:ring-indigo-100'
                   }`}
                 />
-
-                {/* 4-digit Visual Indicators */}
-                <div className="flex justify-center items-center gap-2 pt-1 pb-0.5">
-                  {[0, 1, 2, 3].map((idx) => (
-                    <div
-                      key={idx}
-                      className={`h-2 rounded-full transition-all duration-200 ${
-                        idx < masterPin.length
-                          ? 'w-6 bg-indigo-600'
-                          : 'w-2 bg-slate-200'
-                      }`}
-                    />
-                  ))}
-                </div>
 
                 {errorMessage && (
                   <p className="text-xs font-bold text-rose-600 flex items-center justify-center gap-1.5 pt-1">
