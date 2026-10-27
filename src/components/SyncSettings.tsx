@@ -21,7 +21,11 @@ import {
   ShieldCheck,
   Trash2,
   Mail,
-  Hash
+  Hash,
+  UserPlus,
+  Link,
+  Share2,
+  ExternalLink
 } from 'lucide-react';
 import { Staff, StaffCommittee, AuthorizedAdmin } from '../types';
 import { saveStaffListToFirestore, saveCommitteesToFirestore } from '../config/firebase';
@@ -42,6 +46,7 @@ interface SyncSettingsProps {
   onResetCommitteeData?: () => void;
   onInstallPWA?: () => void;
   canInstallPWA?: boolean;
+  onNavigateToRegistration?: () => void;
 }
 
 // CSV escaping helper for proper quotes and UTF-8 handling
@@ -82,7 +87,22 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
   onResetCommitteeData,
   onInstallPWA,
   canInstallPWA = false,
+  onNavigateToRegistration,
 }) => {
+  // Slug sharing state
+  const [copiedSlug, setCopiedSlug] = useState(false);
+  const registrationSlugUrl = typeof window !== 'undefined'
+    ? `${window.location.origin}${window.location.pathname}#/daftar`
+    : '/#/daftar';
+
+  const handleCopySlug = () => {
+    if (navigator?.clipboard) {
+      navigator.clipboard.writeText(registrationSlugUrl);
+      setCopiedSlug(true);
+      setTimeout(() => setCopiedSlug(false), 2500);
+    }
+  };
+
   // Importer states
   const [showImporter, setShowImporter] = useState(true);
   const [importType, setImportType] = useState<'staff' | 'committee'>('staff');
@@ -811,6 +831,93 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
                     </div>
                   </div>
                 ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Pautan Pendaftaran Kendiri Staf Baharu (Slug Pendaftaran) */}
+          <div className="p-4 md:p-5 bg-gradient-to-br from-indigo-50/90 via-white to-purple-50/60 rounded-2xl border border-indigo-200/90 shadow-xs space-y-4 text-left">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-indigo-100/80 pb-3">
+              <div>
+                <h4 className="text-xs md:text-sm font-extrabold text-indigo-950 flex items-center gap-2">
+                  <UserPlus className="w-4 h-4 text-indigo-600" />
+                  <span>Pautan Pendaftaran Kendiri Staf Baharu (Slug)</span>
+                </h4>
+                <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                  Admin boleh menyalin dan menghantar pautan slug ini kepada staf atau pensyarah baharu untuk memasukkan butiran peribadi & perjawatan secara terus.
+                </p>
+              </div>
+              <span className="text-[10px] font-black px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-900 border border-emerald-200 self-start sm:self-auto shrink-0">
+                Pendaftaran Terus
+              </span>
+            </div>
+
+            {/* Slug URL Display & Action Deck */}
+            <div className="space-y-3 bg-white p-3.5 rounded-xl border border-indigo-100 shadow-2xs">
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-slate-700 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Link className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Pautan URL / Slug Borang Pendaftaran:</span>
+                  </span>
+                  <span className="text-[10px] font-mono font-bold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded border border-indigo-100">
+                    #/daftar
+                  </span>
+                </label>
+                
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 px-3 py-2 bg-slate-50 rounded-xl border border-slate-200 text-xs font-mono text-slate-700 truncate select-all">
+                    {registrationSlugUrl}
+                  </div>
+                  
+                  <button
+                    type="button"
+                    onClick={handleCopySlug}
+                    className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer shrink-0"
+                    title="Salin pautan slug pendaftaran kendiri"
+                  >
+                    {copiedSlug ? (
+                      <>
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Tersalin!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Salin Pautan</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Quick Actions: Open & Share WhatsApp */}
+              <div className="flex items-center gap-2 pt-1 flex-wrap">
+                {onNavigateToRegistration && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onClose) onClose();
+                      onNavigateToRegistration();
+                    }}
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-[11px] font-extrabold flex items-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5 text-slate-600" />
+                    <span>Buka Halaman Pendaftaran (Uji Borang)</span>
+                  </button>
+                )}
+
+                <a
+                  href={`https://wa.me/?text=${encodeURIComponent(
+                    `Salam sejahtera. Sila lengkapkan pendaftaran profil rasmi anda sebagai kakitangan/pensyarah Kolej Profesional MARA Bandar Penawar melalui pautan direktori berikut:\n\n${registrationSlugUrl}\n\nTerima kasih.`
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-lg text-[11px] font-extrabold flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <Share2 className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Kongsi melalui WhatsApp</span>
+                </a>
               </div>
             </div>
           </div>

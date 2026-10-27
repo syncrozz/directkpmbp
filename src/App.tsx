@@ -29,6 +29,7 @@ import { SyncSettings } from './components/SyncSettings';
 import { AddEditStaffModal } from './components/AddEditStaffModal';
 import { CampusReferenceHub } from './components/CampusReferenceHub';
 import { AdminPinModal } from './components/AdminPinModal';
+import { SelfRegistrationPage } from './components/SelfRegistrationPage';
 import { 
   fetchStaffListFromFirestore, 
   fetchCommitteesFromFirestore, 
@@ -37,8 +38,22 @@ import {
 } from './config/firebase';
 
 export default function App() {
-  // Navigation State
-  const [activeHub, setActiveHub] = useState<'directory' | 'rujukan'>('directory');
+  // Navigation State ('directory' | 'rujukan' | 'daftar')
+  const [activeHub, setActiveHub] = useState<'directory' | 'rujukan' | 'daftar'>(() => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash.toLowerCase();
+      const pathname = window.location.pathname.toLowerCase();
+      const searchParams = new URLSearchParams(window.location.search);
+      const pageParam = (searchParams.get('page') || searchParams.get('tab') || '').toLowerCase();
+      if (hash.includes('daftar') || pathname.endsWith('/daftar') || pageParam === 'daftar') {
+        return 'daftar';
+      }
+      if (hash.includes('rujukan') || pathname.endsWith('/rujukan') || pageParam === 'rujukan') {
+        return 'rujukan';
+      }
+    }
+    return 'directory';
+  });
 
   // Staff Directory State
   const [staffList, setStaffList] = useState<Staff[]>([]);
@@ -136,6 +151,30 @@ export default function App() {
     };
   }, []);
 
+  // Listen to URL hash and history state for direct slug navigation (e.g. #/daftar)
+  useEffect(() => {
+    const handleUrlChange = () => {
+      const hash = window.location.hash.toLowerCase();
+      const pathname = window.location.pathname.toLowerCase();
+      const searchParams = new URLSearchParams(window.location.search);
+      const pageParam = (searchParams.get('page') || searchParams.get('tab') || '').toLowerCase();
+
+      if (hash.includes('daftar') || pathname.endsWith('/daftar') || pageParam === 'daftar') {
+        setActiveHub('daftar');
+      } else if (hash.includes('rujukan') || pathname.endsWith('/rujukan') || pageParam === 'rujukan') {
+        setActiveHub('rujukan');
+      }
+    };
+
+    handleUrlChange();
+    window.addEventListener('hashchange', handleUrlChange);
+    window.addEventListener('popstate', handleUrlChange);
+    return () => {
+      window.removeEventListener('hashchange', handleUrlChange);
+      window.removeEventListener('popstate', handleUrlChange);
+    };
+  }, []);
+
   const handleInstallPWA = async () => {
     if (deferredPrompt) {
       deferredPrompt.prompt();
@@ -161,6 +200,9 @@ export default function App() {
   // Home Trigger: Reset navigation, close modals/drawers/overlays, and reset filters to default
   const handleGoHome = () => {
     setActiveHub('directory');
+    if (typeof window !== 'undefined' && window.location.hash) {
+      window.location.hash = '';
+    }
     setSelectedStaff(null);
     setCommitteeStaff(null);
     setIsAddEditOpen(false);
@@ -236,7 +278,7 @@ export default function App() {
     });
   }, []);
 
-  // Update existing staff handler (Manual new staff registration is removed; done via CSV import)
+  // Update existing staff handler
   const handleSaveStaff = (staff: Staff) => {
     const finalStaff = {
       ...staff,
@@ -244,6 +286,44 @@ export default function App() {
     };
     const updated = staffList.map((s) => (s.ID === finalStaff.ID ? finalStaff : s));
     saveStaffList(updated);
+  };
+
+  // Self-Registration Handler: Direct registration of new staff into platform & Firebase
+  const handleRegisterStaff = (newStaff: Staff) => {
+    const resolvedKategori = newStaff.Kategori || determineBahagian(newStaff.Jawatan, newStaff.Bahagian);
+    const finalStaff: Staff = {
+      ...newStaff,
+      Bil: newStaff.Bil || String(staffList.length + 1),
+      Bahagian: resolvedKategori,
+      Kategori: resolvedKategori,
+      Status: 'Aktif',
+    };
+
+    const existingIndex = staffList.findIndex(
+      (s) => (s.ID || s.staff_id || '').toUpperCase() === finalStaff.ID.toUpperCase()
+    );
+
+    let updatedList: Staff[];
+    if (existingIndex !== -1) {
+      updatedList = [...staffList];
+      updatedList[existingIndex] = finalStaff;
+    } else {
+      updatedList = [...staffList, finalStaff];
+    }
+
+    saveStaffList(updatedList);
+
+    // Auto-generate default committees if none exist
+    const currentCommStaffIds = new Set(committees.map((c) => (c.staff_id || '').toUpperCase()));
+    if (!currentCommStaffIds.has(finalStaff.ID.toUpperCase())) {
+      const newComms = generateDefaultCommitteesForStaff([finalStaff]);
+      if (newComms.length > 0) {
+        const mergedCommittees = [...committees, ...newComms];
+        setCommittees(mergedCommittees);
+        localStorage.setItem('kpmbp_smarthub_committees', JSON.stringify(mergedCommittees));
+        saveCommitteesToFirestore(mergedCommittees).catch(console.warn);
+      }
+    }
   };
 
   const handleDeleteStaff = (id: string) => {
@@ -448,9 +528,14 @@ export default function App() {
 
       {/* Sub-Header Tab Switcher */}
       <div className="border-b border-slate-100/80 bg-white/40 backdrop-blur-md relative z-30">
-        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-start gap-2">
+        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center gap-2">
           <button
-            onClick={() => setActiveHub('directory')}
+            onClick={() => {
+              setActiveHub('directory');
+              if (typeof window !== 'undefined' && window.location.hash.includes('daftar')) {
+                window.location.hash = '';
+              }
+            }}
             className={`px-4 py-2.5 rounded-2xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer ${
               activeHub === 'directory'
                 ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200'
@@ -461,7 +546,12 @@ export default function App() {
             Rujukan Staff
           </button>
           <button
-            onClick={() => setActiveHub('rujukan')}
+            onClick={() => {
+              setActiveHub('rujukan');
+              if (typeof window !== 'undefined' && window.location.hash.includes('daftar')) {
+                window.location.hash = '';
+              }
+            }}
             className={`px-4 py-2.5 rounded-2xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer ${
               activeHub === 'rujukan'
                 ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200'
@@ -682,10 +772,20 @@ export default function App() {
             )}
 
           </div>
-        ) : (
+        ) : activeHub === 'rujukan' ? (
           <div className="glass-panel rounded-3xl p-6 md:p-8 border border-white/55 shadow-sm">
             <CampusReferenceHub />
           </div>
+        ) : (
+          <SelfRegistrationPage
+            existingStaffList={staffList}
+            onRegisterStaff={handleRegisterStaff}
+            onNavigateHome={handleGoHome}
+            onViewStaffProfile={(staff) => {
+              handleGoHome();
+              setSelectedStaff(staff);
+            }}
+          />
         )}
 
       </main>
@@ -786,6 +886,14 @@ export default function App() {
         onResetCommitteeData={handleResetCommitteeData}
         onInstallPWA={handleInstallPWA}
         canInstallPWA={!isPwaInstalled}
+        onNavigateToRegistration={() => {
+          setIsSettingsOpen(false);
+          setActiveHub('daftar');
+          if (typeof window !== 'undefined') {
+            window.location.hash = '#/daftar';
+          }
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
       />
 
       <AdminPinModal
