@@ -70,16 +70,38 @@ export const fetchStaffListFromFirestore = async (): Promise<Staff[]> => {
       }
     });
 
-    if (foundData.length > 0) {
-      return foundData;
+    const staffMap = new Map<string, Staff>();
+    foundData.forEach((s) => {
+      const id = (s.ID || s.staff_id || '').toUpperCase().trim();
+      if (id) staffMap.set(id, s);
+    });
+
+    // Check individual staff collection to include any newly registered staff documents
+    try {
+      const querySnapshot = await getDocs(collection(db, 'staff'));
+      querySnapshot.forEach((doc) => {
+        const d = doc.data() as Staff;
+        const id = (d.ID || d.staff_id || doc.id).toUpperCase().trim();
+        // Ignore invalid or incomplete dummy docs
+        if (id && d.Nama && d.Nama.trim().length > 1 && d.Jawatan) {
+          if (staffMap.has(id)) {
+            staffMap.set(id, { ...staffMap.get(id)!, ...d });
+          } else if (id.startsWith('ST')) {
+            staffMap.set(id, d);
+          }
+        }
+      });
+    } catch (colErr) {
+      console.warn('Error fetching individual staff collection:', colErr);
     }
 
-    const querySnapshot = await getDocs(collection(db, 'staff'));
-    const staff: Staff[] = [];
-    querySnapshot.forEach((doc) => {
-      staff.push(doc.data() as Staff);
-    });
-    return staff;
+    if (staffMap.size > 0) {
+      const result = Array.from(staffMap.values());
+      result.sort((a, b) => (parseInt(String(a.Bil || '999'), 10) || 999) - (parseInt(String(b.Bil || '999'), 10) || 999));
+      return result;
+    }
+
+    return foundData;
   } catch (error) {
     console.error('Ralat mengambil data staf dari Firebase:', error);
     return [];

@@ -247,7 +247,6 @@ export default function App() {
         } else {
           setStaffList(INITIAL_STAFF_DATA);
           localStorage.setItem('kpmbp_smarthub_staff', JSON.stringify(INITIAL_STAFF_DATA));
-          saveStaffListToFirestore(INITIAL_STAFF_DATA).catch(() => {});
         }
       } catch (e) {
         setStaffList(INITIAL_STAFF_DATA);
@@ -255,7 +254,6 @@ export default function App() {
     } else {
       setStaffList(INITIAL_STAFF_DATA);
       localStorage.setItem('kpmbp_smarthub_staff', JSON.stringify(INITIAL_STAFF_DATA));
-      saveStaffListToFirestore(INITIAL_STAFF_DATA).catch(() => {});
     }
 
     // Load stored records from Firebase Firestore

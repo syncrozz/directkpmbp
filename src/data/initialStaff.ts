@@ -2025,5 +2025,32 @@ export const INITIAL_STAFF_DATA: Staff[] = [
     "PlatNo3": "",
     "NoPlat": "",
     "Status": "Aktif"
+  },
+  {
+    "Bil": "76",
+    "StaffID": "ST089",
+    "ID": "ST089",
+    "staff_id": "ST089",
+    "Nama": "NUR SABRINA BINTI ABDUL RAHMAN",
+    "Kategori": "Akademik",
+    "Bahagian": "Akademik",
+    "Jawatan": "Pensyarah",
+    "Unit": "Pengurusan Perniagaan",
+    "DepartmentID": "Pengurusan Perniagaan",
+    "Kelulusan": "Ijazah sarjana muda keusahawanan (logistik dan perniagaan pengedaran) dengan kepujian, UMK",
+    "Pengkhususan": "Keusahawanan/ logistik",
+    "DaerahAsal": "Kulai, Johor",
+    "Telefon": "014-9315093",
+    "Sambungan": "",
+    "Email": "sabrina.rahman@bpenawar.kpm.edu.my",
+    "Gred": "DG9",
+    "grade": "DG9",
+    "Tahun Lahir": "2002",
+    "TahunLahir": "2002",
+    "PlatNo1": "",
+    "PlatNo2": "",
+    "PlatNo3": "",
+    "NoPlat": "",
+    "Status": "Aktif"
   }
 ];

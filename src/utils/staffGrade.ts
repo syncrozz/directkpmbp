@@ -76,6 +76,7 @@ export const STAFF_GRADE_MAP: Record<string, string> = {
   'ST086': 'H1',
   'ST087': 'H1',
   'ST088': 'N3',
+  'ST089': 'DG9',
 };
 
 /**
