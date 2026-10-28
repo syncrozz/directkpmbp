@@ -21,7 +21,7 @@ import { Staff, DivisionType, StaffCommittee, AuthorizedAdmin } from './types';
 import { INITIAL_STAFF_DATA } from './data/initialStaff';
 import { STAFF_GRADE_MAP, determineBahagian } from './utils/staffGrade';
 import { getDistrictState } from './utils/stateMapping';
-import { generateDefaultCommitteesForStaff } from './utils/committeeService';
+import { generateDefaultCommitteesForStaff, deduplicateCommittees } from './utils/committeeService';
 import { StaffCard } from './components/StaffCard';
 import { ProfileModal } from './components/ProfileModal';
 import { CommitteeModal } from './components/CommitteeModal';
@@ -69,8 +69,9 @@ export default function App() {
       // 1. Check Firebase Firestore for persistent committee data
       const firestoreCommittees = await fetchCommitteesFromFirestore();
       if (firestoreCommittees && firestoreCommittees.length > 0) {
-        setCommittees(firestoreCommittees);
-        localStorage.setItem('kpmbp_smarthub_committees', JSON.stringify(firestoreCommittees));
+        const cleaned = deduplicateCommittees(firestoreCommittees);
+        setCommittees(cleaned);
+        localStorage.setItem('kpmbp_smarthub_committees', JSON.stringify(cleaned));
         return;
       }
 
@@ -79,8 +80,9 @@ export default function App() {
       if (cachedCommittees) {
         const parsed = JSON.parse(cachedCommittees);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          setCommittees(parsed);
-          saveCommitteesToFirestore(parsed).catch(console.warn);
+          const cleaned = deduplicateCommittees(parsed);
+          setCommittees(cleaned);
+          saveCommitteesToFirestore(cleaned).catch(console.warn);
           return;
         }
       }
@@ -89,7 +91,7 @@ export default function App() {
     }
 
     // 3. Fallback default generated committees
-    const defaultComm = generateDefaultCommitteesForStaff(currentStaffList);
+    const defaultComm = deduplicateCommittees(generateDefaultCommitteesForStaff(currentStaffList));
     setCommittees(defaultComm);
   };
 
@@ -338,9 +340,10 @@ export default function App() {
   };
 
   const handleImportCommitteeData = (importedCommittees: StaffCommittee[]) => {
-    setCommittees(importedCommittees);
-    localStorage.setItem('kpmbp_smarthub_committees', JSON.stringify(importedCommittees));
-    saveCommitteesToFirestore(importedCommittees).catch((err) => {
+    const cleaned = deduplicateCommittees(importedCommittees);
+    setCommittees(cleaned);
+    localStorage.setItem('kpmbp_smarthub_committees', JSON.stringify(cleaned));
+    saveCommitteesToFirestore(cleaned).catch((err) => {
       console.warn('Sync committees to Firebase notice:', err);
     });
   };

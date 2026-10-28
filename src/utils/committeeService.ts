@@ -3,7 +3,7 @@ import { COMMITTEE_CSV_DATA } from '../data/committeeCSV';
 
 // Default / fallback committee generator if sheet StaffCommittee returns empty
 export function generateDefaultCommitteesForStaff(staffList: Staff[]): StaffCommittee[] {
-  const committees: StaffCommittee[] = [...COMMITTEE_CSV_DATA];
+  const committees: StaffCommittee[] = deduplicateCommittees([...COMMITTEE_CSV_DATA]);
 
   // Map staff with existing records in CSV
   const existingStaffIds = new Set(committees.map(c => c.staff_id));
@@ -302,17 +302,64 @@ export function getRoleRank(peranan: string): number {
 }
 
 /**
+ * Membuang sebarang rekod jawatankuasa pendua (redundant):
+ * Padanan unik berdasarkan kombinasi: staff_id (atau staff_nama), nama jawatankuasa, dan peranan.
+ * Mengekalkan rekod yang mempunyai maklumat paling lengkap (contohnya rekod yang mempunyai staff_nama / ID rasmi).
+ */
+export function deduplicateCommittees(list: StaffCommittee[]): StaffCommittee[] {
+  if (!Array.isArray(list) || list.length <= 1) {
+    return Array.isArray(list) ? [...list] : [];
+  }
+
+  const seen = new Map<string, StaffCommittee>();
+
+  list.forEach((item) => {
+    if (!item) return;
+    const staffKey = (item.staff_id || item.staff_nama || '').toUpperCase().trim();
+    // Normalisasi nama jawatankuasa dan peranan: huruf kecil, trim, ringkaskan ruang putih berganda
+    const commKey = (item.jawatankuasa || '')
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, ' ');
+    const roleKey = (item.peranan || '')
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, ' ');
+
+    if (!commKey) return;
+
+    const uniqueKey = `${staffKey}__${commKey}__${roleKey}`;
+
+    if (!seen.has(uniqueKey)) {
+      seen.set(uniqueKey, item);
+    } else {
+      const existing = seen.get(uniqueKey)!;
+      // Jika rekod semasa ada staff_nama dan yang sedia ada tiada, kemaskini dengan maklumat lebih lengkap
+      if (item.staff_nama && !existing.staff_nama) {
+        seen.set(uniqueKey, { ...existing, ...item });
+      }
+    }
+  });
+
+  return Array.from(seen.values());
+}
+
+/**
  * Menyusun senarai jawatankuasa mengikut kekananan peranan:
+ * - Membuang sebarang rekod pendua terlebih dahulu (deduplicate)
  * - Menyalin array terlebih dahulu ([...list]) tanpa mengubah array asal
  * - Nombor rank lebih kecil dipaparkan di atas
  * - Jika rank sama, urutan asal dalam data dikekalkan (stable sort)
  */
 export function sortCommitteesBySeniority(list: StaffCommittee[]): StaffCommittee[] {
-  if (!Array.isArray(list) || list.length <= 1) {
-    return Array.isArray(list) ? [...list] : [];
+  if (!Array.isArray(list) || list.length === 0) {
+    return [];
   }
 
-  return [...list]
+  // Bersihkan sebarang rekod pendua bagi setiap staf secara automatik
+  const deduped = deduplicateCommittees(list);
+
+  return deduped
     .map((item, index) => ({ item, index, rank: getRoleRank(item?.peranan || '') }))
     .sort((a, b) => {
       if (a.rank !== b.rank) {

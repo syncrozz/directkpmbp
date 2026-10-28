@@ -108,23 +108,47 @@ export const fetchStaffListFromFirestore = async (): Promise<Staff[]> => {
   }
 };
 
+function dedupeCommitteesList(list: StaffCommittee[]): StaffCommittee[] {
+  if (!Array.isArray(list) || list.length <= 1) return Array.isArray(list) ? list : [];
+  const seen = new Map<string, StaffCommittee>();
+  list.forEach((c) => {
+    if (!c) return;
+    const staffKey = (c.staff_id || c.staff_nama || '').toUpperCase().trim();
+    const commKey = (c.jawatankuasa || '').toLowerCase().trim().replace(/\s+/g, ' ');
+    const roleKey = (c.peranan || '').toLowerCase().trim().replace(/\s+/g, ' ');
+    if (!commKey) return;
+    const key = `${staffKey}__${commKey}__${roleKey}`;
+    if (!seen.has(key)) {
+      seen.set(key, c);
+    } else {
+      const existing = seen.get(key)!;
+      if (c.staff_nama && !existing.staff_nama) {
+        seen.set(key, { ...existing, ...c });
+      }
+    }
+  });
+  return Array.from(seen.values());
+}
+
 /**
  * Save committee list directly to Firebase Firestore
  */
 export const saveCommitteesToFirestore = async (committeesList: StaffCommittee[]): Promise<boolean> => {
   try {
+    const cleaned = dedupeCommitteesList(committeesList);
+
     // 1. Single summary document for instant bulk retrieval
     const summaryRef = doc(db, 'system', 'committee_data');
     await setDoc(summaryRef, {
       updatedAt: new Date().toISOString(),
-      count: committeesList.length,
-      data: committeesList,
+      count: cleaned.length,
+      data: cleaned,
     });
 
     // 2. Individual committee documents in 'committees' collection
     const chunkSize = 400;
-    for (let i = 0; i < committeesList.length; i += chunkSize) {
-      const chunk = committeesList.slice(i, i + chunkSize);
+    for (let i = 0; i < cleaned.length; i += chunkSize) {
+      const chunk = cleaned.slice(i, i + chunkSize);
       const batch = writeBatch(db);
       chunk.forEach((c, idx) => {
         const rawId = c.id || `c-${c.staff_id || 'st'}-${i + idx}`;
@@ -156,7 +180,7 @@ export const fetchCommitteesFromFirestore = async (): Promise<StaffCommittee[]> 
     });
 
     if (foundData.length > 0) {
-      return foundData;
+      return dedupeCommitteesList(foundData);
     }
 
     const querySnapshot = await getDocs(collection(db, 'committees'));
@@ -164,7 +188,7 @@ export const fetchCommitteesFromFirestore = async (): Promise<StaffCommittee[]> 
     querySnapshot.forEach((doc) => {
       committees.push(doc.data() as StaffCommittee);
     });
-    return committees;
+    return dedupeCommitteesList(committees);
   } catch (error) {
     console.error('Ralat mengambil data jawatankuasa dari Firebase:', error);
     return [];
