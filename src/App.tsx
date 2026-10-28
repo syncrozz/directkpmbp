@@ -571,10 +571,14 @@ export default function App() {
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 relative z-10">
         {activeHub === 'directory' ? (
-          <div className="space-y-6">
+          <div className="flex flex-col space-y-6">
             
             {/* Unified Search & Directory Control Bar */}
-            <div className="glass-panel rounded-3xl p-4 md:p-5 border border-white/55 shadow-sm space-y-4 text-left">
+            <div className={`glass-panel rounded-3xl p-4 md:p-5 border border-white/55 shadow-sm space-y-4 text-left transition-all ${
+              searchQuery.trim() 
+                ? 'order-2 sm:order-1 sticky bottom-2 z-20 shadow-lg bg-white/95 backdrop-blur-md border-indigo-200/70' 
+                : 'order-1 sm:order-1'
+            }`}>
               
               {/* Row 1: Search Box & Jabatan Selector */}
               <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
@@ -688,7 +692,9 @@ export default function App() {
 
             {/* Active Admin Mode Notification Banner */}
             {isAdminMode && (
-              <div className="p-4 bg-amber-50/90 border border-amber-200/80 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-amber-950 shadow-xs">
+              <div className={`p-4 bg-amber-50/90 border border-amber-200/80 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-amber-950 shadow-xs ${
+                searchQuery.trim() ? 'order-3 sm:order-1' : 'order-1 sm:order-1'
+              }`}>
                 <div className="flex items-center gap-2.5">
                   <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping shrink-0" />
                   <div>
@@ -716,64 +722,74 @@ export default function App() {
               </div>
             )}
 
-            {/* Staff Grid Header */}
-            <div className="flex items-center justify-between px-2 pt-2 text-left">
-              <div>
-                <h2 className="text-[11px] font-extrabold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
-                  Senarai Kakitangan & Pensyarah ({filteredStaff.length})
-                </h2>
+            {/* Staff Results Section */}
+            <div className={`space-y-4 transition-all ${
+              searchQuery.trim() ? 'order-1 sm:order-2' : 'order-2 sm:order-2'
+            }`}>
+              {/* Staff Grid Header */}
+              <div className="flex items-center justify-between px-2 pt-2 text-left">
+                <div>
+                  <h2 className="text-[11px] font-extrabold text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
+                    Senarai Kakitangan & Pensyarah ({filteredStaff.length})
+                    {searchQuery.trim() && (
+                      <span className="inline-flex sm:hidden items-center px-2 py-0.5 rounded-full text-[10px] font-black bg-indigo-100 text-indigo-700">
+                        Hasil Di Atas
+                      </span>
+                    )}
+                  </h2>
+                </div>
+                {isAdminMode && (
+                  <button
+                    onClick={() => setIsSettingsOpen(true)}
+                    title="Pendaftaran kakitangan baharu dilaksanakan melalui import fail CSV"
+                    className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-extrabold transition-all shadow-md shadow-indigo-200 cursor-pointer active:scale-95"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Import CSV Staf Baharu</span>
+                  </button>
+                )}
               </div>
-              {isAdminMode && (
-                <button
-                  onClick={() => setIsSettingsOpen(true)}
-                  title="Pendaftaran kakitangan baharu dilaksanakan melalui import fail CSV"
-                  className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-extrabold transition-all shadow-md shadow-indigo-200 cursor-pointer active:scale-95"
-                >
-                  <Upload className="w-3.5 h-3.5" />
-                  <span>Import CSV Staf Baharu</span>
-                </button>
+
+              {/* Staff Cards Grid */}
+              {filteredStaff.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4.5">
+                  {filteredStaff.map((staff) => (
+                    <div key={staff.ID} className="relative">
+                      <StaffCard
+                        staff={staff}
+                        onClick={(stf) => setSelectedStaff(stf)}
+                        isAdminMode={isAdminMode}
+                        onEdit={(stf) => {
+                          setEditingStaff(stf);
+                          setIsAddEditOpen(true);
+                        }}
+                        onOpenCommittee={(stf) => setCommitteeStaff(stf)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                /* Empty State */
+                <div className="glass-panel rounded-3xl p-8 sm:p-12 text-center max-w-md mx-auto space-y-4 border border-slate-100 shadow-sm bg-white/50">
+                  <div className="w-16 h-16 bg-white border border-slate-100 rounded-full flex items-center justify-center mx-auto text-indigo-600 shadow-sm">
+                    <Search className="w-6 h-6" />
+                  </div>
+                  <div className="space-y-1">
+                    <h3 className="font-extrabold text-slate-900 text-base">Tiada staf ditemui.</h3>
+                    <p className="text-xs text-slate-500 leading-relaxed font-semibold">
+                      Sila cuba lagi dengan kata kunci yang berbeza.
+                    </p>
+                  </div>
+                  <button
+                    onClick={resetFilters}
+                    className="py-2.5 px-5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-extrabold shadow-md shadow-indigo-200 transition-all cursor-pointer"
+                  >
+                    Kosongkan Saringan
+                  </button>
+                </div>
               )}
             </div>
-
-            {/* Staff Cards Grid */}
-            {filteredStaff.length > 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4.5">
-                {filteredStaff.map((staff) => (
-                  <div key={staff.ID} className="relative">
-                    <StaffCard
-                      staff={staff}
-                      onClick={(stf) => setSelectedStaff(stf)}
-                      isAdminMode={isAdminMode}
-                      onEdit={(stf) => {
-                        setEditingStaff(stf);
-                        setIsAddEditOpen(true);
-                      }}
-                      onOpenCommittee={(stf) => setCommitteeStaff(stf)}
-                    />
-                  </div>
-                ))}
-              </div>
-            ) : (
-              /* Empty State */
-              <div className="glass-panel rounded-3xl p-12 text-center max-w-md mx-auto space-y-4 border border-slate-100 shadow-sm bg-white/50">
-                <div className="w-16 h-16 bg-white border border-slate-100 rounded-full flex items-center justify-center mx-auto text-indigo-600 shadow-sm">
-                  <Search className="w-6 h-6" />
-                </div>
-                <div className="space-y-1">
-                  <h3 className="font-extrabold text-slate-900 text-base">Tiada staf ditemui.</h3>
-                  <p className="text-xs text-slate-500 leading-relaxed font-semibold">
-                    Sila cuba lagi dengan kata kunci yang berbeza.
-                  </p>
-                </div>
-                <button
-                  onClick={resetFilters}
-                  className="py-2.5 px-5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-extrabold shadow-md shadow-indigo-200 transition-all cursor-pointer"
-                >
-                  Kosongkan Saringan
-                </button>
-              </div>
-            )}
 
           </div>
         ) : activeHub === 'rujukan' ? (
