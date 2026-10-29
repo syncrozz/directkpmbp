@@ -28,6 +28,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { Staff, DivisionType } from '../types';
+import { findDuplicateStaff } from '../utils/staffDeduplication';
 
 interface SelfRegistrationPageProps {
   existingStaffList: Staff[];
@@ -116,8 +117,17 @@ export const SelfRegistrationPage: React.FC<SelfRegistrationPageProps> = ({
       return;
     }
     if (isIdTaken) {
-      setErrorMessage(`No. Staf "${cleanId}" telah didaftarkan dalam sistem. Sila gunakan Staff ID berlainan.`);
-      return;
+      const existing = existingStaffList.find(
+        (s) => (s.ID || s.StaffID || s.staff_id || '').toUpperCase().trim() === cleanId
+      );
+      const updateMsg = `PENGESAHAN KEMASKINI:\n` +
+        `No. Staf "${cleanId}" telah wujud dalam sistem atas nama "${existing?.Nama || '-'}" (${existing?.Jawatan || '-'}).\n\n` +
+        `Adakah anda ingin mengemaskini maklumat profil kakitangan ini dengan data yang baru diisi?`;
+
+      if (!window.confirm(updateMsg)) {
+        setErrorMessage(`No. Staf "${cleanId}" telah didaftarkan dalam sistem. Sila gunakan Staff ID berlainan atau sahkan kemaskini.`);
+        return;
+      }
     }
     if (!jawatan.trim()) {
       setErrorMessage('Sila masukkan Jawatan kakitangan.');
@@ -130,6 +140,28 @@ export const SelfRegistrationPage: React.FC<SelfRegistrationPageProps> = ({
     if (!telefon.trim()) {
       setErrorMessage('Sila masukkan Nombor Telefon.');
       return;
+    }
+
+    // Duplicate check based on normalized name or email
+    const duplicate = findDuplicateStaff(
+      { Nama: nama.trim(), Email: email.trim() },
+      existingStaffList,
+      cleanId
+    );
+
+    if (duplicate) {
+      const duplicateMsg = `AMARAN DUPLIKAT:\n` +
+        `Rekod staf dengan nama atau emel yang sepadan sudah wujud dalam sistem:\n` +
+        `• Nama: ${duplicate.Nama}\n` +
+        `• No. Staf: ${duplicate.StaffID || duplicate.ID}\n` +
+        `• Jawatan: ${duplicate.Jawatan}\n` +
+        `• Emel: ${duplicate.Email || '-'}\n` +
+        `• Unit: ${duplicate.Unit || '-'}\n\n` +
+        `Adakah anda pasti mahu meneruskan pendaftaran staf baharu ini dengan ID "${cleanId}"?`;
+
+      if (!window.confirm(duplicateMsg)) {
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -397,10 +429,10 @@ export const SelfRegistrationPage: React.FC<SelfRegistrationPageProps> = ({
                     {cleanId && (
                       <span className={`text-[10px] font-black px-2 py-0.5 rounded ${
                         isIdTaken 
-                          ? 'bg-rose-100 text-rose-700' 
+                          ? 'bg-amber-100 text-amber-800' 
                           : 'bg-emerald-100 text-emerald-700'
                       }`}>
-                        {isIdTaken ? 'Telah Didaftarkan' : 'Tersedia'}
+                        {isIdTaken ? 'Wujud (Akan Dikemaskini)' : 'Tersedia'}
                       </span>
                     )}
                   </label>
@@ -456,8 +488,10 @@ export const SelfRegistrationPage: React.FC<SelfRegistrationPageProps> = ({
                   />
                   <datalist id="jawatan-suggestions">
                     <option value="Pensyarah" />
+                    <option value="Kaunselor" />
                     <option value="Ketua Jabatan" />
                     <option value="Ketua UPPK" />
+                    <option value="Pegawai Ko-Kurikulum" />
                     <option value="Timb. Pengarah HEA" />
                     <option value="Timb. Pengarah HEP" />
                     <option value="Timb. Pengarah (Khidmat Pengurusan)" />
@@ -488,6 +522,8 @@ export const SelfRegistrationPage: React.FC<SelfRegistrationPageProps> = ({
                     <option value="Pengurusan Perniagaan" />
                     <option value="Perakaunan" />
                     <option value="Pengajian Am" />
+                    <option value="Kaunseling" />
+                    <option value="Ko Kurikulum" />
                     <option value="Pentadbiran" />
                     <option value="Pengurusan" />
                     <option value="Pusat Sumber" />

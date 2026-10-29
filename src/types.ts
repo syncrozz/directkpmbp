@@ -32,6 +32,8 @@ export interface Staff {
   Foto?: string;
   Gambar?: string;
   Status?: string;
+  Sumber?: string;
+  [key: string]: any;
 }
 
 export interface StaffCommittee {

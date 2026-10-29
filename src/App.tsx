@@ -38,6 +38,21 @@ import {
   saveCommitteesToFirestore 
 } from './config/firebase';
 
+function formatMalaysianBuildDate(isoStr?: string): string {
+  if (!isoStr) return '';
+  try {
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return '';
+    const day = d.getDate();
+    const months = ['Jan', 'Feb', 'Mac', 'Apr', 'Mei', 'Jun', 'Jul', 'Ogo', 'Sep', 'Okt', 'Nov', 'Dis'];
+    const month = months[d.getMonth()];
+    const year = d.getFullYear();
+    return `${day} ${month} ${year}`;
+  } catch {
+    return '';
+  }
+}
+
 export default function App() {
   // Navigation State ('directory' | 'rujukan' | 'daftar')
   const [activeHub, setActiveHub] = useState<'directory' | 'rujukan' | 'daftar'>(() => {
@@ -451,6 +466,20 @@ export default function App() {
   const totalStaff = staffList.length;
   const supportStaff = staffList.filter(s => s.Bahagian !== 'Akademik').length;
   const academicStaff = staffList.filter(s => s.Bahagian === 'Akademik').length;
+
+  const appVersionLabel = (() => {
+    if (typeof __GIT_APP_VERSION__ !== 'undefined' && __GIT_APP_VERSION__) {
+      return `Versi ${__GIT_APP_VERSION__}`;
+    }
+    if (typeof __GIT_COMMIT_HASH__ !== 'undefined' && __GIT_COMMIT_HASH__) {
+      return `Build ${__GIT_COMMIT_HASH__}`;
+    }
+    return 'Versi pembangunan';
+  })();
+
+  const appBuildDateLabel = typeof __BUILD_DATE__ !== 'undefined'
+    ? formatMalaysianBuildDate(__BUILD_DATE__)
+    : '';
 
   return (
     <div className="min-h-screen text-gray-800 flex flex-col font-sans selection:bg-indigo-100 selection:text-indigo-900 relative">
@@ -888,7 +917,7 @@ export default function App() {
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-6 text-center pt-2">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-4 text-center pt-2">
             <p className="font-semibold text-slate-500 text-center leading-relaxed">
               © 2026 KPMBP SmartHub. by{' '}
               <a
@@ -899,6 +928,13 @@ export default function App() {
               >
                 Syncrozz
               </a>
+            </p>
+            <span className="hidden sm:inline text-slate-300">•</span>
+            <p className="text-xs text-slate-400 font-medium inline-flex items-center gap-1.5">
+              <span>{appVersionLabel}</span>
+              {appBuildDateLabel && (
+                <span className="text-slate-400">({appBuildDateLabel})</span>
+              )}
             </p>
           </div>
         </div>
@@ -934,6 +970,7 @@ export default function App() {
         }}
         onSave={handleSaveStaff}
         onDelete={handleDeleteStaff}
+        existingStaffList={staffList}
       />
 
       <SyncSettings

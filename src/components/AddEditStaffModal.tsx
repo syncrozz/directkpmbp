@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { X, Save, Trash2, MapPin, Calendar, Car } from 'lucide-react';
 import { Staff } from '../types';
 import { determineBahagian } from '../utils/staffGrade';
+import { findDuplicateStaff } from '../utils/staffDeduplication';
 
 interface AddEditStaffModalProps {
   staff: Staff | null;
@@ -15,6 +16,7 @@ interface AddEditStaffModalProps {
   onClose: () => void;
   onSave: (staff: Staff) => void;
   onDelete?: (id: string) => void;
+  existingStaffList?: Staff[];
 }
 
 export const AddEditStaffModal: React.FC<AddEditStaffModalProps> = ({
@@ -23,6 +25,7 @@ export const AddEditStaffModal: React.FC<AddEditStaffModalProps> = ({
   onClose,
   onSave,
   onDelete,
+  existingStaffList = [],
 }) => {
   const [formData, setFormData] = useState<Partial<Staff>>({});
 
@@ -66,6 +69,29 @@ export const AddEditStaffModal: React.FC<AddEditStaffModalProps> = ({
     const resolvedGred = formData.Gred || formData.grade || '';
     const resolvedTahunLahir = formData.TahunLahir || formData['Tahun Lahir'] || '';
     const resolvedId = formData.StaffID || formData.ID || staff.ID;
+
+    // Duplicate check based on normalized name or email against other staff records
+    if (existingStaffList && existingStaffList.length > 0) {
+      const duplicate = findDuplicateStaff(
+        { Nama: formData.Nama.trim(), Email: formData.Email.trim() },
+        existingStaffList,
+        resolvedId
+      );
+
+      if (duplicate) {
+        const confirmMsg = `PERHATIAN DUPLIKAT:\n` +
+          `Rekod staf lain dengan nama atau emel yang sepadan sudah wujud dalam sistem:\n` +
+          `• Nama: ${duplicate.Nama}\n` +
+          `• No. Staf: ${duplicate.StaffID || duplicate.ID}\n` +
+          `• Jawatan: ${duplicate.Jawatan}\n` +
+          `• Emel: ${duplicate.Email || '-'}\n\n` +
+          `Adakah anda pasti mahu menyimpan rekod ini bagi staf "${resolvedId}"?`;
+
+        if (!window.confirm(confirmMsg)) {
+          return;
+        }
+      }
+    }
 
     const plates = [formData.PlatNo1, formData.PlatNo2, formData.PlatNo3].filter(Boolean);
 

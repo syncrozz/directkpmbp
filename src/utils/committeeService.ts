@@ -107,6 +107,29 @@ export function generateDefaultCommitteesForStaff(staffList: Staff[]): StaffComm
           catatan: 'Sistem Mentor-Mentee',
         }
       );
+    } else if (jawatan.includes('kaunselor')) {
+      committees.push(
+        {
+          id: `jk-${id}-1`,
+          staff_id: id,
+          staff_nama: name,
+          jawatankuasa: 'Jawatankuasa Bimbingan, Kaunseling & Kerjaya Pelajar',
+          peranan: 'Setiausaha / Pegawai Penyelaras',
+          tahun: '2024/2025',
+          peringkat: 'Kolej',
+          catatan: 'Bimbingan Sahsiah & Kerjaya Pelajar KPMBP',
+        },
+        {
+          id: `jk-${id}-2`,
+          staff_id: id,
+          staff_nama: name,
+          jawatankuasa: 'Jawatankuasa Pembangunan Sahsiah & Disiplin (JPSD)',
+          peranan: 'Ahli Jawatankuasa (AJK)',
+          tahun: '2024/2025',
+          peringkat: 'Kolej',
+          catatan: 'Program Motivasi & Intervensi Pelajar',
+        }
+      );
     } else {
       committees.push({
         id: `jk-${id}-1`,

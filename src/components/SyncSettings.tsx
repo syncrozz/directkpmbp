@@ -28,8 +28,9 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { Staff, StaffCommittee, AuthorizedAdmin } from '../types';
-import { saveStaffListToFirestore, saveCommitteesToFirestore } from '../config/firebase';
+import { saveStaffListToFirestore, saveCommitteesToFirestore, cleanupLegacyJtmDuplicates } from '../config/firebase';
 import { getAuthorizedAdmins, addAuthorizedAdmin, removeAuthorizedAdmin } from '../utils/adminAuthService';
+import { findDuplicateStaff, normalizeStaffName, normalizeStaffEmail } from '../utils/staffDeduplication';
 
 interface SyncSettingsProps {
   isOpen?: boolean;
@@ -138,6 +139,45 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
     setAdminAuthStatus(res);
     setAuthorizedAdmins(getAuthorizedAdmins());
     setTimeout(() => setAdminAuthStatus(null), 3000);
+  };
+
+  // Legacy JTM duplicate cleanup state
+  const [isCleaningDuplicates, setIsCleaningDuplicates] = useState(false);
+  const [cleanupMessage, setCleanupMessage] = useState<string | null>(null);
+
+  const handleCleanupDuplicates = async () => {
+    const confirmed = window.confirm(
+      'PENGESAHAN PEMBERSIHAN DUPLIKAT:\n\n' +
+      'Adakah anda pasti mahu memadam 13 rekod duplikat lama (Unit JTM) daripada Firestore dan storan sistem?\n\n' +
+      'Tindakan ini akan:\n' +
+      '1. Memadam 13 dokumen usang dari koleksi "staff" di Firebase.\n' +
+      '2. Membersihkan dokumen ringkasan "system/staff_data".\n' +
+      '3. Mengemas kini storan tempatan ke 77 rekod kakitangan terkini.\n\n' +
+      'Klik OK untuk teruskan.'
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setIsCleaningDuplicates(true);
+      setCleanupMessage('Sedang membersihkan 13 rekod duplikat lama daripada Firebase...');
+      const result = await cleanupLegacyJtmDuplicates();
+
+      if (onImportStaffData) {
+        onImportStaffData(result.cleanedStaffList);
+      }
+
+      const successMsg = `✓ Berjaya memadam ${result.deletedCount} rekod duplikat lama (JTM). Jumlah staf terkini: ${result.remainingCount} orang.`;
+      setCleanupMessage(successMsg);
+      alert(`Pembersihan Berjaya!\n\n• Rekod duplikat dipadam: ${result.deletedCount}\n• Jumlah staf semasa: ${result.remainingCount}\n\nPangkalan data Firestore dan storan sistem kini bersih dan sepadan (77 staf).`);
+    } catch (err: any) {
+      console.error('Ralat pembersihan duplikat:', err);
+      const errMsg = `⚠ Ralat semasa pembersihan: ${err.message || err}`;
+      setCleanupMessage(errMsg);
+      alert(errMsg);
+    } finally {
+      setIsCleaningDuplicates(false);
+    }
   };
 
   // Helper to parse CSV/TSV text respecting quotes and multiline fields
@@ -308,6 +348,9 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
       };
 
       const importedStaff: Staff[] = [];
+      const seenNames = new Set<string>();
+      const seenEmails = new Set<string>();
+      const skippedDuplicates: string[] = [];
 
       for (let i = 1; i < lines.length; i++) {
         if (!lines[i].trim()) continue;
@@ -347,6 +390,30 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
         const platNo1 = getCol(['PlatNo1', 'Plat 1', 'NoPlat'], 14);
         const platNo2 = getCol(['PlatNo2', 'Plat 2'], 15);
         const platNo3 = getCol(['PlatNo3', 'Plat 3'], 16);
+
+        // Deduplication check: normalized name and email
+        const normName = normalizeStaffName(nama);
+        const normEmail = normalizeStaffEmail(email);
+
+        // 1. Check duplicate within the same CSV batch
+        if (normName && seenNames.has(normName)) {
+          skippedDuplicates.push(`${nama} (${staffId}) - pendua dalam fail CSV`);
+          continue;
+        }
+        if (normEmail && seenEmails.has(normEmail)) {
+          skippedDuplicates.push(`${nama} (${staffId}) - emel berulang dalam fail CSV`);
+          continue;
+        }
+
+        // 2. Check duplicate against existing staffList (with different StaffID)
+        const dupInExisting = findDuplicateStaff({ Nama: nama, Email: email }, staffList, staffId);
+        if (dupInExisting) {
+          skippedDuplicates.push(`${nama} (${staffId}) - sepadan dengan rekod sedia ada: ${dupInExisting.Nama} (${dupInExisting.ID})`);
+          continue;
+        }
+
+        if (normName) seenNames.add(normName);
+        if (normEmail) seenEmails.add(normEmail);
 
         const allPlates = [platNo1, platNo2, platNo3].filter(Boolean);
 
@@ -389,14 +456,29 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
 
         saveStaffListToFirestore(importedStaff)
           .then(() => {
-            setImportMessage(`✓ Pendaftaran ${importedStaff.length} rekod staf selesai & selamat disimpan ke Firebase Firestore 🔥!`);
+            let msg = `✓ Pendaftaran ${importedStaff.length} rekod staf selesai & selamat disimpan ke Firebase Firestore 🔥!`;
+            if (skippedDuplicates.length > 0) {
+              msg += `\n⚠ Ringkasan duplikat: ${skippedDuplicates.length} rekod dilangkau:\n` +
+                skippedDuplicates.slice(0, 5).map(d => `• ${d}`).join('\n') +
+                (skippedDuplicates.length > 5 ? `\n• ...dan ${skippedDuplicates.length - 5} rekod lagi` : '');
+            }
+            setImportMessage(msg);
           })
           .catch((err) => {
             console.warn('Firebase staff save warning:', err);
-            setImportMessage(`✓ Berjaya mendaftarkan ${importedStaff.length} rekod kakitangan via CSV ke dalam sistem!`);
+            let msg = `✓ Berjaya mendaftarkan ${importedStaff.length} rekod kakitangan via CSV ke dalam sistem!`;
+            if (skippedDuplicates.length > 0) {
+              msg += ` (⚠ ${skippedDuplicates.length} baris duplikat dilangkau)`;
+            }
+            setImportMessage(msg);
           });
 
         setRawText('');
+      } else if (skippedDuplicates.length > 0) {
+        setImportMessage(
+          `⚠ Tiada rekod baharu diimport. Semua ${skippedDuplicates.length} baris dalam fail dikesan sebagai duplikat:\n` +
+          skippedDuplicates.slice(0, 5).map(d => `• ${d}`).join('\n')
+        );
       } else {
         setImportMessage('⚠ Ralat: Tiada rekod sepadan ditemui. Pastikan baris pertama mengandungi tajuk lajur yang sah (cth: Bil, StaffID, Nama, Kategori, Jawatan, Unit...).');
       }
@@ -1239,9 +1321,54 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
             )}
           </div>
 
+          {/* Penyelenggaraan Integriti Data (Pembersihan Duplikat JTM) */}
+          <div className="p-4 bg-gradient-to-r from-amber-50/90 via-white to-orange-50/70 rounded-2xl border border-amber-200 shadow-2xs space-y-3 text-left">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h4 className="text-xs font-extrabold text-amber-950 flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-amber-600" />
+                  <span>Penyelenggaraan Integriti: Pembersihan Duplikat Lama (Unit JTM)</span>
+                </h4>
+                <p className="text-[11px] text-slate-600 font-medium mt-0.5">
+                  Padam 13 rekod staf lama (Unit "JTM") dari Firestore dan selaraskan platform ke 77 rekod staf rasmi semasa.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleCleanupDuplicates}
+                disabled={isCleaningDuplicates}
+                className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white rounded-xl text-xs font-extrabold shadow-sm transition-all cursor-pointer flex items-center gap-1.5 shrink-0 disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{isCleaningDuplicates ? 'Sedang Memproses...' : 'Bersihkan Duplikat Lama'}</span>
+              </button>
+            </div>
+
+            {cleanupMessage && (
+              <div className={`p-2.5 rounded-xl text-xs font-bold leading-relaxed ${
+                cleanupMessage.startsWith('✓') 
+                  ? 'bg-emerald-100/90 text-emerald-950 border border-emerald-200' 
+                  : 'bg-amber-100/90 text-amber-950 border border-amber-200'
+              }`}>
+                {cleanupMessage}
+              </div>
+            )}
+          </div>
+
           {/* Bottom Controls */}
           <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <button
+                type="button"
+                onClick={handleCleanupDuplicates}
+                disabled={isCleaningDuplicates}
+                title="Padam 13 rekod duplikat lama (Unit JTM) daripada Firestore"
+                className="text-[11px] text-amber-800 hover:text-amber-950 bg-amber-100/80 hover:bg-amber-200 border border-amber-300 px-3 py-1.5 rounded-xl font-extrabold flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-amber-700" />
+                <span>{isCleaningDuplicates ? 'Sedang Membersihkan...' : 'Bersihkan Duplikat Lama'}</span>
+              </button>
               {onResetStaffData && (
                 <button
                   onClick={onResetStaffData}
