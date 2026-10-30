@@ -168,11 +168,13 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initia
   const [selectedTimetable, setSelectedTimetable] = useState<StudentTimetable | null>(null);
 
   // Image Loading & Viewer States
-  const [isImageLoading, setIsImageLoading] = useState(false);
+  const [loadedClassCode, setLoadedClassCode] = useState<string | null>(null);
   const [imageError, setImageError] = useState(false);
   const [isFullscreenOpen, setIsFullscreenOpen] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [downloading, setDownloading] = useState(false);
+
+  const isImageLoading = selectedTimetable ? loadedClassCode !== selectedTimetable.classCode : false;
 
   // Search input ref
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -233,13 +235,19 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initia
     }
   }, [initialClassCode, timetables]);
 
-  // Reset image states when selected timetable changes
+  // Reset image states and safety fallback when selected timetable changes
   useEffect(() => {
-    if (selectedTimetable) {
-      setIsImageLoading(true);
-      setImageError(false);
-    }
-  }, [selectedTimetable?.classCode]);
+    if (!selectedTimetable) return;
+    setImageError(false);
+    if (loadedClassCode === selectedTimetable.classCode) return;
+
+    // Safety timeout in case browser does not trigger synthetic onLoad on cached images
+    const timer = setTimeout(() => {
+      setLoadedClassCode(selectedTimetable.classCode);
+    }, 1200);
+
+    return () => clearTimeout(timer);
+  }, [selectedTimetable?.classCode, loadedClassCode]);
 
   // Keyboard shortcut: Escape closes fullscreen
   useEffect(() => {
@@ -536,71 +544,40 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initia
             <div className="glass-panel rounded-3xl p-4 md:p-6 border border-white/60 shadow-xs space-y-4 bg-white/95">
               
               {/* Viewer Header */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-                <div className="flex items-center gap-2">
+              <div className="flex items-center justify-between gap-3 pb-3 border-b border-slate-100 flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap">
                   <h3 className="font-mono text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
                     {selectedTimetable.classCode}
                   </h3>
                   <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${getSemesterTheme(selectedTimetable.semester, selectedTimetable.classCode).badgeViewer}`}>
                     {selectedTimetable.program} • {selectedTimetable.semester}
                   </span>
-                </div>
 
-                {/* Quick Action Toolbar (Icon Only) */}
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {/* Fullscreen Button */}
-                  <button
-                    type="button"
-                    onClick={() => setIsFullscreenOpen(true)}
-                    title="Buka paparan skrin penuh"
-                    aria-label="Buka paparan skrin penuh"
-                    className="p-2 sm:p-2.5 rounded-xl text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer flex items-center justify-center"
-                  >
-                    <Maximize2 className="w-4 h-4" />
-                  </button>
+                  {/* 2 Buttons placed directly beside the program & semester badge */}
+                  <div className="flex items-center gap-1.5 ml-1">
+                    {/* Fullscreen Button */}
+                    <button
+                      type="button"
+                      onClick={() => setIsFullscreenOpen(true)}
+                      title="Buka paparan skrin penuh"
+                      aria-label="Buka paparan skrin penuh"
+                      className="p-2 rounded-xl text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer flex items-center justify-center"
+                    >
+                      <Maximize2 className="w-4 h-4" />
+                    </button>
 
-                  {/* Share Button */}
-                  <button
-                    type="button"
-                    onClick={handleShare}
-                    title={copiedLink ? "Pautan telah disalin!" : "Kongsi pautan jadual"}
-                    aria-label="Kongsi pautan jadual"
-                    className={`p-2 sm:p-2.5 rounded-xl transition-colors cursor-pointer flex items-center justify-center ${
-                      copiedLink
-                        ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                    }`}
-                  >
-                    {copiedLink ? (
-                      <Check className="w-4 h-4 text-emerald-600" />
-                    ) : (
-                      <Share2 className="w-4 h-4" />
-                    )}
-                  </button>
-
-                  {/* Download Button */}
-                  <button
-                    type="button"
-                    onClick={handleDownload}
-                    disabled={downloading}
-                    title="Muat turun imej resolusi asal"
-                    aria-label="Muat turun imej resolusi asal"
-                    className="p-2 sm:p-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs shadow-indigo-200 transition-colors disabled:opacity-50 cursor-pointer flex items-center justify-center"
-                  >
-                    <Download className={`w-4 h-4 ${downloading ? 'animate-bounce' : ''}`} />
-                  </button>
-
-                  {/* Raw Tab Button */}
-                  <a
-                    href={selectedTimetable.imageUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    title="Buka fail asal di tab baharu"
-                    aria-label="Buka fail asal di tab baharu"
-                    className="p-2 sm:p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors flex items-center justify-center"
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                  </a>
+                    {/* Download Button */}
+                    <button
+                      type="button"
+                      onClick={handleDownload}
+                      disabled={downloading}
+                      title="Muat turun imej resolusi asal"
+                      aria-label="Muat turun imej resolusi asal"
+                      className="p-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs shadow-indigo-200 transition-colors disabled:opacity-50 cursor-pointer flex items-center justify-center"
+                    >
+                      <Download className={`w-4 h-4 ${downloading ? 'animate-bounce' : ''}`} />
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -642,11 +619,26 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initia
                 ) : (
                   <div className="relative w-full flex items-center justify-center">
                     <img
+                      key={selectedTimetable.classCode}
                       src={selectedTimetable.imageUrl}
                       alt={`Jadual Waktu Kelas ${selectedTimetable.classCode}`}
-                      onLoad={() => setIsImageLoading(false)}
+                      referrerPolicy="no-referrer"
+                      loading="eager"
+                      ref={(imgNode) => {
+                        if (
+                          imgNode &&
+                          imgNode.complete &&
+                          imgNode.naturalWidth > 0 &&
+                          loadedClassCode !== selectedTimetable.classCode
+                        ) {
+                          setLoadedClassCode(selectedTimetable.classCode);
+                        }
+                      }}
+                      onLoad={() => {
+                        setLoadedClassCode(selectedTimetable.classCode);
+                      }}
                       onError={() => {
-                        setIsImageLoading(false);
+                        setLoadedClassCode(selectedTimetable.classCode);
                         setImageError(true);
                       }}
                       className="w-full h-auto max-h-[75vh] object-contain rounded-xl shadow-2xs cursor-zoom-in transition-transform duration-200"
@@ -743,8 +735,10 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initia
             onClick={(e) => e.stopPropagation()}
           >
             <img
+              key={`modal-${selectedTimetable.classCode}`}
               src={selectedTimetable.imageUrl}
               alt={`Jadual Waktu ${selectedTimetable.classCode}`}
+              referrerPolicy="no-referrer"
               className="max-w-full max-h-[88vh] object-contain rounded-2xl shadow-2xl bg-white select-none"
             />
           </div>
