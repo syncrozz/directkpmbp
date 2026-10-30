@@ -226,18 +226,18 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initia
   return (
     <div className="space-y-6">
       {/* Top Search & Filter Bar (Replaces Hero Banner) */}
-      <div className="glass-panel rounded-3xl p-4 md:p-5 border border-white/60 shadow-xs space-y-3.5 bg-white/95 backdrop-blur-md">
-        {/* Row 1: Search Bar + Total Classes Count + Refresh Button */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-indigo-500 pointer-events-none" />
+      <div className="glass-panel rounded-2xl sm:rounded-3xl p-3 sm:p-5 border border-white/60 shadow-xs space-y-2.5 sm:space-y-3.5 bg-white/95 backdrop-blur-md">
+        {/* Row 1: Unified Single-Row Search Bar + Total Count + Refresh Button */}
+        <div className="flex items-center gap-2 sm:gap-3">
+          <div className="relative flex-1 min-w-0">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-indigo-500 pointer-events-none" />
             <input
               ref={searchInputRef}
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Cari kod kelas, contoh DCAT7A..."
-              className="w-full pl-11 pr-10 py-3 bg-slate-50 hover:bg-slate-50/80 border border-slate-200/90 rounded-2xl text-xs md:text-sm font-semibold text-slate-800 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-inner"
+              placeholder="Cari kod kelas, cth: DCAT7A..."
+              className="w-full pl-9 sm:pl-10 pr-9 py-2 sm:py-2.5 md:py-3 bg-slate-50 hover:bg-slate-50/80 border border-slate-200/90 rounded-xl sm:rounded-2xl text-xs sm:text-sm font-semibold text-slate-800 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-inner"
             />
             {searchQuery && (
               <button
@@ -247,19 +247,19 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initia
                   searchInputRef.current?.focus();
                 }}
                 title="Kosongkan carian"
-                className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-200/60 transition-colors cursor-pointer"
+                className="absolute right-2.5 sm:right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-200/60 transition-colors cursor-pointer"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
 
-          <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
-            <div className="bg-slate-50 border border-slate-200/80 px-3.5 py-2 rounded-2xl text-left shadow-2xs">
-              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block leading-none">Jumlah</span>
-              <span className="text-sm font-black text-slate-800 leading-tight">
-                {isLoading ? '...' : timetables.length} <span className="text-xs font-bold text-slate-500">Kelas</span>
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            <div className="bg-slate-100/80 border border-slate-200/80 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl text-center shadow-2xs">
+              <span className="text-xs sm:text-sm font-black text-slate-800 leading-none">
+                {isLoading ? '...' : timetables.length}
               </span>
+              <span className="text-[10px] text-slate-500 font-bold ml-1 hidden xs:inline">Kelas</span>
             </div>
 
             <button
@@ -267,15 +267,15 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initia
               onClick={() => loadData(true)}
               disabled={isRefreshing || isLoading}
               title="Segerakkan semula jadual daripada GitHub"
-              className="p-2.5 bg-slate-50 hover:bg-white text-slate-700 hover:text-indigo-600 border border-slate-200/80 rounded-2xl shadow-2xs transition-all active:scale-95 disabled:opacity-50 cursor-pointer flex items-center justify-center"
+              className="p-2 sm:p-2.5 bg-slate-100/80 hover:bg-white text-slate-600 hover:text-indigo-600 border border-slate-200/80 rounded-xl shadow-2xs transition-all active:scale-95 disabled:opacity-50 cursor-pointer flex items-center justify-center shrink-0"
             >
-              <RotateCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-indigo-600' : ''}`} />
+              <RotateCw className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${isRefreshing ? 'animate-spin text-indigo-600' : ''}`} />
             </button>
           </div>
         </div>
 
-        {/* Row 2: Program Filter Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none pt-0.5">
+        {/* Row 2: Program Filter Pills (Horizontal swipeable on mobile) */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 pt-0.5 scrollbar-none -mx-1 px-1">
           {programs.map((prog) => {
             const isSelected = selectedProgram === prog;
             const count = programCounts[prog] || 0;
@@ -284,7 +284,7 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initia
                 key={prog}
                 type="button"
                 onClick={() => setSelectedProgram(prog)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1.5 ${
+                className={`px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1 sm:gap-1.5 ${
                   isSelected
                     ? 'bg-indigo-600 text-white shadow-xs shadow-indigo-200'
                     : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200/80'
@@ -292,7 +292,7 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initia
               >
                 <span>{prog}</span>
                 <span
-                  className={`text-[10px] px-1.5 py-0.2 rounded-md ${
+                  className={`text-[9.5px] sm:text-[10px] px-1.5 py-0.2 rounded-md ${
                     isSelected ? 'bg-indigo-700/60 text-white' : 'bg-slate-100 text-slate-500'
                   }`}
                 >
