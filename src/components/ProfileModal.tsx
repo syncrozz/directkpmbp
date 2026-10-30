@@ -12,6 +12,7 @@ import { getBahagianTheme } from '../utils/bahagianColors';
 import { getStaffGrade } from '../utils/staffGrade';
 import { sortCommitteesBySeniority } from '../utils/committeeService';
 import { StaffAvatar } from './StaffAvatar';
+import { formatIC } from '../utils/icFormatter';
 
 interface ProfileModalProps {
   staff: Staff | null;
@@ -324,14 +325,11 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ staff, committees = 
                   const rawIc = (staff.IC || staff.NoKP || '').trim();
                   if (!rawIc) return null;
 
-                  const digitsOnly = rawIc.replace(/\D/g, '');
-                  const formattedIc = digitsOnly.length === 12
-                    ? `${digitsOnly.slice(0, 6)}-${digitsOnly.slice(6, 8)}-${digitsOnly.slice(8, 12)}`
-                    : rawIc;
+                  const formattedIc = formatIC(rawIc);
 
                   const handleCopyIc = () => {
                     if (navigator?.clipboard) {
-                      navigator.clipboard.writeText(digitsOnly || rawIc);
+                      navigator.clipboard.writeText(formattedIc);
                       setCopiedIc(true);
                       setTimeout(() => setCopiedIc(false), 2000);
                     }
@@ -371,9 +369,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ staff, committees = 
                           <span className="text-sm text-slate-900 font-mono font-black tracking-wide">
                             {formattedIc}
                           </span>
-                          {rawIc !== formattedIc && (
-                            <span className="text-[10px] text-slate-400 font-mono">({rawIc})</span>
-                          )}
                         </div>
                       </div>
                     </div>

@@ -31,6 +31,7 @@ import { Staff, StaffCommittee, AuthorizedAdmin } from '../types';
 import { saveStaffListToFirestore, saveCommitteesToFirestore, cleanupLegacyJtmDuplicates } from '../config/firebase';
 import { getAuthorizedAdmins, addAuthorizedAdmin, removeAuthorizedAdmin } from '../utils/adminAuthService';
 import { findDuplicateStaff, normalizeStaffName, normalizeStaffEmail } from '../utils/staffDeduplication';
+import { formatIC } from '../utils/icFormatter';
 
 interface SyncSettingsProps {
   isOpen?: boolean;
@@ -391,6 +392,7 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
         const platNo2 = getCol(['PlatNo2', 'Plat 2'], 15);
         const platNo3 = getCol(['PlatNo3', 'Plat 3'], 16);
         const ic = getCol(['IC', 'NoKP', 'No KP', 'No. KP', 'Kad Pengenalan', 'No. Kad Pengenalan', 'NRIC'], 17);
+        const formattedIc = formatIC(ic);
 
         // Deduplication check: normalized name and email
         const normName = normalizeStaffName(nama);
@@ -437,8 +439,8 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
           Email: email,
           Gred: gred,
           grade: gred,
-          IC: ic || '',
-          NoKP: ic || '',
+          IC: formattedIc,
+          NoKP: formattedIc,
           'Tahun Lahir': tahunLahir,
           TahunLahir: tahunLahir,
           PlatNo1: platNo1,
@@ -515,17 +517,17 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
       [
         '1', 'ST001', 'Muhammad Fazly Bin Jamaluddin', 'Pengurusan', 'Pengarah', 'Pengurusan',
         '', '', 'Kuantan, Pahang', '013-9500149', '201', 'fazly.jamaluddin@mara.gov.my',
-        'DG13', '', 'WUL3110', 'WB1782D', 'A7306A', ''
+        'DG13', '', 'WUL3110', 'WB1782D', 'A7306A', '780312-06-5123'
       ],
       [
         '2', 'ST002', 'Mohd Hakim Bin Hafiz', 'Pengurusan', 'Timb. Pengarah HEP', 'Pentadbiran',
         '', '', '', '018-3854235', '208', 'hakim.hafiz@mara.gov.my',
-        'DG12', '1986', 'SJ8684', '', '', ''
+        'DG12', '1986', 'SJ8684', '', '', '860524-01-5421'
       ],
       [
         '3', 'ST054', 'Ahmad Khairi Bin Mohd', 'Akademik', 'Pensyarah', 'Pengajian Am',
         '1 - Sarjana Muda Sastera (Sejarah) USM, 2 - Diploma Pendidikan UPSI', 'Pengajian Malaysia', 'Kuala Terengganu', '014-5313756', '273', 'khairi.mohd@mara.gov.my',
-        'DG9', '1986', 'SYM2539', 'WYX7214', '', '861115465305'
+        'DG9', '1986', 'SYM2539', 'WYX7214', '', '861115-46-5305'
       ]
     ];
 
@@ -577,7 +579,7 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
       const platNo1 = s.PlatNo1 || '';
       const platNo2 = s.PlatNo2 || '';
       const platNo3 = s.PlatNo3 || '';
-      const ic = s.IC || s.NoKP || '';
+      const ic = formatIC(s.IC || s.NoKP || '');
 
       return [
         bil,

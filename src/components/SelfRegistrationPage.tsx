@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { Staff, DivisionType } from '../types';
 import { findDuplicateStaff } from '../utils/staffDeduplication';
+import { formatIC } from '../utils/icFormatter';
 
 interface SelfRegistrationPageProps {
   existingStaffList: Staff[];
@@ -195,8 +196,8 @@ export const SelfRegistrationPage: React.FC<SelfRegistrationPageProps> = ({
       grade: gred.trim().toUpperCase(),
       'Tahun Lahir': tahunLahir.trim(),
       TahunLahir: tahunLahir.trim(),
-      IC: ic.trim(),
-      NoKP: ic.trim(),
+      IC: formatIC(ic),
+      NoKP: formatIC(ic),
       PlatNo1: platNo1.trim().toUpperCase(),
       PlatNo2: platNo2.trim().toUpperCase(),
       PlatNo3: platNo3.trim().toUpperCase(),
@@ -725,8 +726,9 @@ export const SelfRegistrationPage: React.FC<SelfRegistrationPageProps> = ({
                     <input
                       type="text"
                       value={ic}
-                      onChange={(e) => setIc(e.target.value.replace(/\s+/g, ''))}
-                      placeholder="cth: 861115465305"
+                      onChange={(e) => setIc(formatIC(e.target.value))}
+                      onBlur={(e) => setIc(formatIC(e.target.value))}
+                      placeholder="cth: 861115-46-5305"
                       className="w-full px-4 py-3 rounded-2xl border border-slate-200 bg-white/90 text-sm font-mono font-medium text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all shadow-2xs"
                     />
                   </div>

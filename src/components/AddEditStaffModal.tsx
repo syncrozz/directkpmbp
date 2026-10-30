@@ -9,6 +9,7 @@ import { X, Save, Trash2, MapPin, Calendar, Car, ShieldCheck } from 'lucide-reac
 import { Staff } from '../types';
 import { determineBahagian } from '../utils/staffGrade';
 import { findDuplicateStaff } from '../utils/staffDeduplication';
+import { formatIC } from '../utils/icFormatter';
 
 interface AddEditStaffModalProps {
   staff: Staff | null;
@@ -119,8 +120,8 @@ export const AddEditStaffModal: React.FC<AddEditStaffModalProps> = ({
       grade: resolvedGred.trim(),
       'Tahun Lahir': resolvedTahunLahir.trim(),
       TahunLahir: resolvedTahunLahir.trim(),
-      IC: (formData.IC || formData.NoKP || '').trim(),
-      NoKP: (formData.IC || formData.NoKP || '').trim(),
+      IC: formatIC(formData.IC || formData.NoKP || ''),
+      NoKP: formatIC(formData.IC || formData.NoKP || ''),
       PlatNo1: (formData.PlatNo1 || '').trim().toUpperCase(),
       PlatNo2: (formData.PlatNo2 || '').trim().toUpperCase(),
       PlatNo3: (formData.PlatNo3 || '').trim().toUpperCase(),
@@ -302,11 +303,15 @@ export const AddEditStaffModal: React.FC<AddEditStaffModalProps> = ({
                 <input
                   type="text"
                   name="IC"
-                  placeholder="cth: 861115465305"
+                  placeholder="cth: 861115-46-5305"
                   value={formData.IC || formData.NoKP || ''}
                   onChange={(e) => {
-                    const val = e.target.value.replace(/\s+/g, '');
-                    setFormData((prev) => ({ ...prev, IC: val, NoKP: val }));
+                    const formatted = formatIC(e.target.value);
+                    setFormData((prev) => ({ ...prev, IC: formatted, NoKP: formatted }));
+                  }}
+                  onBlur={(e) => {
+                    const formatted = formatIC(e.target.value);
+                    setFormData((prev) => ({ ...prev, IC: formatted, NoKP: formatted }));
                   }}
                   className="w-full px-4 py-2 text-xs border border-white/50 rounded-xl bg-white/40 text-gray-800 font-bold focus:outline-none focus:bg-white/80 focus:ring-2 focus:ring-indigo-500/15 font-mono"
                 />

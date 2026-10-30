@@ -24,6 +24,7 @@ import { INITIAL_STAFF_DATA } from './data/initialStaff';
 import { STAFF_GRADE_MAP, determineBahagian } from './utils/staffGrade';
 import { getDistrictState } from './utils/stateMapping';
 import { generateDefaultCommitteesForStaff, deduplicateCommittees } from './utils/committeeService';
+import { formatIC, cleanIC } from './utils/icFormatter';
 import { StaffCard } from './components/StaffCard';
 import { ProfileModal } from './components/ProfileModal';
 import { CommitteeModal } from './components/CommitteeModal';
@@ -251,7 +252,7 @@ export default function App() {
             const g = s.grade || s.Gred || STAFF_GRADE_MAP[s.staff_id || s.ID] || '';
             const b = s.Bahagian || determineBahagian(s.Jawatan, s.Bahagian);
             const initMatch = INITIAL_STAFF_DATA.find((init) => (init.ID === s.ID || init.StaffID === s.StaffID));
-            const ic = s.IC || s.NoKP || initMatch?.IC || '';
+            const ic = formatIC(s.IC || s.NoKP || initMatch?.IC || '');
             return {
               ...s,
               IC: ic,
@@ -281,7 +282,7 @@ export default function App() {
           const g = s.grade || s.Gred || STAFF_GRADE_MAP[s.staff_id || s.ID] || '';
           const b = s.Bahagian || determineBahagian(s.Jawatan, s.Bahagian);
           const initMatch = INITIAL_STAFF_DATA.find((init) => (init.ID === s.ID || init.StaffID === s.StaffID));
-          const ic = s.IC || s.NoKP || initMatch?.IC || '';
+          const ic = formatIC(s.IC || s.NoKP || initMatch?.IC || '');
           return {
             ...s,
             IC: ic,
@@ -303,6 +304,8 @@ export default function App() {
   const handleSaveStaff = (staff: Staff) => {
     const finalStaff = {
       ...staff,
+      IC: formatIC(staff.IC || staff.NoKP || ''),
+      NoKP: formatIC(staff.IC || staff.NoKP || ''),
       Bahagian: determineBahagian(staff.Jawatan, staff.Bahagian),
     };
     const updated = staffList.map((s) => (s.ID === finalStaff.ID ? finalStaff : s));
@@ -415,7 +418,10 @@ export default function App() {
         state,
         staff.Kelulusan,
         staff.Pengkhususan,
-        ...(isAdminMode && (staff.IC || staff.NoKP) ? [staff.IC, staff.NoKP] : []),
+        ...(isAdminMode && (staff.IC || staff.NoKP) ? [
+          formatIC(staff.IC || staff.NoKP),
+          cleanIC(staff.IC || staff.NoKP)
+        ] : []),
       ]
         .filter(Boolean)
         .map((val) => String(val).toLowerCase().trim())
