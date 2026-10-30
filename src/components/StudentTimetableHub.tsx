@@ -25,7 +25,8 @@ import { StudentTimetable } from '../types';
 import { 
   fetchStudentTimetables, 
   searchTimetables, 
-  extractProgram 
+  extractProgram,
+  EXCLUDED_PROGRAMS
 } from '../services/timetableService';
 
 interface StudentTimetableHubProps {
@@ -190,7 +191,10 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initia
 
     try {
       const res = await fetchStudentTimetables(forceRefresh);
-      setTimetables(res.data);
+      const validData = res.data.filter(
+        (t) => !EXCLUDED_PROGRAMS.has((t.program || '').toUpperCase())
+      );
+      setTimetables(validData);
       setIsFromCache(res.fromCache);
       if (res.lastUpdated) {
         setLastUpdated(res.lastUpdated);
@@ -198,16 +202,16 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initia
 
       // If initial class code is provided or none selected yet
       if (initialClassCode) {
-        const found = res.data.find(
+        const found = validData.find(
           (t) => t.classCode.toLowerCase() === initialClassCode.toLowerCase().trim()
         );
         if (found) {
           setSelectedTimetable(found);
-        } else if (res.data.length > 0) {
-          setSelectedTimetable(res.data[0]);
+        } else if (validData.length > 0) {
+          setSelectedTimetable(validData[0]);
         }
-      } else if (!selectedTimetable && res.data.length > 0) {
-        setSelectedTimetable(res.data[0]);
+      } else if (!selectedTimetable && validData.length > 0) {
+        setSelectedTimetable(validData[0]);
       }
     } catch (err: any) {
       console.error('[StudentTimetableHub] Load error:', err);
@@ -260,29 +264,43 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initia
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isFullscreenOpen]);
 
-  // Distinct programs for quick filter
-  const programs = useMemo(() => {
-    const set = new Set<string>();
-    timetables.forEach((t) => {
-      if (t.program) set.add(t.program);
-    });
-    return ['Semua', ...Array.from(set).sort()];
-  }, [timetables]);
-
-  // Filtered timetable records
-  const filteredTimetables = useMemo(() => {
-    return searchTimetables(timetables, searchQuery, selectedProgram);
-  }, [timetables, searchQuery, selectedProgram]);
-
   // Program count lookup
   const programCounts = useMemo(() => {
     const counts: Record<string, number> = { Semua: timetables.length };
     timetables.forEach((t) => {
       const p = t.program || 'LAIN-LAIN';
-      counts[p] = (counts[p] || 0) + 1;
+      if (!EXCLUDED_PROGRAMS.has(p.toUpperCase())) {
+        counts[p] = (counts[p] || 0) + 1;
+      }
     });
     return counts;
   }, [timetables]);
+
+  // Distinct programs for quick filter (excludes DLC & hides any category with 0 count)
+  const programs = useMemo(() => {
+    const set = new Set<string>();
+    timetables.forEach((t) => {
+      if (t.program && !EXCLUDED_PROGRAMS.has(t.program.toUpperCase())) {
+        set.add(t.program);
+      }
+    });
+    return ['Semua', ...Array.from(set).sort()].filter((prog) => {
+      if (prog === 'Semua') return true;
+      return (programCounts[prog] || 0) > 0;
+    });
+  }, [timetables, programCounts]);
+
+  // If currently selected program was excluded or removed, reset to Semua
+  useEffect(() => {
+    if (selectedProgram !== 'Semua' && !programs.includes(selectedProgram)) {
+      setSelectedProgram('Semua');
+    }
+  }, [programs, selectedProgram]);
+
+  // Filtered timetable records
+  const filteredTimetables = useMemo(() => {
+    return searchTimetables(timetables, searchQuery, selectedProgram);
+  }, [timetables, searchQuery, selectedProgram]);
 
   // Select class
   const handleSelectClass = (item: StudentTimetable) => {

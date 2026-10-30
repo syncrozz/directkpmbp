@@ -688,7 +688,14 @@ export default function App() {
               <div className={`items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none border-t border-slate-100/80 pt-3 ${
                 searchQuery.trim() && !showMobileFilters ? 'hidden sm:flex' : 'flex'
               }`}>
-                {(['Semua', 'Pengurusan', 'Akademik', 'Sokongan Akademik', 'Pentadbiran'] as DivisionType[]).map((div) => {
+                {(['Semua', 'Pengurusan', 'Akademik', 'Sokongan Akademik', 'Pentadbiran'] as DivisionType[])
+                  .filter((div) => {
+                    if (div === 'Semua') return true;
+                    // Sembunyikan kategori sekiranya tiada staf (bilangan 0 seperti Sokongan Akademik)
+                    const count = staffList.filter((s) => s.Bahagian === div).length;
+                    return count > 0;
+                  })
+                  .map((div) => {
                   const isActive = selectedDivision === div;
                   const count = div === 'Semua' 
                     ? staffList.length 
