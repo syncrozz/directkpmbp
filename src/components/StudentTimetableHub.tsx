@@ -225,30 +225,39 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initia
 
   return (
     <div className="space-y-6">
-      {/* Module Hero Banner */}
-      <div className="glass-panel rounded-3xl p-6 md:p-8 border border-white/60 shadow-xs relative overflow-hidden">
-        <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 rounded-full bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-pink-500/5 blur-2xl pointer-events-none" />
-
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="space-y-1.5">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 text-xs font-bold shadow-2xs">
-              <Calendar className="w-3.5 h-3.5 text-indigo-600" />
-              <span>Jadual Waktu Akademik Pelajar</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            </div>
-            <h2 className="text-2xl md:text-3xl font-extrabold text-slate-900 tracking-tight">
-              Jadual Kelas Pelajar
-            </h2>
-            <p className="text-sm text-slate-600 max-w-2xl leading-relaxed">
-              Cari dan semak jadual kelas rasmi Kolej Profesional MARA Bandar Penawar mengikut kod kelas anda. Imej diselaraskan terus daripada repositori rasmi kampus.
-            </p>
+      {/* Top Search & Filter Bar (Replaces Hero Banner) */}
+      <div className="glass-panel rounded-3xl p-4 md:p-5 border border-white/60 shadow-xs space-y-3.5 bg-white/95 backdrop-blur-md">
+        {/* Row 1: Search Bar + Total Classes Count + Refresh Button */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-indigo-500 pointer-events-none" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Cari kod kelas, contoh DCAT7A..."
+              className="w-full pl-11 pr-10 py-3 bg-slate-50 hover:bg-slate-50/80 border border-slate-200/90 rounded-2xl text-xs md:text-sm font-semibold text-slate-800 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-inner"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery('');
+                  searchInputRef.current?.focus();
+                }}
+                title="Kosongkan carian"
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-200/60 transition-colors cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
 
-          {/* Quick Stats & Refresh Button */}
-          <div className="flex items-center gap-2 self-start md:self-auto shrink-0">
-            <div className="bg-white/80 border border-slate-200/80 px-3.5 py-2 rounded-2xl text-left shadow-2xs">
-              <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider block">Jumlah Kelas</span>
-              <span className="text-lg font-black text-slate-800 leading-tight">
+          <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+            <div className="bg-slate-50 border border-slate-200/80 px-3.5 py-2 rounded-2xl text-left shadow-2xs">
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block leading-none">Jumlah</span>
+              <span className="text-sm font-black text-slate-800 leading-tight">
                 {isLoading ? '...' : timetables.length} <span className="text-xs font-bold text-slate-500">Kelas</span>
               </span>
             </div>
@@ -258,76 +267,48 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initia
               onClick={() => loadData(true)}
               disabled={isRefreshing || isLoading}
               title="Segerakkan semula jadual daripada GitHub"
-              className="p-3 bg-white/80 hover:bg-white text-slate-700 hover:text-indigo-600 border border-slate-200/80 rounded-2xl shadow-2xs transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+              className="p-2.5 bg-slate-50 hover:bg-white text-slate-700 hover:text-indigo-600 border border-slate-200/80 rounded-2xl shadow-2xs transition-all active:scale-95 disabled:opacity-50 cursor-pointer flex items-center justify-center"
             >
               <RotateCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin text-indigo-600' : ''}`} />
             </button>
           </div>
         </div>
+
+        {/* Row 2: Program Filter Pills */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none pt-0.5">
+          {programs.map((prog) => {
+            const isSelected = selectedProgram === prog;
+            const count = programCounts[prog] || 0;
+            return (
+              <button
+                key={prog}
+                type="button"
+                onClick={() => setSelectedProgram(prog)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1.5 ${
+                  isSelected
+                    ? 'bg-indigo-600 text-white shadow-xs shadow-indigo-200'
+                    : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200/80'
+                }`}
+              >
+                <span>{prog}</span>
+                <span
+                  className={`text-[10px] px-1.5 py-0.2 rounded-md ${
+                    isSelected ? 'bg-indigo-700/60 text-white' : 'bg-slate-100 text-slate-500'
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Main Grid: Search & Class Selector (Left) + Timetable Viewer (Right) */}
+      {/* Main Grid: Class Selector (Left) + Timetable Viewer (Right) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         
-        {/* LEFT COLUMN: Search & Class Picker (5 cols) */}
+        {/* LEFT COLUMN: Results List & Class Picker (5 cols) */}
         <div className="lg:col-span-5 space-y-4">
-          
-          {/* Search Box */}
-          <div className="glass-panel rounded-3xl p-4 md:p-5 border border-white/60 shadow-xs space-y-3.5 sticky top-20 z-20 bg-white/95 backdrop-blur-md">
-            <div className="relative">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-indigo-500 pointer-events-none" />
-              <input
-                ref={searchInputRef}
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Cari kod kelas, contoh DCAT7A..."
-                className="w-full pl-10 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold text-slate-800 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-inner"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSearchQuery('');
-                    searchInputRef.current?.focus();
-                  }}
-                  title="Kosongkan carian"
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-200/60 transition-colors cursor-pointer"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-
-            {/* Program Filter Pills */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-              {programs.map((prog) => {
-                const isSelected = selectedProgram === prog;
-                const count = programCounts[prog] || 0;
-                return (
-                  <button
-                    key={prog}
-                    type="button"
-                    onClick={() => setSelectedProgram(prog)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1.5 ${
-                      isSelected
-                        ? 'bg-indigo-600 text-white shadow-xs shadow-indigo-200'
-                        : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200/80'
-                    }`}
-                  >
-                    <span>{prog}</span>
-                    <span
-                      className={`text-[10px] px-1.5 py-0.2 rounded-md ${
-                        isSelected ? 'bg-indigo-700/60 text-white' : 'bg-slate-100 text-slate-500'
-                      }`}
-                    >
-                      {count}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
 
           {/* Results List */}
           <div className="glass-panel rounded-3xl p-4 md:p-5 border border-white/60 shadow-xs space-y-3">
