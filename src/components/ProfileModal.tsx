@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, MessageCircle, Mail, GraduationCap, Award, Building2, Hash, Pencil, Camera, ChevronRight, Calendar, ExternalLink, Car, MapPin, Lock } from 'lucide-react';
+import { X, MessageCircle, Mail, GraduationCap, Award, Building2, Hash, Pencil, Camera, ChevronRight, Calendar, ExternalLink, Car, MapPin, Lock, ShieldCheck, Copy, Check } from 'lucide-react';
 import { Staff, StaffCommittee } from '../types';
 import { getGredBadgeStyle } from '../utils/gredColors';
 import { getBahagianTheme } from '../utils/bahagianColors';
@@ -51,6 +51,7 @@ export const parseQualificationLines = (raw: string | undefined): string[] => {
 export const ProfileModal: React.FC<ProfileModalProps> = ({ staff, committees = [], onClose, isAdminMode, onEditStaff, onOpenCommittee, onOpenAdminPin }) => {
   const [timetableError, setTimetableError] = useState(false);
   const [isTimetableLoading, setIsTimetableLoading] = useState(true);
+  const [copiedIc, setCopiedIc] = useState(false);
 
   const staffIdClean = (staff?.ID || staff?.staff_id || '').toUpperCase().trim();
   const timetableUrl = staffIdClean
@@ -317,6 +318,69 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ staff, committees = 
                 </div>
               )}
 
+              {/* No. Kad Pengenalan / IC (Akses Mod Admin Sahaja) */}
+              {isAdminMode && (
+                (() => {
+                  const rawIc = (staff.IC || staff.NoKP || '').trim();
+                  if (!rawIc) return null;
+
+                  const digitsOnly = rawIc.replace(/\D/g, '');
+                  const formattedIc = digitsOnly.length === 12
+                    ? `${digitsOnly.slice(0, 6)}-${digitsOnly.slice(6, 8)}-${digitsOnly.slice(8, 12)}`
+                    : rawIc;
+
+                  const handleCopyIc = () => {
+                    if (navigator?.clipboard) {
+                      navigator.clipboard.writeText(digitsOnly || rawIc);
+                      setCopiedIc(true);
+                      setTimeout(() => setCopiedIc(false), 2000);
+                    }
+                  };
+
+                  return (
+                    <div className="flex gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-100">
+                      <div className="mt-0.5 p-2 bg-indigo-100 text-indigo-700 rounded-xl h-9 w-9 flex items-center justify-center shrink-0">
+                        <ShieldCheck className="w-4 h-4" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5">
+                            <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">No. Kad Pengenalan (IC)</h4>
+                            <span className="px-1.5 py-0.2 bg-indigo-100 text-indigo-700 text-[9px] font-black rounded-md uppercase">Admin Mode</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={handleCopyIc}
+                            title="Salin No. Kad Pengenalan"
+                            className="px-2 py-0.5 rounded-md text-[10px] font-bold text-slate-600 hover:text-indigo-600 bg-white border border-slate-200 hover:border-indigo-200 transition-colors flex items-center gap-1 cursor-pointer"
+                          >
+                            {copiedIc ? (
+                              <>
+                                <Check className="w-3 h-3 text-emerald-600" />
+                                <span className="text-emerald-600 font-extrabold">Disalin</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3 h-3" />
+                                <span>Salin</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-sm text-slate-900 font-mono font-black tracking-wide">
+                            {formattedIc}
+                          </span>
+                          {rawIc !== formattedIc && (
+                            <span className="text-[10px] text-slate-400 font-mono">({rawIc})</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()
+              )}
+
               {/* Daerah Asal & Tahun Lahir (Akses Mod Admin Sahaja) */}
               {isAdminMode ? (
                 (staff.DaerahAsal || staff.TahunLahir || staff['Tahun Lahir']) && (
@@ -382,7 +446,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ staff, committees = 
                     </div>
                     <div>
                       <h4 className="text-[11px] font-extrabold text-slate-700">Maklumat Peribadi & Kenderaan Dihadkan</h4>
-                      <p className="text-[10px] text-slate-500 font-medium">Daerah asal, tahun lahir & no. plat kenderaan hanya untuk Admin Mode.</p>
+                      <p className="text-[10px] text-slate-500 font-medium">No. Kad Pengenalan (IC), daerah asal, tahun lahir & no. plat hanya untuk Admin Mode.</p>
                     </div>
                   </div>
                   {onOpenAdminPin && (

@@ -71,6 +71,7 @@ export const SelfRegistrationPage: React.FC<SelfRegistrationPageProps> = ({
   const [pengkhususan, setPengkhususan] = useState('');
   const [daerahAsal, setDaerahAsal] = useState('');
   const [tahunLahir, setTahunLahir] = useState('');
+  const [ic, setIc] = useState('');
   const [platNo1, setPlatNo1] = useState('');
   const [platNo2, setPlatNo2] = useState('');
   const [platNo3, setPlatNo3] = useState('');
@@ -194,6 +195,8 @@ export const SelfRegistrationPage: React.FC<SelfRegistrationPageProps> = ({
       grade: gred.trim().toUpperCase(),
       'Tahun Lahir': tahunLahir.trim(),
       TahunLahir: tahunLahir.trim(),
+      IC: ic.trim(),
+      NoKP: ic.trim(),
       PlatNo1: platNo1.trim().toUpperCase(),
       PlatNo2: platNo2.trim().toUpperCase(),
       PlatNo3: platNo3.trim().toUpperCase(),
@@ -706,63 +709,88 @@ export const SelfRegistrationPage: React.FC<SelfRegistrationPageProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-                {/* Tahun Lahir */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-extrabold text-slate-800">
-                    Tahun Lahir
-                  </label>
-                  <input
-                    type="number"
-                    min="1940"
-                    max="2010"
-                    value={tahunLahir}
-                    onChange={(e) => setTahunLahir(e.target.value)}
-                    placeholder="cth: 1988"
-                    className="w-full px-4 py-3 rounded-2xl border border-slate-200 bg-white/90 text-sm font-medium text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all shadow-2xs"
-                  />
+              <div className="space-y-4">
+                {/* Row 1: IC & Tahun Lahir */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pb-3 border-b border-slate-100">
+                  {/* No. Kad Pengenalan (IC) */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-extrabold text-slate-800">
+                        No. Kad Pengenalan (IC)
+                      </label>
+                      <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md">
+                        Akses Admin Sahaja
+                      </span>
+                    </div>
+                    <input
+                      type="text"
+                      value={ic}
+                      onChange={(e) => setIc(e.target.value.replace(/\s+/g, ''))}
+                      placeholder="cth: 861115465305"
+                      className="w-full px-4 py-3 rounded-2xl border border-slate-200 bg-white/90 text-sm font-mono font-medium text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all shadow-2xs"
+                    />
+                  </div>
+
+                  {/* Tahun Lahir */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-extrabold text-slate-800">
+                      Tahun Lahir
+                    </label>
+                    <input
+                      type="number"
+                      min="1940"
+                      max="2010"
+                      value={tahunLahir}
+                      onChange={(e) => setTahunLahir(e.target.value)}
+                      placeholder="cth: 1988"
+                      className="w-full px-4 py-3 rounded-2xl border border-slate-200 bg-white/90 text-sm font-medium text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all shadow-2xs"
+                    />
+                  </div>
                 </div>
 
-                {/* Plat No 1 */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-extrabold text-slate-800">
-                    No. Plat Kenderaan 1 (Utama)
-                  </label>
-                  <input
-                    type="text"
-                    value={platNo1}
-                    onChange={(e) => setPlatNo1(e.target.value.toUpperCase())}
-                    placeholder="cth: JXA1234"
-                    className="w-full px-4 py-3 rounded-2xl border border-slate-200 bg-white/90 text-sm font-mono font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none uppercase transition-all shadow-2xs"
-                  />
-                </div>
+                {/* Row 2: Plat Kenderaan */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {/* Plat No 1 */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-extrabold text-slate-800">
+                      No. Plat Kenderaan 1 (Utama)
+                    </label>
+                    <input
+                      type="text"
+                      value={platNo1}
+                      onChange={(e) => setPlatNo1(e.target.value.toUpperCase())}
+                      placeholder="cth: JXA1234"
+                      className="w-full px-4 py-3 rounded-2xl border border-slate-200 bg-white/90 text-sm font-mono font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none uppercase transition-all shadow-2xs"
+                    />
+                  </div>
 
-                {/* Plat No 2 */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-extrabold text-slate-800">
-                    No. Plat Kenderaan 2
-                  </label>
-                  <input
-                    type="text"
-                    value={platNo2}
-                    onChange={(e) => setPlatNo2(e.target.value.toUpperCase())}
-                    placeholder="cth: VHJ4035"
-                    className="w-full px-4 py-3 rounded-2xl border border-slate-200 bg-white/90 text-sm font-mono font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none uppercase transition-all shadow-2xs"
-                  />
-                </div>
+                  {/* Plat No 2 */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-extrabold text-slate-800">
+                      No. Plat Kenderaan 2
+                    </label>
+                    <input
+                      type="text"
+                      value={platNo2}
+                      onChange={(e) => setPlatNo2(e.target.value.toUpperCase())}
+                      placeholder="cth: VHJ4035"
+                      className="w-full px-4 py-3 rounded-2xl border border-slate-200 bg-white/90 text-sm font-mono font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none uppercase transition-all shadow-2xs"
+                    />
+                  </div>
 
-                {/* Plat No 3 */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-extrabold text-slate-800">
-                    No. Plat Kenderaan 3
-                  </label>
-                  <input
-                    type="text"
-                    value={platNo3}
-                    onChange={(e) => setPlatNo3(e.target.value.toUpperCase())}
-                    placeholder="cth: WUL3110"
-                    className="w-full px-4 py-3 rounded-2xl border border-slate-200 bg-white/90 text-sm font-mono font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none uppercase transition-all shadow-2xs"
-                  />
+                  {/* Plat No 3 */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-extrabold text-slate-800">
+                      No. Plat Kenderaan 3
+                    </label>
+                    <input
+                      type="text"
+                      value={platNo3}
+                      onChange={(e) => setPlatNo3(e.target.value.toUpperCase())}
+                      placeholder="cth: WUL3110"
+                      className="w-full px-4 py-3 rounded-2xl border border-slate-200 bg-white/90 text-sm font-mono font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none uppercase transition-all shadow-2xs"
+                    />
+                  </div>
                 </div>
               </div>
             </div>

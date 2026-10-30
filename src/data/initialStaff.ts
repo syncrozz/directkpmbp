@@ -1181,6 +1181,8 @@ export const INITIAL_STAFF_DATA: Staff[] = [
     "Email": "khairi.mohd@mara.gov.my",
     "Gred": "DG9",
     "grade": "DG9",
+    "IC": "861115465305",
+    "NoKP": "861115465305",
     "Tahun Lahir": "1986",
     "TahunLahir": "1986",
     "PlatNo1": "SYM2539",

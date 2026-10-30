@@ -390,6 +390,7 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
         const platNo1 = getCol(['PlatNo1', 'Plat 1', 'NoPlat'], 14);
         const platNo2 = getCol(['PlatNo2', 'Plat 2'], 15);
         const platNo3 = getCol(['PlatNo3', 'Plat 3'], 16);
+        const ic = getCol(['IC', 'NoKP', 'No KP', 'No. KP', 'Kad Pengenalan', 'No. Kad Pengenalan', 'NRIC'], 17);
 
         // Deduplication check: normalized name and email
         const normName = normalizeStaffName(nama);
@@ -436,6 +437,8 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
           Email: email,
           Gred: gred,
           grade: gred,
+          IC: ic || '',
+          NoKP: ic || '',
           'Tahun Lahir': tahunLahir,
           TahunLahir: tahunLahir,
           PlatNo1: platNo1,
@@ -490,10 +493,10 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
   // State for copying header names
   const [copiedHeaders, setCopiedHeaders] = useState<'staff' | 'committee' | null>(null);
 
-  // Copy Headers to Clipboard - Strictly without Tahun
+  // Copy Headers to Clipboard - With IC support
   const handleCopyHeaders = (type: 'staff' | 'committee') => {
     const textToCopy = type === 'staff'
-      ? 'Bil,StaffID,Nama,Kategori,Jawatan,Unit,Kelulusan,Pengkhususan,DaerahAsal,Telefon,Sambungan,Email,Gred,Tahun Lahir,PlatNo1,PlatNo2,PlatNo3'
+      ? 'Bil,StaffID,Nama,Kategori,Jawatan,Unit,Kelulusan,Pengkhususan,DaerahAsal,Telefon,Sambungan,Email,Gred,Tahun Lahir,PlatNo1,PlatNo2,PlatNo3,IC'
       : 'Bil,StaffID,Nama,Kategori,Jawatan,Unit';
     
     navigator.clipboard.writeText(textToCopy);
@@ -501,28 +504,28 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
     setTimeout(() => setCopiedHeaders(null), 2500);
   };
 
-  // Muat Turun Templat CSV Kakitangan - Strictly 17 columns as specified
+  // Muat Turun Templat CSV Kakitangan - 18 lajur termasuk IC (Kad Pengenalan)
   const handleDownloadStaffTemplate = () => {
     const headers = [
       'Bil', 'StaffID', 'Nama', 'Kategori', 'Jawatan', 'Unit',
       'Kelulusan', 'Pengkhususan', 'DaerahAsal', 'Telefon', 'Sambungan',
-      'Email', 'Gred', 'Tahun Lahir', 'PlatNo1', 'PlatNo2', 'PlatNo3'
+      'Email', 'Gred', 'Tahun Lahir', 'PlatNo1', 'PlatNo2', 'PlatNo3', 'IC'
     ];
     const sampleRows = [
       [
         '1', 'ST001', 'Muhammad Fazly Bin Jamaluddin', 'Pengurusan', 'Pengarah', 'Pengurusan',
         '', '', 'Kuantan, Pahang', '013-9500149', '201', 'fazly.jamaluddin@mara.gov.my',
-        'DG13', '', 'WUL3110', 'WB1782D', 'A7306A'
+        'DG13', '', 'WUL3110', 'WB1782D', 'A7306A', ''
       ],
       [
         '2', 'ST002', 'Mohd Hakim Bin Hafiz', 'Pengurusan', 'Timb. Pengarah HEP', 'Pentadbiran',
         '', '', '', '018-3854235', '208', 'hakim.hafiz@mara.gov.my',
-        'DG12', '1986', 'SJ8684', '', ''
+        'DG12', '1986', 'SJ8684', '', '', ''
       ],
       [
-        '3', 'ST003', 'Dr. Hj. Musa Bin Muhamad Ali CMILT', 'Pengurusan', 'Timb. Pengarah HEA', 'Pentadbiran',
-        '', '', 'Batu Pahat, Johor', '017-4693512', '202', 'musa.ali@mara.gov.my',
-        'DG13', '', 'RAT3417', 'WRL3417', ''
+        '3', 'ST054', 'Ahmad Khairi Bin Mohd', 'Akademik', 'Pensyarah', 'Pengajian Am',
+        '1 - Sarjana Muda Sastera (Sejarah) USM, 2 - Diploma Pendidikan UPSI', 'Pengajian Malaysia', 'Kuala Terengganu', '014-5313756', '273', 'khairi.mohd@mara.gov.my',
+        'DG9', '1986', 'SYM2539', 'WYX7214', '', '861115465305'
       ]
     ];
 
@@ -553,7 +556,7 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
     const headers = [
       'Bil', 'StaffID', 'Nama', 'Kategori', 'Jawatan', 'Unit',
       'Kelulusan', 'Pengkhususan', 'DaerahAsal', 'Telefon', 'Sambungan',
-      'Email', 'Gred', 'Tahun Lahir', 'PlatNo1', 'PlatNo2', 'PlatNo3'
+      'Email', 'Gred', 'Tahun Lahir', 'PlatNo1', 'PlatNo2', 'PlatNo3', 'IC'
     ];
 
     const rows = dataToExport.map((s, idx) => {
@@ -574,6 +577,7 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
       const platNo1 = s.PlatNo1 || '';
       const platNo2 = s.PlatNo2 || '';
       const platNo3 = s.PlatNo3 || '';
+      const ic = s.IC || s.NoKP || '';
 
       return [
         bil,
@@ -592,7 +596,8 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
         tahunLahir,
         platNo1,
         platNo2,
-        platNo3
+        platNo3,
+        ic
       ];
     });
 
@@ -1194,7 +1199,7 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
                         rows={5}
                         value={rawText}
                         onChange={(e) => setRawText(e.target.value)}
-                        placeholder={`Bil,StaffID,Nama,Kategori,Jawatan,Unit,Kelulusan,Pengkhususan,DaerahAsal,Telefon,Sambungan,Email,Gred,Tahun Lahir,PlatNo1,PlatNo2,PlatNo3\n1,ST001,Muhammad Fazly Bin Jamaluddin,Pengurusan,Pengarah,Pengurusan,,,"Kuantan, Pahang",013-9500149,201,fazly.jamaluddin@mara.gov.my,DG13,,WUL3110,WB1782D,A7306A`}
+                        placeholder={`Bil,StaffID,Nama,Kategori,Jawatan,Unit,Kelulusan,Pengkhususan,DaerahAsal,Telefon,Sambungan,Email,Gred,Tahun Lahir,PlatNo1,PlatNo2,PlatNo3,IC\n1,ST054,Ahmad Khairi Bin Mohd,Akademik,Pensyarah,Pengajian Am,"1 - Sarjana Muda Sastera (Sejarah) USM, 2 - Diploma Pendidikan UPSI",Pengajian Malaysia,"Kuala Terengganu",014-5313756,273,khairi.mohd@mara.gov.my,DG9,1986,SYM2539,WYX7214,,861115465305`}
                         className="w-full p-3 bg-indigo-50/20 border border-indigo-100 rounded-xl text-xs font-mono focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none leading-relaxed"
                       />
 

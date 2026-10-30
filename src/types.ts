@@ -23,6 +23,8 @@ export interface Staff {
   Email: string;
   Gred?: string;
   grade?: string; // alias for Gred
+  IC?: string; // No. Kad Pengenalan / IC (akses terhad Admin Mode sahaja)
+  NoKP?: string; // alias for IC
   'Tahun Lahir'?: string;
   TahunLahir?: string; // alias for 'Tahun Lahir'
   PlatNo1?: string;

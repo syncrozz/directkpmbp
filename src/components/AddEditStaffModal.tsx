@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Save, Trash2, MapPin, Calendar, Car } from 'lucide-react';
+import { X, Save, Trash2, MapPin, Calendar, Car, ShieldCheck } from 'lucide-react';
 import { Staff } from '../types';
 import { determineBahagian } from '../utils/staffGrade';
 import { findDuplicateStaff } from '../utils/staffDeduplication';
@@ -38,6 +38,8 @@ export const AddEditStaffModal: React.FC<AddEditStaffModalProps> = ({
         Unit: staff.Unit || staff.DepartmentID || '',
         Gred: staff.Gred || staff.grade || '',
         TahunLahir: staff.TahunLahir || staff['Tahun Lahir'] || '',
+        IC: staff.IC || staff.NoKP || '',
+        NoKP: staff.NoKP || staff.IC || '',
         PlatNo1: staff.PlatNo1 || '',
         PlatNo2: staff.PlatNo2 || '',
         PlatNo3: staff.PlatNo3 || '',
@@ -117,6 +119,8 @@ export const AddEditStaffModal: React.FC<AddEditStaffModalProps> = ({
       grade: resolvedGred.trim(),
       'Tahun Lahir': resolvedTahunLahir.trim(),
       TahunLahir: resolvedTahunLahir.trim(),
+      IC: (formData.IC || formData.NoKP || '').trim(),
+      NoKP: (formData.IC || formData.NoKP || '').trim(),
       PlatNo1: (formData.PlatNo1 || '').trim().toUpperCase(),
       PlatNo2: (formData.PlatNo2 || '').trim().toUpperCase(),
       PlatNo3: (formData.PlatNo3 || '').trim().toUpperCase(),
@@ -289,8 +293,25 @@ export const AddEditStaffModal: React.FC<AddEditStaffModalProps> = ({
               </div>
             </div>
 
-            {/* DaerahAsal & Tahun Lahir */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {/* No. Kad Pengenalan (IC), DaerahAsal & Tahun Lahir */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-gray-600 uppercase tracking-wider flex items-center gap-1">
+                  <ShieldCheck className="w-3 h-3 text-indigo-500" /> No. KP / IC
+                </label>
+                <input
+                  type="text"
+                  name="IC"
+                  placeholder="cth: 861115465305"
+                  value={formData.IC || formData.NoKP || ''}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/\s+/g, '');
+                    setFormData((prev) => ({ ...prev, IC: val, NoKP: val }));
+                  }}
+                  className="w-full px-4 py-2 text-xs border border-white/50 rounded-xl bg-white/40 text-gray-800 font-bold focus:outline-none focus:bg-white/80 focus:ring-2 focus:ring-indigo-500/15 font-mono"
+                />
+              </div>
+
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-gray-600 uppercase tracking-wider flex items-center gap-1">
                   <MapPin className="w-3 h-3 text-indigo-500" /> DaerahAsal

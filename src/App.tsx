@@ -250,8 +250,12 @@ export default function App() {
           const enriched = parsed.map((s) => {
             const g = s.grade || s.Gred || STAFF_GRADE_MAP[s.staff_id || s.ID] || '';
             const b = s.Bahagian || determineBahagian(s.Jawatan, s.Bahagian);
+            const initMatch = INITIAL_STAFF_DATA.find((init) => (init.ID === s.ID || init.StaffID === s.StaffID));
+            const ic = s.IC || s.NoKP || initMatch?.IC || '';
             return {
               ...s,
+              IC: ic,
+              NoKP: ic,
               Bahagian: b,
               Gred: g,
               grade: g,
@@ -276,8 +280,12 @@ export default function App() {
         const enriched = fbStaff.map((s) => {
           const g = s.grade || s.Gred || STAFF_GRADE_MAP[s.staff_id || s.ID] || '';
           const b = s.Bahagian || determineBahagian(s.Jawatan, s.Bahagian);
+          const initMatch = INITIAL_STAFF_DATA.find((init) => (init.ID === s.ID || init.StaffID === s.StaffID));
+          const ic = s.IC || s.NoKP || initMatch?.IC || '';
           return {
             ...s,
+            IC: ic,
+            NoKP: ic,
             Bahagian: b,
             Gred: g,
             grade: g,
@@ -407,6 +415,7 @@ export default function App() {
         state,
         staff.Kelulusan,
         staff.Pengkhususan,
+        ...(isAdminMode && (staff.IC || staff.NoKP) ? [staff.IC, staff.NoKP] : []),
       ]
         .filter(Boolean)
         .map((val) => String(val).toLowerCase().trim())
@@ -418,7 +427,7 @@ export default function App() {
         platesNoSpace,
       };
     });
-  }, [staffList]);
+  }, [staffList, isAdminMode]);
 
   // Filters calculation using pre-computed index & debounced search query
   const uniqueDepartments = ['Semua', ...Array.from(new Set(staffList.map((s) => s.DepartmentID)))];
