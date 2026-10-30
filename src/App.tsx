@@ -31,27 +31,13 @@ import { AddEditStaffModal } from './components/AddEditStaffModal';
 import { CampusReferenceHub } from './components/CampusReferenceHub';
 import { AdminPinModal } from './components/AdminPinModal';
 import { SelfRegistrationPage } from './components/SelfRegistrationPage';
+import { AppVersionBadge } from './components/AppVersionBadge';
 import { 
   fetchStaffListFromFirestore, 
   fetchCommitteesFromFirestore, 
   saveStaffListToFirestore, 
   saveCommitteesToFirestore 
 } from './config/firebase';
-
-function formatMalaysianBuildDate(isoStr?: string): string {
-  if (!isoStr) return '';
-  try {
-    const d = new Date(isoStr);
-    if (isNaN(d.getTime())) return '';
-    const day = d.getDate();
-    const months = ['Jan', 'Feb', 'Mac', 'Apr', 'Mei', 'Jun', 'Jul', 'Ogo', 'Sep', 'Okt', 'Nov', 'Dis'];
-    const month = months[d.getMonth()];
-    const year = d.getFullYear();
-    return `${day} ${month} ${year}`;
-  } catch {
-    return '';
-  }
-}
 
 export default function App() {
   // Navigation State ('directory' | 'rujukan' | 'daftar')
@@ -467,20 +453,6 @@ export default function App() {
   const supportStaff = staffList.filter(s => s.Bahagian !== 'Akademik').length;
   const academicStaff = staffList.filter(s => s.Bahagian === 'Akademik').length;
 
-  const appVersionLabel = (() => {
-    if (typeof __GIT_APP_VERSION__ !== 'undefined' && __GIT_APP_VERSION__) {
-      return `Versi ${__GIT_APP_VERSION__}`;
-    }
-    if (typeof __GIT_COMMIT_HASH__ !== 'undefined' && __GIT_COMMIT_HASH__) {
-      return `Build ${__GIT_COMMIT_HASH__}`;
-    }
-    return 'Versi pembangunan';
-  })();
-
-  const appBuildDateLabel = typeof __BUILD_DATE__ !== 'undefined'
-    ? formatMalaysianBuildDate(__BUILD_DATE__)
-    : '';
-
   return (
     <div className="min-h-screen text-gray-800 flex flex-col font-sans selection:bg-indigo-100 selection:text-indigo-900 relative">
       
@@ -490,56 +462,45 @@ export default function App() {
       <div className="mesh-blob blob-3"></div>
 
       {/* Primary Glassmorphic Header */}
-      <header className="glass-panel sticky top-0 z-40 px-6 py-4 border-b border-white/40 shadow-xs backdrop-blur-md">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <header className="glass-panel sticky top-0 z-40 px-4 sm:px-6 py-2.5 sm:py-3.5 border-b border-white/40 shadow-xs backdrop-blur-md">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2.5 sm:gap-4 flex-wrap">
           
           {/* Logo & Platform Info with Official KPMBP SmartHub Logo (Home Trigger) */}
-          <button
-            type="button"
-            onClick={handleGoHome}
-            title="Kembali ke Halaman Utama (Home)"
-            aria-label="Kembali ke Halaman Utama DIRECTORY KPMBP"
-            className="flex items-center gap-3.5 text-left cursor-pointer group focus:outline-hidden transition-opacity hover:opacity-90 active:scale-[0.99]"
-          >
-            <img
-              src="https://raw.githubusercontent.com/syncrozz/syncrozz-assets/main/logo/KPMBPSmartHub/favicon.svg"
-              alt="Logo DIRECTORY KPMBP"
-              className="w-11 h-11 object-contain drop-shadow-sm rounded-xl shrink-0"
-              referrerPolicy="no-referrer"
-            />
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="font-sans font-extrabold text-gray-950 text-lg md:text-xl tracking-tight leading-tight">
-                  DIRECTORY <span className="bg-gradient-to-r from-indigo-600 via-violet-600 to-indigo-700 bg-clip-text text-transparent">KPMBP</span>
-                </h1>
-              </div>
-              <p className="text-[11px] text-gray-500 font-medium tracking-wide">Kolej Profesional MARA Bandar Penawar</p>
-            </div>
-          </button>
+          <div className="flex items-center gap-2 sm:gap-2.5 flex-nowrap shrink-0">
+            <button
+              type="button"
+              onClick={handleGoHome}
+              title="Kembali ke Halaman Utama (Home)"
+              aria-label="Kembali ke Halaman Utama DIRECTORY KPMBP"
+              className="flex items-center gap-2.5 sm:gap-3 cursor-pointer group focus:outline-hidden transition-opacity hover:opacity-90 active:scale-[0.99] shrink-0"
+            >
+              <img
+                src="https://raw.githubusercontent.com/syncrozz/syncrozz-assets/main/logo/KPMBPSmartHub/favicon.svg"
+                alt="Logo DIRECTORY KPMBP"
+                className="w-9 h-9 sm:w-10 sm:h-10 object-contain drop-shadow-sm rounded-xl shrink-0"
+                referrerPolicy="no-referrer"
+              />
+              <h1 className="font-sans font-extrabold text-gray-950 text-base sm:text-lg md:text-xl tracking-tight leading-none whitespace-nowrap">
+                DIRECTORY <span className="bg-gradient-to-r from-indigo-600 via-violet-600 to-indigo-700 bg-clip-text text-transparent">KPMBP</span>
+              </h1>
+            </button>
+            <AppVersionBadge isAdminMode={isAdminMode} />
+          </div>
 
           {/* Dynamic Campus Center Control Deck */}
           <div className="flex flex-wrap items-center gap-2.5">
-            {/* Quick Admin Mode Toggle Button */}
+            {/* Quick Admin Mode Toggle Button (Gear Icon) */}
             <button
               onClick={handleToggleAdminMode}
-              title={isAdminMode ? 'Matikan Admin Mode' : 'Aktifkan Admin Mode (Emel MARA / Master PIN)'}
-              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-2xl text-xs font-extrabold transition-all border cursor-pointer ${
+              title={isAdminMode ? (currentAdmin?.name ? `Matikan Admin Mode (${currentAdmin.name})` : 'Matikan Admin Mode') : 'Aktifkan Admin Mode (Emel MARA / Master PIN)'}
+              aria-label={isAdminMode ? 'Matikan Admin Mode' : 'Aktifkan Admin Mode'}
+              className={`p-2 sm:p-2.5 rounded-xl sm:rounded-2xl transition-all border cursor-pointer flex items-center justify-center shrink-0 ${
                 isAdminMode
                   ? 'bg-amber-500 hover:bg-amber-600 text-white border-amber-400 shadow-md shadow-amber-200'
                   : 'bg-white/80 hover:bg-white text-slate-700 hover:text-indigo-600 border-slate-200/80 shadow-2xs'
               }`}
             >
-              {isAdminMode ? (
-                <>
-                  <Pencil className="w-3.5 h-3.5" />
-                  <span className="max-w-[140px] truncate">{currentAdmin?.name ? `Admin: ${currentAdmin.name}` : 'Admin Mode Aktif'}</span>
-                </>
-              ) : (
-                <>
-                  <Lock className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>Admin Mode</span>
-                </>
-              )}
+              <Settings className={`w-4 h-4 sm:w-5 sm:h-5 transition-transform duration-300 hover:rotate-90 ${isAdminMode ? 'text-white' : 'text-slate-600 hover:text-indigo-600'}`} />
             </button>
 
             {/* Single Consolidated Database & CSV Management Settings Button (Hanya muncul semasa Admin Mode Aktif) */}
@@ -548,13 +509,13 @@ export default function App() {
                 onClick={() => setIsSettingsOpen(true)}
                 title="Pengurusan Data & Import CSV"
                 aria-label="Pengurusan Data & Import CSV"
-                className={`relative p-2 rounded-2xl transition-all border cursor-pointer flex items-center justify-center ${
+                className={`relative p-2 sm:p-2.5 rounded-xl sm:rounded-2xl transition-all border cursor-pointer flex items-center justify-center shrink-0 ${
                   isSettingsOpen 
                     ? 'bg-gradient-to-r from-indigo-600 via-violet-600 to-indigo-700 text-white border-transparent shadow-md shadow-indigo-200' 
                     : 'bg-white/80 text-slate-700 hover:text-indigo-600 border-slate-200/80 hover:bg-white shadow-2xs'
                 }`}
               >
-                <Settings className={`w-5 h-5 transition-transform duration-300 hover:rotate-90 ${isSettingsOpen ? 'text-white' : 'text-indigo-600'}`} />
+                <FileSpreadsheet className={`w-4 h-4 sm:w-5 sm:h-5 ${isSettingsOpen ? 'text-white' : 'text-indigo-600'}`} />
               </button>
             )}
           </div>
@@ -928,13 +889,6 @@ export default function App() {
               >
                 Syncrozz
               </a>
-            </p>
-            <span className="hidden sm:inline text-slate-300">•</span>
-            <p className="text-xs text-slate-400 font-medium inline-flex items-center gap-1.5">
-              <span>{appVersionLabel}</span>
-              {appBuildDateLabel && (
-                <span className="text-slate-400">({appBuildDateLabel})</span>
-              )}
             </p>
           </div>
         </div>

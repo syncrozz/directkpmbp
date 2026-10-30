@@ -6,7 +6,9 @@ import {
   doc, 
   setDoc, 
   getDocs, 
-  writeBatch 
+  writeBatch,
+  onSnapshot,
+  serverTimestamp
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { Staff, StaffCommittee } from '../types';
@@ -387,3 +389,45 @@ export const fetchCommitteesFromFirestore = async (): Promise<StaffCommittee[]> 
     []
   );
 };
+
+/**
+ * Subscribe to the system/appVersion document in Firestore
+ * Returns an unsubscribe function.
+ */
+export const subscribeToAppVersion = (onUpdate: (label: string | null) => void): (() => void) => {
+  try {
+    const versionDocRef = doc(db, 'system', 'appVersion');
+    const unsubscribe = onSnapshot(
+      versionDocRef,
+      (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          onUpdate(typeof data?.label === 'string' && data.label.trim() ? data.label.trim() : null);
+        } else {
+          onUpdate(null);
+        }
+      },
+      (error) => {
+        console.warn('Notice subscribing to appVersion:', error);
+        onUpdate(null);
+      }
+    );
+    return unsubscribe;
+  } catch (err) {
+    console.warn('Failed to setup appVersion subscription:', err);
+    onUpdate(null);
+    return () => {};
+  }
+};
+
+/**
+ * Save custom app version to system/appVersion in Firestore
+ */
+export const saveAppVersionToCloud = async (label: string): Promise<void> => {
+  const versionDocRef = doc(db, 'system', 'appVersion');
+  await setDoc(versionDocRef, {
+    label: label.trim(),
+    updatedAt: serverTimestamp(),
+  });
+};
+
