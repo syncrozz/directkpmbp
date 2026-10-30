@@ -546,36 +546,35 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initia
                   </span>
                 </div>
 
-                {/* Quick Action Toolbar */}
+                {/* Quick Action Toolbar (Icon Only) */}
                 <div className="flex items-center gap-1.5 flex-wrap">
                   {/* Fullscreen Button */}
                   <button
                     type="button"
                     onClick={() => setIsFullscreenOpen(true)}
                     title="Buka paparan skrin penuh"
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
+                    aria-label="Buka paparan skrin penuh"
+                    className="p-2 sm:p-2.5 rounded-xl text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer flex items-center justify-center"
                   >
-                    <Maximize2 className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">Skrin Penuh</span>
+                    <Maximize2 className="w-4 h-4" />
                   </button>
 
                   {/* Share Button */}
                   <button
                     type="button"
                     onClick={handleShare}
-                    title="Kongsi pautan jadual"
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
+                    title={copiedLink ? "Pautan telah disalin!" : "Kongsi pautan jadual"}
+                    aria-label="Kongsi pautan jadual"
+                    className={`p-2 sm:p-2.5 rounded-xl transition-colors cursor-pointer flex items-center justify-center ${
+                      copiedLink
+                        ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                        : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                    }`}
                   >
                     {copiedLink ? (
-                      <>
-                        <Check className="w-3.5 h-3.5 text-emerald-600" />
-                        <span className="text-emerald-700">Disalin!</span>
-                      </>
+                      <Check className="w-4 h-4 text-emerald-600" />
                     ) : (
-                      <>
-                        <Share2 className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Kongsi</span>
-                      </>
+                      <Share2 className="w-4 h-4" />
                     )}
                   </button>
 
@@ -585,10 +584,10 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initia
                     onClick={handleDownload}
                     disabled={downloading}
                     title="Muat turun imej resolusi asal"
-                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs shadow-indigo-200 transition-colors disabled:opacity-50 cursor-pointer"
+                    aria-label="Muat turun imej resolusi asal"
+                    className="p-2 sm:p-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs shadow-indigo-200 transition-colors disabled:opacity-50 cursor-pointer flex items-center justify-center"
                   >
-                    <Download className={`w-3.5 h-3.5 ${downloading ? 'animate-bounce' : ''}`} />
-                    <span>Muat Turun</span>
+                    <Download className={`w-4 h-4 ${downloading ? 'animate-bounce' : ''}`} />
                   </button>
 
                   {/* Raw Tab Button */}
@@ -597,9 +596,10 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initia
                     target="_blank"
                     rel="noopener noreferrer"
                     title="Buka fail asal di tab baharu"
-                    className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
+                    aria-label="Buka fail asal di tab baharu"
+                    className="p-2 sm:p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors flex items-center justify-center"
                   >
-                    <ExternalLink className="w-3.5 h-3.5" />
+                    <ExternalLink className="w-4 h-4" />
                   </a>
                 </div>
               </div>
