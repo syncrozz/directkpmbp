@@ -58,3 +58,15 @@ export interface AuthorizedAdmin {
   role?: string;
   createdAt?: string;
 }
+
+export interface StudentTimetable {
+  classCode: string;
+  fileName: string;
+  imageUrl: string;
+  downloadUrl?: string;
+  size?: number;
+  source: 'github';
+  program?: string;
+  semester?: string;
+}
+

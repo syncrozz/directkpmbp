@@ -61,7 +61,11 @@ interface RuleItem {
   details: string[];
 }
 
-export const CampusReferenceHub: React.FC = () => {
+interface CampusReferenceHubProps {
+  onNavigateToTimetables?: () => void;
+}
+
+export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({ onNavigateToTimetables }) => {
   const [activeRefTab, setActiveRefTab] = useState<'semua' | 'peta' | 'portal' | 'takwim' | 'bantuan' | 'panduan'>('semua');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -289,6 +293,32 @@ export const CampusReferenceHub: React.FC = () => {
 
   return (
     <div className="space-y-6 text-left">
+      {/* Featured Banner: Jadual Kelas Pelajar */}
+      {onNavigateToTimetables && (
+        <div className="bg-gradient-to-r from-indigo-950 via-indigo-900 to-violet-950 rounded-3xl p-5 md:p-6 text-white shadow-md relative overflow-hidden flex flex-col sm:flex-row sm:items-center justify-between gap-4 border border-indigo-800/40">
+          <div className="space-y-1 relative z-10">
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/15 text-indigo-200 text-[11px] font-bold">
+              <Sparkles className="w-3 h-3 text-amber-300" />
+              <span>Modul Baharu</span>
+            </div>
+            <h3 className="text-lg md:text-xl font-extrabold tracking-tight">
+              Jadual Waktu Kelas Pelajar
+            </h3>
+            <p className="text-xs text-indigo-200 max-w-xl">
+              Cari dan semak jadual waktu kelas anda secara terus (cth: DCAT7A, DIA4A, DLM3A) dengan paparan skrin penuh dan muat turun.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onNavigateToTimetables}
+            className="px-4 py-2.5 bg-white text-indigo-950 hover:bg-indigo-50 font-extrabold text-xs rounded-2xl shadow-sm transition-all active:scale-95 cursor-pointer shrink-0 inline-flex items-center gap-2 self-start sm:self-auto"
+          >
+            <Calendar className="w-4 h-4 text-indigo-600" />
+            <span>Buka Jadual Kelas</span>
+          </button>
+        </div>
+      )}
+
       {/* Segmented Selector for reference types with soft pastel themes */}
       <div className="flex flex-wrap gap-2">
         <button

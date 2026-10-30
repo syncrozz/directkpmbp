@@ -11,6 +11,7 @@ import {
   RotateCcw, 
   UserCheck, 
   Sparkles,
+  Calendar,
   Settings,
   Lock,
   Pencil,
@@ -32,6 +33,7 @@ import { CampusReferenceHub } from './components/CampusReferenceHub';
 import { AdminPinModal } from './components/AdminPinModal';
 import { SelfRegistrationPage } from './components/SelfRegistrationPage';
 import { AppVersionBadge } from './components/AppVersionBadge';
+import { StudentTimetableHub } from './components/StudentTimetableHub';
 import { 
   fetchStaffListFromFirestore, 
   fetchCommitteesFromFirestore, 
@@ -40,8 +42,8 @@ import {
 } from './config/firebase';
 
 export default function App() {
-  // Navigation State ('directory' | 'rujukan' | 'daftar')
-  const [activeHub, setActiveHub] = useState<'directory' | 'rujukan' | 'daftar'>(() => {
+  // Navigation State ('directory' | 'rujukan' | 'jadual' | 'daftar')
+  const [activeHub, setActiveHub] = useState<'directory' | 'rujukan' | 'jadual' | 'daftar'>(() => {
     if (typeof window !== 'undefined') {
       const hash = window.location.hash.toLowerCase();
       const pathname = window.location.pathname.toLowerCase();
@@ -49,6 +51,9 @@ export default function App() {
       const pageParam = (searchParams.get('page') || searchParams.get('tab') || '').toLowerCase();
       if (hash.includes('daftar') || pathname.endsWith('/daftar') || pageParam === 'daftar') {
         return 'daftar';
+      }
+      if (hash.includes('jadual') || pathname.endsWith('/jadual') || pageParam === 'jadual') {
+        return 'jadual';
       }
       if (hash.includes('rujukan') || pathname.endsWith('/rujukan') || pageParam === 'rujukan') {
         return 'rujukan';
@@ -166,8 +171,12 @@ export default function App() {
 
       if (hash.includes('daftar') || pathname.endsWith('/daftar') || pageParam === 'daftar') {
         setActiveHub('daftar');
+      } else if (hash.includes('jadual') || pathname.endsWith('/jadual') || pageParam === 'jadual') {
+        setActiveHub('jadual');
       } else if (hash.includes('rujukan') || pathname.endsWith('/rujukan') || pageParam === 'rujukan') {
         setActiveHub('rujukan');
+      } else if (hash === '' || hash === '#' || hash === '#/' || pathname === '/') {
+        setActiveHub('directory');
       }
     };
 
@@ -545,8 +554,8 @@ export default function App() {
           <button
             onClick={() => {
               setActiveHub('rujukan');
-              if (typeof window !== 'undefined' && window.location.hash.includes('daftar')) {
-                window.location.hash = '';
+              if (typeof window !== 'undefined' && window.location.hash) {
+                window.location.hash = '#rujukan';
               }
             }}
             className={`px-4 py-2.5 rounded-2xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer ${
@@ -557,6 +566,22 @@ export default function App() {
           >
             <Sparkles className="w-4 h-4 text-amber-500 animate-pulse" />
             Rujukan Pelajar
+          </button>
+          <button
+            onClick={() => {
+              setActiveHub('jadual');
+              if (typeof window !== 'undefined') {
+                window.location.hash = '#jadual';
+              }
+            }}
+            className={`px-4 py-2.5 rounded-2xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer ${
+              activeHub === 'jadual'
+                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200'
+                : 'bg-white/60 text-slate-700 hover:bg-white/80 border border-slate-100'
+            }`}
+          >
+            <Calendar className="w-4 h-4" />
+            Jadual Kelas
           </button>
         </div>
       </div>
@@ -827,9 +852,19 @@ export default function App() {
             )}
 
           </div>
+        ) : activeHub === 'jadual' ? (
+          <StudentTimetableHub />
         ) : activeHub === 'rujukan' ? (
           <div className="glass-panel rounded-3xl p-6 md:p-8 border border-white/55 shadow-sm">
-            <CampusReferenceHub />
+            <CampusReferenceHub 
+              onNavigateToTimetables={() => {
+                setActiveHub('jadual');
+                if (typeof window !== 'undefined') {
+                  window.location.hash = '#jadual';
+                }
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+            />
           </div>
         ) : (
           <SelfRegistrationPage
