@@ -32,6 +32,128 @@ interface StudentTimetableHubProps {
   initialClassCode?: string;
 }
 
+export interface SemesterTheme {
+  cardUnselected: string;
+  cardSelected: string;
+  pillUnselected: string;
+  pillSelected: string;
+  semesterTextUnselected: string;
+  semesterTextSelected: string;
+  badgeViewer: string;
+  dotColor: string;
+}
+
+export function getSemesterTheme(semesterStr?: string, classCode?: string): SemesterTheme {
+  let semNum = '';
+  if (semesterStr) {
+    const match = semesterStr.match(/\d+/);
+    if (match) semNum = match[0];
+  }
+  if (!semNum && classCode) {
+    const match = classCode.match(/[A-Za-z]+(\d+)/);
+    if (match) semNum = match[1];
+  }
+
+  switch (semNum) {
+    case '1':
+      // Semester 1: Kuning / Amber Pastel
+      return {
+        cardUnselected: 'bg-amber-50/85 hover:bg-amber-100/80 text-slate-900 border-amber-200/90 hover:border-amber-400 shadow-2xs',
+        cardSelected: 'bg-gradient-to-br from-amber-500 to-amber-600 text-white border-transparent shadow-md shadow-amber-200 ring-2 ring-amber-400/50',
+        pillUnselected: 'bg-amber-100 text-amber-900 border border-amber-300/80',
+        pillSelected: 'bg-white/25 text-white',
+        semesterTextUnselected: 'text-amber-800',
+        semesterTextSelected: 'text-amber-100',
+        badgeViewer: 'bg-amber-50 border border-amber-200 text-amber-900',
+        dotColor: 'bg-amber-400',
+      };
+    case '2':
+      // Semester 2: Merah / Rose Pastel
+      return {
+        cardUnselected: 'bg-rose-50/85 hover:bg-rose-100/80 text-slate-900 border-rose-200/90 hover:border-rose-400 shadow-2xs',
+        cardSelected: 'bg-gradient-to-br from-rose-500 to-rose-600 text-white border-transparent shadow-md shadow-rose-200 ring-2 ring-rose-400/50',
+        pillUnselected: 'bg-rose-100 text-rose-900 border border-rose-300/80',
+        pillSelected: 'bg-white/25 text-white',
+        semesterTextUnselected: 'text-rose-800',
+        semesterTextSelected: 'text-rose-100',
+        badgeViewer: 'bg-rose-50 border border-rose-200 text-rose-900',
+        dotColor: 'bg-rose-400',
+      };
+    case '3':
+      // Semester 3: Biru / Sky Pastel
+      return {
+        cardUnselected: 'bg-sky-50/85 hover:bg-sky-100/80 text-slate-900 border-sky-200/90 hover:border-sky-400 shadow-2xs',
+        cardSelected: 'bg-gradient-to-br from-sky-500 to-sky-600 text-white border-transparent shadow-md shadow-sky-200 ring-2 ring-sky-400/50',
+        pillUnselected: 'bg-sky-100 text-sky-900 border border-sky-300/80',
+        pillSelected: 'bg-white/25 text-white',
+        semesterTextUnselected: 'text-sky-800',
+        semesterTextSelected: 'text-sky-100',
+        badgeViewer: 'bg-sky-50 border border-sky-200 text-sky-900',
+        dotColor: 'bg-sky-400',
+      };
+    case '4':
+      // Semester 4: Hijau / Emerald Pastel
+      return {
+        cardUnselected: 'bg-emerald-50/85 hover:bg-emerald-100/80 text-slate-900 border-emerald-200/90 hover:border-emerald-400 shadow-2xs',
+        cardSelected: 'bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-transparent shadow-md shadow-emerald-200 ring-2 ring-emerald-400/50',
+        pillUnselected: 'bg-emerald-100 text-emerald-900 border border-emerald-300/80',
+        pillSelected: 'bg-white/25 text-white',
+        semesterTextUnselected: 'text-emerald-800',
+        semesterTextSelected: 'text-emerald-100',
+        badgeViewer: 'bg-emerald-50 border border-emerald-200 text-emerald-900',
+        dotColor: 'bg-emerald-400',
+      };
+    case '5':
+      // Semester 5: Ungu / Purple Pastel
+      return {
+        cardUnselected: 'bg-purple-50/85 hover:bg-purple-100/80 text-slate-900 border-purple-200/90 hover:border-purple-400 shadow-2xs',
+        cardSelected: 'bg-gradient-to-br from-purple-500 to-purple-600 text-white border-transparent shadow-md shadow-purple-200 ring-2 ring-purple-400/50',
+        pillUnselected: 'bg-purple-100 text-purple-900 border border-purple-300/80',
+        pillSelected: 'bg-white/25 text-white',
+        semesterTextUnselected: 'text-purple-800',
+        semesterTextSelected: 'text-purple-100',
+        badgeViewer: 'bg-purple-50 border border-purple-200 text-purple-900',
+        dotColor: 'bg-purple-400',
+      };
+    case '6':
+      // Semester 6: Jingga / Orange Pastel
+      return {
+        cardUnselected: 'bg-orange-50/85 hover:bg-orange-100/80 text-slate-900 border-orange-200/90 hover:border-orange-400 shadow-2xs',
+        cardSelected: 'bg-gradient-to-br from-orange-500 to-orange-600 text-white border-transparent shadow-md shadow-orange-200 ring-2 ring-orange-400/50',
+        pillUnselected: 'bg-orange-100 text-orange-900 border border-orange-300/80',
+        pillSelected: 'bg-white/25 text-white',
+        semesterTextUnselected: 'text-orange-800',
+        semesterTextSelected: 'text-orange-100',
+        badgeViewer: 'bg-orange-50 border border-orange-200 text-orange-900',
+        dotColor: 'bg-orange-400',
+      };
+    case '7':
+      // Semester 7: Toska / Teal Pastel
+      return {
+        cardUnselected: 'bg-teal-50/85 hover:bg-teal-100/80 text-slate-900 border-teal-200/90 hover:border-teal-400 shadow-2xs',
+        cardSelected: 'bg-gradient-to-br from-teal-500 to-teal-600 text-white border-transparent shadow-md shadow-teal-200 ring-2 ring-teal-400/50',
+        pillUnselected: 'bg-teal-100 text-teal-900 border border-teal-300/80',
+        pillSelected: 'bg-white/25 text-white',
+        semesterTextUnselected: 'text-teal-800',
+        semesterTextSelected: 'text-teal-100',
+        badgeViewer: 'bg-teal-50 border border-teal-200 text-teal-900',
+        dotColor: 'bg-teal-400',
+      };
+    default:
+      // Default: Indigo Pastel
+      return {
+        cardUnselected: 'bg-indigo-50/75 hover:bg-indigo-100/70 text-slate-900 border-indigo-200/80 hover:border-indigo-400 shadow-2xs',
+        cardSelected: 'bg-gradient-to-br from-indigo-600 to-indigo-700 text-white border-transparent shadow-md shadow-indigo-200 ring-2 ring-indigo-500/40',
+        pillUnselected: 'bg-indigo-100 text-indigo-900 border border-indigo-200/80',
+        pillSelected: 'bg-white/25 text-white',
+        semesterTextUnselected: 'text-indigo-800',
+        semesterTextSelected: 'text-indigo-100',
+        badgeViewer: 'bg-indigo-50 border border-indigo-200 text-indigo-900',
+        dotColor: 'bg-indigo-400',
+      };
+  }
+}
+
 export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initialClassCode }) => {
   const [timetables, setTimetables] = useState<StudentTimetable[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -354,6 +476,7 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initia
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 gap-2.5 max-h-[600px] overflow-y-auto pr-1">
                 {filteredTimetables.map((item) => {
                   const isSelected = selectedTimetable?.classCode === item.classCode;
+                  const theme = getSemesterTheme(item.semester, item.classCode);
                   return (
                     <button
                       key={item.classCode}
@@ -361,22 +484,24 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initia
                       onClick={() => handleSelectClass(item)}
                       className={`p-3 rounded-2xl text-left transition-all border cursor-pointer group flex flex-col justify-between relative overflow-hidden ${
                         isSelected
-                          ? 'bg-gradient-to-br from-indigo-600 to-indigo-700 text-white border-transparent shadow-md shadow-indigo-200 ring-2 ring-indigo-500/30'
-                          : 'bg-white hover:bg-indigo-50/40 text-slate-800 border-slate-200/80 hover:border-indigo-200 shadow-2xs'
+                          ? theme.cardSelected
+                          : theme.cardUnselected
                       }`}
                     >
                       <div className="flex items-center justify-between w-full mb-1">
                         <span
                           className={`text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded-md ${
                             isSelected
-                              ? 'bg-white/20 text-white'
-                              : 'bg-slate-100 text-slate-600 group-hover:bg-indigo-100 group-hover:text-indigo-700'
+                              ? theme.pillSelected
+                              : theme.pillUnselected
                           }`}
                         >
                           {item.program}
                         </span>
-                        {isSelected && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                        {isSelected ? (
+                          <span className="w-2 h-2 rounded-full bg-white shadow-xs animate-pulse" />
+                        ) : (
+                          <span className={`w-1.5 h-1.5 rounded-full ${theme.dotColor}`} />
                         )}
                       </div>
 
@@ -384,7 +509,7 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initia
                         <h4 className="font-mono font-extrabold text-base tracking-tight leading-tight">
                           {item.classCode}
                         </h4>
-                        <p className={`text-[11px] font-medium ${isSelected ? 'text-indigo-100' : 'text-slate-400'}`}>
+                        <p className={`text-[11px] font-bold ${isSelected ? theme.semesterTextSelected : theme.semesterTextUnselected}`}>
                           {item.semester}
                         </p>
                       </div>
@@ -412,18 +537,13 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initia
               
               {/* Viewer Header */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-mono text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-                      {selectedTimetable.classCode}
-                    </h3>
-                    <span className="px-2.5 py-0.5 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 text-xs font-bold">
-                      {selectedTimetable.program} • {selectedTimetable.semester}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-400 font-mono">
-                    Fail: {selectedTimetable.fileName}
-                  </p>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-mono text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+                    {selectedTimetable.classCode}
+                  </h3>
+                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${getSemesterTheme(selectedTimetable.semester, selectedTimetable.classCode).badgeViewer}`}>
+                    {selectedTimetable.program} • {selectedTimetable.semester}
+                  </span>
                 </div>
 
                 {/* Quick Action Toolbar */}
@@ -581,7 +701,7 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initia
           >
             <div className="flex items-center gap-3">
               <span className="font-mono text-lg sm:text-xl font-black">{selectedTimetable.classCode}</span>
-              <span className="text-xs font-semibold text-slate-300 hidden sm:inline">
+              <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full hidden sm:inline ${getSemesterTheme(selectedTimetable.semester, selectedTimetable.classCode).badgeViewer}`}>
                 {selectedTimetable.program} • {selectedTimetable.semester}
               </span>
             </div>
