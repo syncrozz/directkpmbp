@@ -11,6 +11,7 @@ import {
   RotateCcw, 
   UserCheck, 
   Sparkles,
+  BookOpen,
   Calendar,
   Settings,
   Lock,
@@ -564,7 +565,7 @@ export default function App() {
             }`}
           >
             <UserCheck className="w-4 h-4" />
-            Rujukan Staff
+            Directory Staff
           </button>
           <button
             onClick={() => {
@@ -579,8 +580,8 @@ export default function App() {
                 : 'bg-white/60 text-slate-700 hover:bg-white/80 border border-slate-100'
             }`}
           >
-            <Sparkles className="w-4 h-4 text-amber-500 animate-pulse" />
-            Rujukan Pelajar
+            <BookOpen className="w-4 h-4" />
+            Rujukan Kolej
           </button>
           <button
             onClick={() => {
@@ -596,7 +597,7 @@ export default function App() {
             }`}
           >
             <Calendar className="w-4 h-4" />
-            Jadual Kelas
+            Jadual Pelajar
           </button>
         </div>
       </div>
