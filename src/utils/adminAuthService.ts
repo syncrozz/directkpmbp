@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { AuthorizedAdmin } from '../types';
+import { AuthorizedAdmin, AdminInvitation } from '../types';
 
 export const MASTER_ADMIN_PIN = '5313';
 export const MASTER_ADMIN_EMAILS = [
@@ -12,6 +12,7 @@ export const MASTER_ADMIN_EMAILS = [
 ];
 
 const STORAGE_KEY = 'kpmbp_authorized_admins';
+const INVITATIONS_STORAGE_KEY = 'kpmbp_admin_invitations';
 
 export const DEFAULT_AUTHORIZED_ADMINS: AuthorizedAdmin[] = [
   {
@@ -19,6 +20,8 @@ export const DEFAULT_AUTHORIZED_ADMINS: AuthorizedAdmin[] = [
     email: 'khaikerr@gmail.com',
     name: 'Khaikerr (Master Admin)',
     role: 'Master Administrator',
+    level: 1,
+    status: 'verified',
     authProvider: 'google',
     createdAt: new Date().toISOString().split('T')[0],
   },
@@ -28,7 +31,9 @@ export const DEFAULT_AUTHORIZED_ADMINS: AuthorizedAdmin[] = [
     pin: '5305',
     icLast4: '5305',
     name: 'Khairi Mohd',
-    role: 'Admin MARA Sah',
+    role: 'Admin Level 2',
+    level: 2,
+    status: 'verified',
     createdAt: new Date().toISOString().split('T')[0],
   },
 ];
@@ -41,7 +46,6 @@ export function isMasterAdminEmail(email?: string | null): boolean {
   const clean = email.trim().toLowerCase();
   return MASTER_ADMIN_EMAILS.includes(clean);
 }
-
 
 /**
  * Mendapatkan senarai semua admin yang diotorisasi oleh Master Admin.
@@ -76,8 +80,248 @@ export function saveAuthorizedAdmins(admins: AuthorizedAdmin[]): void {
 }
 
 /**
- * Menambah atau mengemaskini admin yang diotorisasi oleh Master Admin.
- * Menerima alamat emel MARA dan nombor IC (atau 4 digit terakhir).
+ * Mendapatkan senarai jemputan Admin Level 2.
+ */
+export function getAdminInvitations(): AdminInvitation[] {
+  try {
+    const raw = localStorage.getItem(INVITATIONS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (err) {
+    console.error('Error reading admin invitations:', err);
+    return [];
+  }
+}
+
+/**
+ * Menyimpan senarai jemputan Admin Level 2.
+ */
+export function saveAdminInvitations(invitations: AdminInvitation[]): void {
+  try {
+    localStorage.setItem(INVITATIONS_STORAGE_KEY, JSON.stringify(invitations));
+  } catch (err) {
+    console.error('Error saving admin invitations:', err);
+  }
+}
+
+/**
+ * Menjana token unik dan pautan pengesahan jemputan Admin Level 2 serta menghantar ke inbox.
+ */
+export async function createAdminInvitation(
+  email: string,
+  name?: string,
+  invitedBy?: string
+): Promise<{ success: boolean; message: string; invite?: AdminInvitation }> {
+  const cleanEmail = email.trim().toLowerCase();
+  if (!cleanEmail || !cleanEmail.includes('@')) {
+    return { success: false, message: 'Sila masukkan alamat emel yang sah (cth: pegawai@mara.gov.my).' };
+  }
+
+  if (isMasterAdminEmail(cleanEmail)) {
+    return { success: false, message: 'Emel ini adalah Master Admin rasmi dan tidak perlu dijemput sebagai Level 2.' };
+  }
+
+  // Jana token selamat
+  const token = `inv_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 9)}`;
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const inviteUrl = `${origin}/?invite=${token}#/verify-admin`;
+
+  const newInvite: AdminInvitation = {
+    id: `inv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+    email: cleanEmail,
+    name: name?.trim() || cleanEmail.split('@')[0].replace(/\./g, ' ').toUpperCase(),
+    level: 2,
+    role: 'Admin Level 2',
+    status: 'pending',
+    token,
+    inviteUrl,
+    invitedBy: invitedBy || 'Master Administrator',
+    createdAt: new Date().toISOString(),
+  };
+
+  const currentInvites = getAdminInvitations();
+  // Gantikan rekod jemputan sedia ada jika belum disahkan
+  const filtered = currentInvites.filter((i) => i.email !== cleanEmail);
+  const updatedInvites = [newInvite, ...filtered];
+  saveAdminInvitations(updatedInvites);
+
+  // Hantar emel pengesahan melalui endpoint backend API
+  try {
+    const res = await fetch('/api/send-admin-invite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: cleanEmail,
+        name: newInvite.name,
+        token: newInvite.token,
+        inviteUrl: newInvite.inviteUrl,
+        role: 'Admin Level 2',
+        level: 2,
+      }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return {
+        success: true,
+        message: data.message || `Pautan pengesahan telah dihantar ke inbox ${cleanEmail}.`,
+        invite: newInvite,
+      };
+    }
+  } catch (e) {
+    console.warn('API send-admin-invite notice:', e);
+  }
+
+  return {
+    success: true,
+    message: `Jemputan berjaya dijana untuk ${cleanEmail}. Pautan pengesahan sedia disalin atau dihantar.`,
+    invite: newInvite,
+  };
+}
+
+/**
+ * Mencari jemputan Admin berdasarkan token jemputan.
+ */
+export function getInvitationByToken(token: string): AdminInvitation | null {
+  if (!token) return null;
+  const invites = getAdminInvitations();
+  return invites.find((i) => i.token === token) || null;
+}
+
+/**
+ * Mengesahkan dan mengaktifkan akaun Admin Level 2 apabila pautan inbox diklik.
+ */
+export function verifyAdminInvitationToken(
+  token: string,
+  pin: string,
+  name?: string
+): { success: boolean; message: string; admin?: AuthorizedAdmin } {
+  const invite = getInvitationByToken(token);
+  if (!invite) {
+    return { success: false, message: 'Pautan pengesahan tidak sah atau telah tamat tempoh.' };
+  }
+
+  if (invite.status === 'revoked') {
+    return { success: false, message: 'Jemputan ini telah dibatalkan oleh Master Administrator.' };
+  }
+
+  const cleanPin = pin.replace(/\D/g, '').slice(-4);
+  if (cleanPin.length !== 4) {
+    return { success: false, message: 'Sila masukkan 4 digit PIN keselamatan.' };
+  }
+
+  // 1. Kemaskini status jemputan kepada 'verified'
+  const invites = getAdminInvitations();
+  const idx = invites.findIndex((i) => i.token === token);
+  if (idx >= 0) {
+    invites[idx] = {
+      ...invites[idx],
+      status: 'verified',
+      verifiedAt: new Date().toISOString(),
+    };
+    saveAdminInvitations(invites);
+  }
+
+  // 2. Tambah / kemaskini dalam senarai admin aktif
+  const currentAdmins = getAuthorizedAdmins();
+  const existingIdx = currentAdmins.findIndex((a) => a.email.toLowerCase() === invite.email.toLowerCase());
+
+  const adminName = name?.trim() || invite.name || invite.email.split('@')[0].toUpperCase();
+
+  const newAdminRecord: AuthorizedAdmin = {
+    id: `admin-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+    email: invite.email,
+    name: adminName,
+    pin: cleanPin,
+    icLast4: cleanPin,
+    level: 2,
+    role: 'Admin Level 2',
+    status: 'verified',
+    inviteToken: token,
+    verifiedAt: new Date().toISOString(),
+    createdAt: new Date().toISOString().split('T')[0],
+  };
+
+  let updatedAdmins: AuthorizedAdmin[];
+  if (existingIdx >= 0) {
+    currentAdmins[existingIdx] = {
+      ...currentAdmins[existingIdx],
+      ...newAdminRecord,
+      id: currentAdmins[existingIdx].id,
+    };
+    updatedAdmins = [...currentAdmins];
+  } else {
+    updatedAdmins = [newAdminRecord, ...currentAdmins];
+  }
+
+  saveAuthorizedAdmins(updatedAdmins);
+
+  return {
+    success: true,
+    message: `Akaun Admin Level 2 untuk ${invite.email} telah berjaya disahkan dan diaktifkan!`,
+    admin: newAdminRecord,
+  };
+}
+
+/**
+ * Menghantar semula emel jemputan ke inbox.
+ */
+export async function resendAdminInvitation(
+  id: string
+): Promise<{ success: boolean; message: string; invite?: AdminInvitation }> {
+  const invites = getAdminInvitations();
+  const invite = invites.find((i) => i.id === id);
+  if (!invite) {
+    return { success: false, message: 'Jemputan tidak dijumpai.' };
+  }
+
+  try {
+    await fetch('/api/send-admin-invite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: invite.email,
+        name: invite.name,
+        token: invite.token,
+        inviteUrl: invite.inviteUrl,
+        role: 'Admin Level 2',
+        level: 2,
+      }),
+    });
+  } catch (err) {
+    console.warn('Notice resending invite:', err);
+  }
+
+  return {
+    success: true,
+    message: `Pautan pengesahan telah dihantar semula ke inbox ${invite.email}.`,
+    invite,
+  };
+}
+
+/**
+ * Membatalkan jemputan Admin Level 2.
+ */
+export function revokeAdminInvitation(id: string): { success: boolean; message: string } {
+  const invites = getAdminInvitations();
+  const target = invites.find((i) => i.id === id);
+  if (!target) {
+    return { success: false, message: 'Jemputan tidak dijumpai.' };
+  }
+
+  // Kemaskini status jemputan
+  const updatedInvites = invites.filter((i) => i.id !== id);
+  saveAdminInvitations(updatedInvites);
+
+  // Buang dari senarai admin aktif sekiranya ada
+  const admins = getAuthorizedAdmins().filter((a) => a.email.toLowerCase() !== target.email.toLowerCase());
+  saveAuthorizedAdmins(admins);
+
+  return { success: true, message: `Otorisasi Admin Level 2 untuk ${target.email} telah dibatalkan.` };
+}
+
+/**
+ * Menambah atau mengemaskini admin secara langsung.
  */
 export function addAuthorizedAdmin(
   email: string,
@@ -89,7 +333,6 @@ export function addAuthorizedAdmin(
     return { success: false, message: 'Sila masukkan alamat emel yang sah (contoh: khairi.mohd@mara.gov.my).' };
   }
 
-  // Ekstrak 4 digit terakhir daripada nombor IC atau PIN
   const digitsOnly = icOrPin.replace(/\D/g, '');
   if (digitsOnly.length < 4) {
     return { success: false, message: 'Nombor IC atau PIN keselamatan mestilah mempunyai sekurang-kurangnya 4 digit.' };
@@ -97,20 +340,18 @@ export function addAuthorizedAdmin(
   const last4Pin = digitsOnly.slice(-4);
 
   const currentList = getAuthorizedAdmins();
-  const existingIndex = currentList.findIndex(
-    (a) => a.email.toLowerCase() === cleanEmail
-  );
-
+  const existingIndex = currentList.findIndex((a) => a.email.toLowerCase() === cleanEmail);
   const adminName = name?.trim() || cleanEmail.split('@')[0].replace(/\./g, ' ').toUpperCase();
 
   if (existingIndex >= 0) {
-    // Kemaskini rekod admin sedia ada
     currentList[existingIndex] = {
       ...currentList[existingIndex],
       pin: last4Pin,
       icLast4: last4Pin,
       name: adminName,
-      createdAt: new Date().toISOString().split('T')[0],
+      level: currentList[existingIndex].level || 2,
+      role: currentList[existingIndex].role || 'Admin Level 2',
+      status: 'verified',
     };
     saveAuthorizedAdmins(currentList);
     return {
@@ -126,7 +367,9 @@ export function addAuthorizedAdmin(
     pin: last4Pin,
     icLast4: last4Pin,
     name: adminName,
-    role: 'Admin MARA Sah',
+    level: 2,
+    role: 'Admin Level 2',
+    status: 'verified',
     createdAt: new Date().toISOString().split('T')[0],
   };
 
@@ -135,7 +378,7 @@ export function addAuthorizedAdmin(
 
   return {
     success: true,
-    message: `Admin ${cleanEmail} berjaya diotorisasi untuk Admin Mode.`,
+    message: `Admin ${cleanEmail} berjaya diotorisasi sebagai Admin Level 2.`,
     admin: newAdmin,
   };
 }
@@ -145,6 +388,10 @@ export function addAuthorizedAdmin(
  */
 export function removeAuthorizedAdmin(id: string): { success: boolean; message: string } {
   const currentList = getAuthorizedAdmins();
+  const target = currentList.find((a) => a.id === id);
+  if (target && isMasterAdminEmail(target.email)) {
+    return { success: false, message: 'Master Admin rasmi tidak boleh dipadamkan.' };
+  }
   const filtered = currentList.filter((a) => a.id !== id);
   if (filtered.length === currentList.length) {
     return { success: false, message: 'Admin tidak dijumpai.' };
@@ -170,10 +417,13 @@ export function verifyAdminCredentials(
       isMaster: true,
       admin: {
         id: 'master-admin',
-        email: cleanEmail || 'master@admin.kpmbp',
+        email: cleanEmail || 'khaikerr@gmail.com',
         pin: MASTER_ADMIN_PIN,
         name: 'Master Admin',
         role: 'Master Administrator',
+        level: 1,
+        status: 'verified',
+        authProvider: 'pin',
       },
     };
   }
@@ -181,14 +431,14 @@ export function verifyAdminCredentials(
   if (!cleanEmail) {
     return {
       isValid: false,
-      message: 'Sila masukkan alamat emel MARA yang sah.',
+      message: 'Sila masukkan alamat emel yang sah.',
     };
   }
 
   if (cleanPin.length !== 4) {
     return {
       isValid: false,
-      message: 'Sila masukkan 4 digit terakhir nombor IC sebagai PIN keselamatan.',
+      message: 'Sila masukkan 4 digit PIN keselamatan.',
     };
   }
 
@@ -199,16 +449,21 @@ export function verifyAdminCredentials(
   );
 
   if (matchedAdmin) {
+    const isMaster = isMasterAdminEmail(matchedAdmin.email) || matchedAdmin.level === 1;
     return {
       isValid: true,
-      isMaster: false,
-      admin: matchedAdmin,
+      isMaster,
+      admin: {
+        ...matchedAdmin,
+        level: isMaster ? 1 : 2,
+        role: isMaster ? 'Master Administrator' : 'Admin Level 2',
+      },
     };
   }
 
   return {
     isValid: false,
-    message: 'Kombinasi emel MARA dan 4-digit PIN IC tidak sepadan atau belum diotorisasi.',
+    message: 'Kombinasi emel dan 4-digit PIN tidak sepadan atau belum diotorisasi.',
   };
 }
 
@@ -240,6 +495,8 @@ export function verifyGoogleAdmin(user: {
         email: cleanEmail,
         name: user.displayName || 'Khaikerr (Master Admin)',
         role: 'Master Administrator',
+        level: 1,
+        status: 'verified',
         photoUrl: user.photoURL || undefined,
         authProvider: 'google',
         createdAt: new Date().toISOString().split('T')[0],
@@ -251,13 +508,17 @@ export function verifyGoogleAdmin(user: {
   const admins = getAuthorizedAdmins();
   const matchedAdmin = admins.find((a) => a.email.toLowerCase() === cleanEmail);
   if (matchedAdmin) {
+    const isMaster = matchedAdmin.level === 1 || isMasterAdminEmail(matchedAdmin.email);
     return {
       isValid: true,
-      isMaster: false,
+      isMaster,
       admin: {
         ...matchedAdmin,
         name: user.displayName || matchedAdmin.name,
         photoUrl: user.photoURL || matchedAdmin.photoUrl,
+        level: isMaster ? 1 : 2,
+        role: isMaster ? 'Master Administrator' : 'Admin Level 2',
+        status: 'verified',
         authProvider: 'google',
       },
     };
@@ -266,7 +527,6 @@ export function verifyGoogleAdmin(user: {
   return {
     isValid: false,
     isMaster: false,
-    message: `Akaun Google (${cleanEmail}) tidak mempunyai kebenaran akses Admin. Sila gunakan akaun Master Admin (khaikerr@gmail.com) atau hubungi pentadbir.`,
+    message: `Akaun Google (${cleanEmail}) tidak mempunyai kebenaran akses Admin. Sila gunakan akaun Master Admin (khaikerr@gmail.com) atau pautan jemputan Admin Level 2.`,
   };
 }
-

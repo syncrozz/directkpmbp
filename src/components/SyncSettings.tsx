@@ -7,8 +7,6 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Database, 
-  Copy, 
-  Check, 
   Info, 
   FileSpreadsheet, 
   Upload, 
@@ -25,11 +23,29 @@ import {
   UserPlus,
   Link,
   Share2,
-  ExternalLink
+  ExternalLink,
+  Send,
+  Eye,
+  Copy,
+  RefreshCw,
+  MailCheck,
+  Check,
+  CheckCircle2,
+  AlertTriangle,
+  Sparkles,
+  Clock
 } from 'lucide-react';
-import { Staff, StaffCommittee, AuthorizedAdmin } from '../types';
+import { Staff, StaffCommittee, AuthorizedAdmin, AdminInvitation } from '../types';
 import { saveStaffListToFirestore, saveCommitteesToFirestore, cleanupLegacyJtmDuplicates } from '../config/firebase';
-import { getAuthorizedAdmins, addAuthorizedAdmin, removeAuthorizedAdmin } from '../utils/adminAuthService';
+import { 
+  getAuthorizedAdmins, 
+  addAuthorizedAdmin, 
+  removeAuthorizedAdmin,
+  getAdminInvitations,
+  createAdminInvitation,
+  resendAdminInvitation,
+  revokeAdminInvitation
+} from '../utils/adminAuthService';
 import { findDuplicateStaff, normalizeStaffName, normalizeStaffEmail } from '../utils/staffDeduplication';
 import { formatIC } from '../utils/icFormatter';
 
@@ -113,25 +129,58 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
 
   // Authorized Admin management states
   const [authorizedAdmins, setAuthorizedAdmins] = useState<AuthorizedAdmin[]>(() => getAuthorizedAdmins());
+  const [adminInvitations, setAdminInvitations] = useState<AdminInvitation[]>(() => getAdminInvitations());
   const [newAdminEmail, setNewAdminEmail] = useState('');
-  const [newAdminIc, setNewAdminIc] = useState('');
   const [newAdminName, setNewAdminName] = useState('');
+  const [isSendingInvite, setIsSendingInvite] = useState(false);
+  const [copiedInviteId, setCopiedInviteId] = useState<string | null>(null);
+  const [previewInvite, setPreviewInvite] = useState<AdminInvitation | null>(null);
   const [adminAuthStatus, setAdminAuthStatus] = useState<{ success: boolean; message: string } | null>(null);
 
-  const handleAddAdmin = (e: React.FormEvent) => {
+  const handleSendAdminLevel2Invite = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newAdminEmail.trim() || !newAdminIc.trim()) {
-      setAdminAuthStatus({ success: false, message: 'Sila masukkan emel MARA dan 4 digit terakhir nombor IC.' });
+    if (!newAdminEmail.trim()) {
+      setAdminAuthStatus({ success: false, message: 'Sila masukkan alamat emel untuk Admin Level 2.' });
       return;
     }
-    const res = addAuthorizedAdmin(newAdminEmail, newAdminIc, newAdminName);
+    setIsSendingInvite(true);
+    setAdminAuthStatus(null);
+    try {
+      const res = await createAdminInvitation(newAdminEmail, newAdminName);
+      setAdminAuthStatus(res);
+      if (res.success) {
+        setAdminInvitations(getAdminInvitations());
+        setAuthorizedAdmins(getAuthorizedAdmins());
+        setNewAdminEmail('');
+        setNewAdminName('');
+      }
+    } catch (err: any) {
+      setAdminAuthStatus({ success: false, message: err.message || 'Ralat menjana jemputan' });
+    } finally {
+      setIsSendingInvite(false);
+    }
+  };
+
+  const handleResendInvite = async (id: string) => {
+    const res = await resendAdminInvitation(id);
     setAdminAuthStatus(res);
-    if (res.success) {
-      setAuthorizedAdmins(getAuthorizedAdmins());
-      setNewAdminEmail('');
-      setNewAdminIc('');
-      setNewAdminName('');
-      setTimeout(() => setAdminAuthStatus(null), 4000);
+    setAdminInvitations(getAdminInvitations());
+    setTimeout(() => setAdminAuthStatus(null), 4000);
+  };
+
+  const handleRevokeInvite = (id: string) => {
+    const res = revokeAdminInvitation(id);
+    setAdminAuthStatus(res);
+    setAdminInvitations(getAdminInvitations());
+    setAuthorizedAdmins(getAuthorizedAdmins());
+    setTimeout(() => setAdminAuthStatus(null), 3000);
+  };
+
+  const handleCopyInviteLink = (invite: AdminInvitation) => {
+    if (navigator?.clipboard) {
+      navigator.clipboard.writeText(invite.inviteUrl);
+      setCopiedInviteId(invite.id);
+      setTimeout(() => setCopiedInviteId(null), 2500);
     }
   };
 
@@ -772,16 +821,16 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
             </button>
           </div>
 
-          {/* Otorisasi Akses Admin (Emel MARA & 4 Digit PIN IC) */}
+          {/* Pengurusan Admin Level 2 (Akses No. Kad Pengenalan & Data Terhad) */}
           <div className="p-4 md:p-5 bg-gradient-to-br from-indigo-50/90 via-white to-slate-50 rounded-2xl border border-indigo-200/90 shadow-xs space-y-4 text-left">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-indigo-100/80 pb-3">
               <div>
                 <h4 className="text-xs md:text-sm font-extrabold text-indigo-950 flex items-center gap-2">
                   <ShieldCheck className="w-4 h-4 text-indigo-600" />
-                  <span>Otorisasi Akses Admin (Emel MARA & 4 Digit PIN IC)</span>
+                  <span>Pengurusan Admin Level 2 (Akses No. IC & Data Terhad)</span>
                 </h4>
                 <p className="text-[11px] text-slate-500 font-medium mt-0.5">
-                  Master Admin boleh membenarkan pegawai mengakses Admin Mode untuk melihat maklumat sulit (Daerah Asal, Tahun Lahir, No. Plat Kenderaan).
+                  Setkan emel pegawai yang dibenarkan melihat maklumat sensitif seperti <strong>No. Kad Pengenalan (IC)</strong>, tarikh lahir & no. plat.
                 </p>
               </div>
               <span className="text-[10px] font-black px-2.5 py-1 rounded-lg bg-indigo-100 text-indigo-900 border border-indigo-200 self-start sm:self-auto shrink-0">
@@ -790,104 +839,182 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
             </div>
 
             {/* Explanatory Info Card */}
-            <div className="p-3 bg-amber-50/80 border border-amber-200/70 rounded-xl flex items-start gap-2.5 text-amber-950 text-[11px]">
-              <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-              <div className="space-y-0.5">
-                <p className="font-bold">Cara Format Otorisasi:</p>
-                <p className="text-amber-900/90 leading-relaxed">
-                  Masukkan alamat emel rasmi MARA (cth: <span className="font-mono font-bold">khairi.mohd@mara.gov.my</span>) dan kombinasi 4 digit nombor IC terakhir (cth: untuk IC <span className="font-mono font-bold">861115-46-5305</span>, PIN keselamatannya adalah <span className="font-mono font-bold bg-amber-200/70 px-1 rounded">5305</span>).
+            <div className="p-3.5 bg-blue-50/80 border border-blue-200/80 rounded-xl flex items-start gap-2.5 text-blue-950 text-[11px]">
+              <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p className="font-bold">Aliran Pengesahan Inbox:</p>
+                <p className="text-blue-900/90 leading-relaxed font-medium">
+                  1. Masukkan alamat emel pegawai di bawah dan klik <strong>&quot;Hantar Pautan ke Inbox&quot;</strong>.<br/>
+                  2. Pegawai akan menerima emel rasmi mengandungi pautan pengesahan unik ke inbox mereka.<br/>
+                  3. Setelah pegawai membuka pautan dan menetapkan 4-digit PIN (atau Google Auth), akaun akan diaktifkan secara automatik sebagai <strong>Admin Level 2</strong> yang membolehkan mereka menyemak maklumat <strong>No. IC</strong> kakitangan.
                 </p>
               </div>
             </div>
 
-            {/* Add Authorized Admin Form */}
-            <form onSubmit={handleAddAdmin} className="space-y-3 bg-white p-3.5 rounded-xl border border-indigo-100 shadow-2xs">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            {/* Add / Invite Admin Level 2 Form */}
+            <form onSubmit={handleSendAdminLevel2Invite} className="space-y-3 bg-white p-4 rounded-xl border border-indigo-100 shadow-2xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
-                    <Mail className="w-3 h-3 text-indigo-600" />
-                    <span>Alamat Emel MARA *</span>
+                    <Mail className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Alamat Emel Pegawai (Admin Level 2) *</span>
                   </label>
                   <input
                     type="email"
                     required
-                    placeholder="cth: khairi.mohd@mara.gov.my"
+                    placeholder="cth: pegawai@mara.gov.my atau nama@gmail.com"
                     value={newAdminEmail}
                     onChange={(e) => setNewAdminEmail(e.target.value)}
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
+                    className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
                   />
                 </div>
 
                 <div className="space-y-1">
                   <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
-                    <Hash className="w-3 h-3 text-indigo-600" />
-                    <span>4 Digit Terakhir No. IC *</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    maxLength={14}
-                    placeholder="cth: 5305 (atau 861115-46-5305)"
-                    value={newAdminIc}
-                    onChange={(e) => setNewAdminIc(e.target.value)}
-                    className="w-full px-3 py-2 text-xs font-mono rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
-                    <UserCheck className="w-3 h-3 text-indigo-600" />
+                    <UserCheck className="w-3.5 h-3.5 text-indigo-600" />
                     <span>Nama Pegawai (Pilihan)</span>
                   </label>
                   <input
                     type="text"
-                    placeholder="cth: Khairi Mohd"
+                    placeholder="cth: Puan Siti Zubaidah"
                     value={newAdminName}
                     onChange={(e) => setNewAdminName(e.target.value)}
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
+                    className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
                   />
                 </div>
               </div>
 
-              <div className="flex items-center justify-between gap-2 pt-1">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-1">
                 <span className="text-[10px] text-slate-400 font-medium italic">
-                  * Admin ini boleh log masuk menggunakan Emel MARA & PIN 4-digit IC.
+                  * Pautan jemputan unik selamat akan dijana dan dihantar ke inbox emel ini.
                 </span>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-xl text-xs font-extrabold shadow-sm transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
+                  disabled={isSendingInvite}
+                  className="px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 active:scale-95 text-white rounded-xl text-xs font-black shadow-sm transition-all cursor-pointer flex items-center justify-center gap-2 shrink-0 disabled:opacity-50"
                 >
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  <span>Otorisasi Admin</span>
+                  <Send className="w-3.5 h-3.5" />
+                  <span>{isSendingInvite ? 'Menghantar ke Inbox...' : 'Hantar Pautan ke Inbox'}</span>
                 </button>
               </div>
 
               {adminAuthStatus && (
-                <p className={`text-[11px] p-2 rounded-lg font-bold flex items-center gap-1.5 ${
+                <div className={`text-[11px] p-2.5 rounded-xl font-bold flex items-center gap-2 ${
                   adminAuthStatus.success 
                     ? 'bg-emerald-50 border border-emerald-200 text-emerald-800' 
                     : 'bg-red-50 border border-red-200 text-red-700'
                 }`}>
-                  {adminAuthStatus.success ? '✓' : '⚠'} {adminAuthStatus.message}
-                </p>
+                  {adminAuthStatus.success ? <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" /> : <AlertTriangle className="w-4 h-4 shrink-0 text-red-600" />}
+                  <span>{adminAuthStatus.message}</span>
+                </div>
               )}
             </form>
 
-            {/* List of Authorized Admins */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-[11px] font-bold text-slate-600 px-1">
-                <span>Senarai Pegawai Diotorisasi ({authorizedAdmins.length})</span>
-                <span className="text-[10px] text-slate-400 font-normal">Disimpan secara automatik</span>
+            {/* List 1: Pending Invitations Waiting for Inbox Verification */}
+            {adminInvitations.filter(i => i.status === 'pending').length > 0 && (
+              <div className="space-y-2 pt-1">
+                <div className="flex items-center justify-between text-[11px] font-bold text-amber-900 px-1">
+                  <span className="flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Jemputan Menunggu Pengesahan Inbox ({adminInvitations.filter(i => i.status === 'pending').length})</span>
+                  </span>
+                  <span className="text-[10px] text-amber-700/80 font-medium">Belum disahkan oleh penerima</span>
+                </div>
+
+                <div className="space-y-2">
+                  {adminInvitations
+                    .filter((i) => i.status === 'pending')
+                    .map((invite) => (
+                      <div
+                        key={invite.id}
+                        className="p-3 bg-amber-50/70 border border-amber-200/90 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs hover:bg-amber-50 transition-colors"
+                      >
+                        <div className="min-w-0 space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs font-black text-slate-900 truncate">
+                              {invite.name || invite.email}
+                            </span>
+                            <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
+                              Menunggu Pengesahan Inbox
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 text-[10px] text-slate-600 font-mono flex-wrap">
+                            <span className="flex items-center gap-1">
+                              <Mail className="w-3 h-3 text-slate-400" />
+                              {invite.email}
+                            </span>
+                            <span>•</span>
+                            <span className="text-slate-400">
+                              Dihantar: {new Date(invite.createdAt).toLocaleTimeString('ms-MY', { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Action buttons */}
+                        <div className="flex items-center gap-1.5 flex-wrap shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleCopyInviteLink(invite)}
+                            title="Salin pautan pengesahan ke clipboard"
+                            className="px-2.5 py-1 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg text-[10px] font-bold transition-colors flex items-center gap-1 cursor-pointer shadow-2xs"
+                          >
+                            {copiedInviteId === invite.id ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                            <span>{copiedInviteId === invite.id ? 'Disalin!' : 'Salin Pautan'}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setPreviewInvite(invite)}
+                            title="Pratonton reka bentuk emel inbox"
+                            className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-lg text-[10px] font-bold transition-colors flex items-center gap-1 cursor-pointer"
+                          >
+                            <Eye className="w-3 h-3" />
+                            <span>Pratonton Emel</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleResendInvite(invite.id)}
+                            title="Hantar semula pautan ke inbox"
+                            className="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                          >
+                            <RefreshCw className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleRevokeInvite(invite.id)}
+                            title="Batal jemputan ini"
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
+
+            {/* List 2: Active / Verified Admins */}
+            <div className="space-y-2 pt-2">
+              <div className="flex items-center justify-between text-[11px] font-bold text-slate-700 px-1">
+                <span>Senarai Pegawai Otorisasi Aktif ({authorizedAdmins.length})</span>
+                <span className="text-[10px] text-slate-400 font-normal">Akses disahkan & berkuat kuasa</span>
               </div>
 
-              <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+              <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
                 {authorizedAdmins.map((admin) => (
                   <div
                     key={admin.id}
-                    className="p-2.5 bg-white rounded-xl border border-slate-200 flex items-center justify-between gap-3 shadow-2xs hover:border-indigo-200 transition-colors"
+                    className="p-3 bg-white rounded-xl border border-slate-200 flex items-center justify-between gap-3 shadow-2xs hover:border-indigo-200 transition-colors"
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-7 h-7 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-700 font-black text-xs shrink-0">
+                      <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-xs shrink-0 ${
+                        admin.email === 'khaikerr@gmail.com' || admin.level === 1
+                          ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                          : 'bg-indigo-50 text-indigo-700 border border-indigo-100'
+                      }`}>
                         {admin.name ? admin.name.charAt(0).toUpperCase() : 'A'}
                       </div>
                       <div className="min-w-0">
@@ -896,17 +1023,17 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
                             {admin.name || admin.email}
                           </p>
                           <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded border ${
-                            admin.email === 'khaikerr@gmail.com' || admin.role?.toLowerCase().includes('master')
+                            admin.email === 'khaikerr@gmail.com' || admin.level === 1
                               ? 'bg-amber-100 text-amber-900 border-amber-300'
-                              : 'bg-indigo-50 text-indigo-700 border-indigo-100'
+                              : 'bg-emerald-50 text-emerald-800 border-emerald-200'
                           }`}>
-                            {admin.email === 'khaikerr@gmail.com' || admin.role?.toLowerCase().includes('master') ? 'Master Admin' : 'Admin'}
+                            {admin.email === 'khaikerr@gmail.com' || admin.level === 1 ? 'Master Admin (Level 1)' : 'Admin Level 2'}
                           </span>
                         </div>
-                        <p className="text-[10px] font-mono text-slate-500 truncate">
+                        <p className="text-[10px] font-mono text-slate-500 truncate mt-0.5">
                           {admin.email} • Status:{' '}
                           <span className="font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-                            {admin.authProvider === 'google' || admin.email === 'khaikerr@gmail.com' ? 'Google Auth Aktif' : 'PIN Aktif (••••)'}
+                            Akses No. IC Dibenarkan
                           </span>
                         </p>
                       </div>
@@ -932,6 +1059,86 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
               </div>
             </div>
           </div>
+
+          {/* Email Inbox Preview Modal (Allows Master Admin to see the exact message sent and test-click the activation link) */}
+          {previewInvite && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs">
+              <div className="relative w-full max-w-lg bg-white rounded-3xl p-6 shadow-2xl border border-slate-200 text-left space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div className="flex items-center gap-2">
+                    <MailCheck className="w-4 h-4 text-indigo-600" />
+                    <h4 className="text-xs font-bold text-slate-900">
+                      Pratonton Emel Jemputan Inbox
+                    </h4>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewInvite(null)}
+                    className="p-1.5 text-slate-400 hover:text-slate-700 rounded-full hover:bg-slate-100 transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
+                  <div className="text-[11px] text-slate-600 space-y-1 border-b border-slate-200 pb-2">
+                    <p><strong>Kepada:</strong> <span className="font-mono text-slate-900">{previewInvite.email}</span></p>
+                    <p><strong>Subjek:</strong> <span className="text-slate-900">[Jemputan Rasmi] Otorisasi Admin Level 2 – DIRECTORY KPMBP</span></p>
+                  </div>
+
+                  <div className="space-y-2 text-xs text-slate-700 leading-relaxed pt-1">
+                    <p>Salam sejahtera <strong>{previewInvite.name || previewInvite.email}</strong>,</p>
+                    <p>
+                      Anda telah dijemput oleh <strong>Master Administrator</strong> untuk diotorisasi sebagai <strong>Admin Level 2</strong> di portal DIRECTORY KPMBP.
+                    </p>
+                    <div className="p-2.5 bg-indigo-50 border border-indigo-100 rounded-xl text-[11px] text-indigo-900">
+                      <strong>Hak Akses Diberikan:</strong> Melihat maklumat terhad kakitangan termasuk <strong>No. Kad Pengenalan (IC)</strong>, tarikh lahir, daerah asal, dan no. plat kenderaan.
+                    </div>
+                    <p className="text-[11px] text-slate-600">
+                      Sila klik butang di bawah untuk mengesahkan emel dan mengaktifkan akaun Admin Level 2 anda:
+                    </p>
+
+                    <div className="text-center py-2">
+                      <a
+                        href={previewInvite.inviteUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all"
+                      >
+                        <span>Sahkan & Aktifkan Akaun Admin</span>
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    </div>
+
+                    <p className="text-[10px] text-slate-400 text-center font-mono break-all pt-1">
+                      {previewInvite.inviteUrl}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleCopyInviteLink(previewInvite);
+                    }}
+                    className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>{copiedInviteId === previewInvite.id ? 'Pautan Disalin!' : 'Salin Pautan Pengesahan'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPreviewInvite(null)}
+                    className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-colors cursor-pointer"
+                  >
+                    Tutup Pratonton
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Pautan Pendaftaran Kendiri Staf Baharu (Slug Pendaftaran) */}
           <div className="p-4 md:p-5 bg-gradient-to-br from-indigo-50/90 via-white to-purple-50/60 rounded-2xl border border-indigo-200/90 shadow-xs space-y-4 text-left">

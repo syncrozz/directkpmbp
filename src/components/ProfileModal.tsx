@@ -344,7 +344,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ staff, committees = 
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-1.5">
                             <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">No. Kad Pengenalan (IC)</h4>
-                            <span className="px-1.5 py-0.2 bg-indigo-100 text-indigo-700 text-[9px] font-black rounded-md uppercase">Admin Mode</span>
+                            <span className="px-1.5 py-0.2 bg-indigo-100 text-indigo-700 text-[9px] font-black rounded-md uppercase">Akses Admin (Level 1 & 2)</span>
                           </div>
                           <button
                             type="button"
@@ -386,7 +386,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ staff, committees = 
                     <div>
                       <div className="flex items-center gap-1.5">
                         <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Daerah Asal & Tahun Lahir</h4>
-                        <span className="px-1.5 py-0.2 bg-indigo-100 text-indigo-700 text-[9px] font-black rounded-md uppercase">Admin Mode</span>
+                        <span className="px-1.5 py-0.2 bg-indigo-100 text-indigo-700 text-[9px] font-black rounded-md uppercase">Akses Admin (Level 1 & 2)</span>
                       </div>
                       <p className="text-xs text-slate-800 font-bold mt-0.5">
                         {staff.DaerahAsal || 'Tiada rekod'}
@@ -417,7 +417,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ staff, committees = 
                           <Car className="w-3.5 h-3.5 text-slate-600" />
                           <span>Nombor Pendaftaran Kenderaan (PlatNo)</span>
                         </h4>
-                        <span className="px-1.5 py-0.2 bg-indigo-100 text-indigo-700 text-[9px] font-black rounded-md uppercase">Admin Mode</span>
+                        <span className="px-1.5 py-0.2 bg-indigo-100 text-indigo-700 text-[9px] font-black rounded-md uppercase">Akses Admin (Level 1 & 2)</span>
                       </div>
                       <div className="flex flex-wrap gap-2 pt-1">
                         {allPlates.map((plate, idx) => (
@@ -441,7 +441,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ staff, committees = 
                     </div>
                     <div>
                       <h4 className="text-[11px] font-extrabold text-slate-700">Maklumat Peribadi & Kenderaan Dihadkan</h4>
-                      <p className="text-[10px] text-slate-500 font-medium">No. Kad Pengenalan (IC), daerah asal, tahun lahir & no. plat hanya untuk Admin Mode.</p>
+                      <p className="text-[10px] text-slate-500 font-medium">No. Kad Pengenalan (IC), daerah asal, tahun lahir & no. plat hanya untuk Admin yang disahkan (Master & Level 2).</p>
                     </div>
                   </div>
                   {onOpenAdminPin && (

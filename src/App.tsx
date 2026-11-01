@@ -33,6 +33,7 @@ import { SyncSettings } from './components/SyncSettings';
 import { AddEditStaffModal } from './components/AddEditStaffModal';
 import { CampusReferenceHub } from './components/CampusReferenceHub';
 import { AdminPinModal } from './components/AdminPinModal';
+import { AdminVerificationModal } from './components/AdminVerificationModal';
 import { SelfRegistrationPage } from './components/SelfRegistrationPage';
 import { StudentTimetableHub } from './components/StudentTimetableHub';
 import { verifyGoogleAdmin } from './utils/adminAuthService';
@@ -136,6 +137,8 @@ export default function App() {
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [currentAdmin, setCurrentAdmin] = useState<AuthorizedAdmin | null>(null);
   const [isAdminPinOpen, setIsAdminPinOpen] = useState(false);
+  const [inviteToken, setInviteToken] = useState<string | null>(null);
+  const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
 
   // Listen to Firebase Auth state for automatic session restoration
   useEffect(() => {
@@ -184,13 +187,19 @@ export default function App() {
     };
   }, []);
 
-  // Listen to URL hash and history state for direct slug navigation (e.g. #/daftar)
+  // Listen to URL hash and history state for direct slug navigation (e.g. #/daftar, ?invite=)
   useEffect(() => {
     const handleUrlChange = () => {
       const hash = window.location.hash.toLowerCase();
       const pathname = window.location.pathname.toLowerCase();
       const searchParams = new URLSearchParams(window.location.search);
       const pageParam = (searchParams.get('page') || searchParams.get('tab') || '').toLowerCase();
+      const inviteParam = searchParams.get('invite');
+
+      if (inviteParam) {
+        setInviteToken(inviteParam);
+        setIsVerifyModalOpen(true);
+      }
 
       if (hash.includes('daftar') || pathname.endsWith('/daftar') || pageParam === 'daftar') {
         setActiveHub('daftar');
@@ -1064,6 +1073,21 @@ export default function App() {
           setIsAdminMode(true);
           setCurrentAdmin(admin || null);
           setIsAdminPinOpen(false);
+        }}
+      />
+
+      <AdminVerificationModal
+        isOpen={isVerifyModalOpen}
+        token={inviteToken}
+        onClose={() => {
+          setIsVerifyModalOpen(false);
+          setInviteToken(null);
+        }}
+        onVerified={(admin) => {
+          setIsAdminMode(true);
+          setCurrentAdmin(admin);
+          setIsVerifyModalOpen(false);
+          setInviteToken(null);
         }}
       />
 

@@ -39,6 +39,30 @@
         "catatan": { "type": "string" }
       },
       "required": ["id", "staff_id"]
+    },
+    "systemData": {
+      "title": "SystemData",
+      "description": "Dokumen ringkasan dan data pukal sistem",
+      "type": "object",
+      "properties": {
+        "updatedAt": { "type": "string" },
+        "count": { "type": "number" },
+        "data": { "type": "array" }
+      }
+    }
+  },
+  "firestore": {
+    "/staff/{staffId}": {
+      "schema": "staff",
+      "description": "Koleksi profil kakitangan KPMBP"
+    },
+    "/committees/{committeeId}": {
+      "schema": "committees",
+      "description": "Koleksi rekod jawatankuasa kakitangan"
+    },
+    "/system/{systemDocId}": {
+      "schema": "systemData",
+      "description": "Storan data pukal pantas bagi staff dan jawatankuasa"
     }
   }
 }

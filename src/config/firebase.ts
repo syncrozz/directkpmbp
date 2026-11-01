@@ -364,17 +364,21 @@ export const saveCommitteesToFirestore = async (committeesList: StaffCommittee[]
     });
 
     // 2. Individual committee documents in 'committees' collection
-    const chunkSize = 400;
-    for (let i = 0; i < cleaned.length; i += chunkSize) {
-      const chunk = cleaned.slice(i, i + chunkSize);
-      const batch = writeBatch(db);
-      chunk.forEach((c, idx) => {
-        const rawId = c.id || `c-${c.staff_id || 'st'}-${i + idx}`;
-        const docId = rawId.replace(/[\/\s]/g, '_');
-        const commRef = doc(db, 'committees', docId);
-        batch.set(commRef, c, { merge: true });
-      });
-      await batch.commit();
+    try {
+      const chunkSize = 400;
+      for (let i = 0; i < cleaned.length; i += chunkSize) {
+        const chunk = cleaned.slice(i, i + chunkSize);
+        const batch = writeBatch(db);
+        chunk.forEach((c, idx) => {
+          const rawId = c.id || `c-${c.staff_id || 'st'}-${i + idx}`;
+          const docId = rawId.replace(/[\/\s]/g, '_');
+          const commRef = doc(db, 'committees', docId);
+          batch.set(commRef, c, { merge: true });
+        });
+        await batch.commit();
+      }
+    } catch (batchErr) {
+      console.warn('Perhatian semasa menulis koleksi individu jawatankuasa (data ringkasan telah disimpan):', batchErr);
     }
 
     return true;
