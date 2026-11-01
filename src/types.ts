@@ -54,10 +54,12 @@ export type DivisionType = 'Semua' | 'Pengurusan' | 'Akademik' | 'Sokongan Akade
 export interface AuthorizedAdmin {
   id: string;
   email: string;
-  pin: string; // 4-digit PIN (last 4 digits of IC)
+  pin?: string; // 4-digit PIN (last 4 digits of IC) or optional for Google Auth
   icLast4?: string;
   name?: string;
   role?: string;
+  photoUrl?: string;
+  authProvider?: 'google' | 'pin';
   createdAt?: string;
 }
 

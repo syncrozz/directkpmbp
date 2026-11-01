@@ -895,12 +895,19 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
                           <p className="text-xs font-bold text-slate-900 truncate">
                             {admin.name || admin.email}
                           </p>
-                          <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-100">
-                            {admin.role === 'master' ? 'Master' : 'Admin'}
+                          <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded border ${
+                            admin.email === 'khaikerr@gmail.com' || admin.role?.toLowerCase().includes('master')
+                              ? 'bg-amber-100 text-amber-900 border-amber-300'
+                              : 'bg-indigo-50 text-indigo-700 border-indigo-100'
+                          }`}>
+                            {admin.email === 'khaikerr@gmail.com' || admin.role?.toLowerCase().includes('master') ? 'Master Admin' : 'Admin'}
                           </span>
                         </div>
                         <p className="text-[10px] font-mono text-slate-500 truncate">
-                          {admin.email} • Status: <span className="font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">PIN Aktif (••••)</span>
+                          {admin.email} • Status:{' '}
+                          <span className="font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                            {admin.authProvider === 'google' || admin.email === 'khaikerr@gmail.com' ? 'Google Auth Aktif' : 'PIN Aktif (••••)'}
+                          </span>
                         </p>
                       </div>
                     </div>
@@ -909,14 +916,16 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
                       <span className="hidden sm:inline-block text-[10px] text-slate-400 font-mono">
                         {admin.createdAt ? new Date(admin.createdAt).toLocaleDateString('ms-MY') : ''}
                       </span>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveAdmin(admin.id)}
-                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
-                        title="Batalkan otorisasi admin ini"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {admin.email !== 'khaikerr@gmail.com' && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveAdmin(admin.id)}
+                          className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                          title="Batalkan otorisasi admin ini"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}

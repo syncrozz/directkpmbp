@@ -10,11 +10,39 @@ import {
   onSnapshot,
   serverTimestamp
 } from 'firebase/firestore';
+import { 
+  getAuth, 
+  GoogleAuthProvider, 
+  signInWithPopup, 
+  signOut as firebaseSignOut, 
+  onAuthStateChanged,
+  User 
+} from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { Staff, StaffCommittee } from '../types';
 
 // Initialize Firebase App
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+
+// Initialize Firebase Auth
+export const auth = getAuth(app);
+export const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({
+  prompt: 'select_account'
+});
+
+export const signInWithGoogle = async (): Promise<User> => {
+  const result = await signInWithPopup(auth, googleProvider);
+  return result.user;
+};
+
+export const signOutAdmin = async (): Promise<void> => {
+  await firebaseSignOut(auth);
+};
+
+export const subscribeToAuthChanges = (callback: (user: User | null) => void) => {
+  return onAuthStateChanged(auth, callback);
+};
 
 // Initialize Firestore with specific database ID and experimentalForceLongPolling
 // to prevent 10-second WebChannel stream timeouts in iframe/sandbox environments
@@ -33,6 +61,7 @@ export const db = (() => {
       : getFirestore(app);
   }
 })();
+
 
 /**
  * 13 StaffID lama (Unit JTM) yang merupakan duplikat kepada StaffID baharu
@@ -388,46 +417,5 @@ export const fetchCommitteesFromFirestore = async (): Promise<StaffCommittee[]> 
     6000,
     []
   );
-};
-
-/**
- * Subscribe to the system/appVersion document in Firestore
- * Returns an unsubscribe function.
- */
-export const subscribeToAppVersion = (onUpdate: (label: string | null) => void): (() => void) => {
-  try {
-    const versionDocRef = doc(db, 'system', 'appVersion');
-    const unsubscribe = onSnapshot(
-      versionDocRef,
-      (docSnap) => {
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          onUpdate(typeof data?.label === 'string' && data.label.trim() ? data.label.trim() : null);
-        } else {
-          onUpdate(null);
-        }
-      },
-      (error) => {
-        console.warn('Notice subscribing to appVersion:', error);
-        onUpdate(null);
-      }
-    );
-    return unsubscribe;
-  } catch (err) {
-    console.warn('Failed to setup appVersion subscription:', err);
-    onUpdate(null);
-    return () => {};
-  }
-};
-
-/**
- * Save custom app version to system/appVersion in Firestore
- */
-export const saveAppVersionToCloud = async (label: string): Promise<void> => {
-  const versionDocRef = doc(db, 'system', 'appVersion');
-  await setDoc(versionDocRef, {
-    label: label.trim(),
-    updatedAt: serverTimestamp(),
-  });
 };
 

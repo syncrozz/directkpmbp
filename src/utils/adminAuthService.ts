@@ -6,9 +6,22 @@
 import { AuthorizedAdmin } from '../types';
 
 export const MASTER_ADMIN_PIN = '5313';
+export const MASTER_ADMIN_EMAILS = [
+  'khaikerr@gmail.com',
+  'anakcgkhairi@gmail.com'
+];
+
 const STORAGE_KEY = 'kpmbp_authorized_admins';
 
 export const DEFAULT_AUTHORIZED_ADMINS: AuthorizedAdmin[] = [
+  {
+    id: 'admin-master-khaikerr',
+    email: 'khaikerr@gmail.com',
+    name: 'Khaikerr (Master Admin)',
+    role: 'Master Administrator',
+    authProvider: 'google',
+    createdAt: new Date().toISOString().split('T')[0],
+  },
   {
     id: 'admin-khairi-01',
     email: 'khairi.mohd@mara.gov.my',
@@ -19,6 +32,16 @@ export const DEFAULT_AUTHORIZED_ADMINS: AuthorizedAdmin[] = [
     createdAt: new Date().toISOString().split('T')[0],
   },
 ];
+
+/**
+ * Menyemak sama ada emel adalah Master Admin rasmi.
+ */
+export function isMasterAdminEmail(email?: string | null): boolean {
+  if (!email) return false;
+  const clean = email.trim().toLowerCase();
+  return MASTER_ADMIN_EMAILS.includes(clean);
+}
+
 
 /**
  * Mendapatkan senarai semua admin yang diotorisasi oleh Master Admin.
@@ -188,3 +211,62 @@ export function verifyAdminCredentials(
     message: 'Kombinasi emel MARA dan 4-digit PIN IC tidak sepadan atau belum diotorisasi.',
   };
 }
+
+/**
+ * Mengesahkan akaun pengguna Google (cth: khaikerr@gmail.com) untuk akses Admin / Master Admin.
+ */
+export function verifyGoogleAdmin(user: {
+  email: string | null;
+  displayName: string | null;
+  photoURL?: string | null;
+  uid?: string;
+}): { isValid: boolean; isMaster: boolean; admin?: AuthorizedAdmin; message?: string } {
+  const cleanEmail = user.email?.trim().toLowerCase();
+  if (!cleanEmail) {
+    return {
+      isValid: false,
+      isMaster: false,
+      message: 'Akaun Google tidak mengandungi alamat emel yang sah.',
+    };
+  }
+
+  // 1. Semak jika emel adalah Master Admin rasmi (khaikerr@gmail.com)
+  if (isMasterAdminEmail(cleanEmail)) {
+    return {
+      isValid: true,
+      isMaster: true,
+      admin: {
+        id: user.uid || 'master-khaikerr',
+        email: cleanEmail,
+        name: user.displayName || 'Khaikerr (Master Admin)',
+        role: 'Master Administrator',
+        photoUrl: user.photoURL || undefined,
+        authProvider: 'google',
+        createdAt: new Date().toISOString().split('T')[0],
+      },
+    };
+  }
+
+  // 2. Semak jika emel telah diotorisasi dalam senarai admin
+  const admins = getAuthorizedAdmins();
+  const matchedAdmin = admins.find((a) => a.email.toLowerCase() === cleanEmail);
+  if (matchedAdmin) {
+    return {
+      isValid: true,
+      isMaster: false,
+      admin: {
+        ...matchedAdmin,
+        name: user.displayName || matchedAdmin.name,
+        photoUrl: user.photoURL || matchedAdmin.photoUrl,
+        authProvider: 'google',
+      },
+    };
+  }
+
+  return {
+    isValid: false,
+    isMaster: false,
+    message: `Akaun Google (${cleanEmail}) tidak mempunyai kebenaran akses Admin. Sila gunakan akaun Master Admin (khaikerr@gmail.com) atau hubungi pentadbir.`,
+  };
+}
+

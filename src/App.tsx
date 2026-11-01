@@ -34,13 +34,15 @@ import { AddEditStaffModal } from './components/AddEditStaffModal';
 import { CampusReferenceHub } from './components/CampusReferenceHub';
 import { AdminPinModal } from './components/AdminPinModal';
 import { SelfRegistrationPage } from './components/SelfRegistrationPage';
-import { AppVersionBadge } from './components/AppVersionBadge';
 import { StudentTimetableHub } from './components/StudentTimetableHub';
+import { verifyGoogleAdmin } from './utils/adminAuthService';
 import { 
   fetchStaffListFromFirestore, 
   fetchCommitteesFromFirestore, 
   saveStaffListToFirestore, 
-  saveCommitteesToFirestore 
+  saveCommitteesToFirestore,
+  signOutAdmin,
+  subscribeToAuthChanges
 } from './config/firebase';
 
 export default function App() {
@@ -135,6 +137,25 @@ export default function App() {
   const [currentAdmin, setCurrentAdmin] = useState<AuthorizedAdmin | null>(null);
   const [isAdminPinOpen, setIsAdminPinOpen] = useState(false);
 
+  // Listen to Firebase Auth state for automatic session restoration
+  useEffect(() => {
+    const unsubscribe = subscribeToAuthChanges((user) => {
+      if (user && user.email) {
+        const result = verifyGoogleAdmin({
+          email: user.email,
+          displayName: user.displayName,
+          photoURL: user.photoURL,
+          uid: user.uid,
+        });
+        if (result.isValid && result.admin) {
+          setIsAdminMode(true);
+          setCurrentAdmin(result.admin);
+        }
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
   // PWA Install Prompt State
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isPwaInstalled, setIsPwaInstalled] = useState(false);
@@ -209,6 +230,7 @@ export default function App() {
       setIsAdminMode(false);
       setCurrentAdmin(null);
       setIsSettingsOpen(false);
+      signOutAdmin().catch(() => {});
     } else {
       setIsAdminPinOpen(true);
     }
@@ -509,15 +531,40 @@ export default function App() {
                 DIRECTORY <span className="bg-gradient-to-r from-indigo-600 via-violet-600 to-indigo-700 bg-clip-text text-transparent">KPMBP</span>
               </h1>
             </button>
-            <AppVersionBadge isAdminMode={isAdminMode} />
           </div>
 
           {/* Dynamic Campus Center Control Deck */}
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
+            {/* Master Admin Indicator Badge when Admin Mode is active */}
+            {isAdminMode && currentAdmin && (
+              <div className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-amber-50/90 border border-amber-200 text-amber-950 shadow-2xs">
+                {currentAdmin.photoUrl ? (
+                  <img
+                    src={currentAdmin.photoUrl}
+                    alt={currentAdmin.name || 'Admin'}
+                    className="w-5 h-5 rounded-full object-cover border border-amber-300"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className="w-5 h-5 rounded-full bg-amber-500 text-white text-[10px] font-black flex items-center justify-center">
+                    {(currentAdmin.name || 'A').charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <div className="flex flex-col text-left leading-tight max-w-[130px] sm:max-w-[170px]">
+                  <span className="text-[11px] font-extrabold truncate">
+                    {currentAdmin.email === 'khaikerr@gmail.com' ? 'Master Admin' : currentAdmin.name || 'Admin'}
+                  </span>
+                  <span className="text-[9px] text-amber-800 font-mono truncate">
+                    {currentAdmin.email}
+                  </span>
+                </div>
+              </div>
+            )}
+
             {/* Quick Admin Mode Toggle Button (Gear Icon) */}
             <button
               onClick={handleToggleAdminMode}
-              title={isAdminMode ? (currentAdmin?.name ? `Matikan Admin Mode (${currentAdmin.name})` : 'Matikan Admin Mode') : 'Aktifkan Admin Mode (Emel MARA / Master PIN)'}
+              title={isAdminMode ? (currentAdmin?.name ? `Matikan Admin Mode (${currentAdmin.email || currentAdmin.name})` : 'Matikan Admin Mode') : 'Aktifkan Admin Mode (Google Auth / Emel MARA / Master PIN)'}
               aria-label={isAdminMode ? 'Matikan Admin Mode' : 'Aktifkan Admin Mode'}
               className={`p-2 sm:p-2.5 rounded-xl sm:rounded-2xl transition-all border cursor-pointer flex items-center justify-center shrink-0 ${
                 isAdminMode
