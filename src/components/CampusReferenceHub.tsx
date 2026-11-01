@@ -326,7 +326,7 @@ export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({ onNaviga
           }`}
         >
           <Link className={`w-3.5 h-3.5 ${activeRefTab === 'portal' ? 'text-purple-600' : 'text-purple-500'}`} />
-          Pautan Penting & Portal
+          Portal Kolej
         </button>
         <button
           onClick={() => setActiveRefTab('takwim')}
@@ -380,7 +380,7 @@ export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({ onNaviga
               </div>
               <h3 className="text-xs font-extrabold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
-                Pautan Penting & Portal Akademik ({filteredLinks.length})
+                Portal Kolej ({filteredLinks.length})
               </h3>
             </div>
             
