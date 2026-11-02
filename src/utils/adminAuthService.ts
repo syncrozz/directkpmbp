@@ -42,8 +42,24 @@ export interface GoogleAuthVerificationResult {
 
 /**
  * Generate an authorized session for preview environments when domain is unauthorized in Firebase Console.
+ * STRICT SECURITY: Blocked on production domains (e.g. directkpmbp.syncrozz.com).
  */
 export function createPreviewAdminSession(targetEmail: string = 'kpmbp2u@gmail.com'): GoogleAuthVerificationResult {
+  if (typeof window !== 'undefined') {
+    const isProduction =
+      window.location.hostname === 'directkpmbp.syncrozz.com' ||
+      (!window.location.hostname.includes('run.app') &&
+       window.location.hostname !== 'localhost' &&
+       window.location.hostname !== '127.0.0.1');
+
+    if (isProduction) {
+      return {
+        isValid: false,
+        message: 'Akses pratonton disekat pada persekitaran produksi. Sila log masuk menggunakan Google Auth rasmi.',
+      };
+    }
+  }
+
   const cleanEmail = targetEmail.trim().toLowerCase();
   if (!AUTHORIZED_ADMIN_EMAILS.includes(cleanEmail)) {
     return {

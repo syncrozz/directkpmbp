@@ -1,12 +1,12 @@
 {
-  "projectId": "waking-buffer-53rp2",
-  "appId": "1:821425130606:web:f3f7d73f2b04d5365caa7f",
+  "projectId": "syncrozz-platform",
+  "appId": "1:165207391688:web:e33d816413e8a927c4d4fd",
   "apiKey": "AIzaSyCmeZE1321g0zi1d4OgCxm5a4jIJFxq_1g",
-  "authDomain": "waking-buffer-53rp2.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-directkpmbp-fd582355-689f-4f20-a89b-6cced94bdd0b",
-  "storageBucket": "waking-buffer-53rp2.firebasestorage.app",
-  "messagingSenderId": "821425130606",
+  "authDomain": "syncrozz-platform.firebaseapp.com",
+  "firestoreDatabaseId": "(default)",
+  "storageBucket": "syncrozz-platform.firebasestorage.app",
+  "messagingSenderId": "165207391688",
   "measurementId": "",
-  "oAuthClientId": "821425130606-0e5oaljj6onp4ngfr4oj33bvp435c5hd.apps.googleusercontent.com",
+  "oAuthClientId": "",
   "recaptchaSiteKey": ""
 }

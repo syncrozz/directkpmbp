@@ -257,24 +257,29 @@ export const AdminPinModal: React.FC<AdminPinModalProps> = ({ isOpen, onClose, o
                 </a>
               </div>
 
-              {/* Instant Developer/Preview Access Option */}
-              <div className="pt-2 border-t border-amber-200/60">
-                <p className="text-[11px] font-bold text-amber-950 mb-1.5">
-                  Mod Pratonton AI Studio:
-                </p>
-                <div className="space-y-1.5">
-                  {AUTHORIZED_ADMIN_EMAILS.map((email) => (
-                    <button
-                      key={email}
-                      type="button"
-                      onClick={() => handlePreviewAdminLogin(email)}
-                      className="w-full py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      <span>Teruskan sebagai {email}</span>
-                    </button>
-                  ))}
+              {/* Instant Developer/Preview Access Option (strictly hidden on production domains) */}
+              {typeof window !== 'undefined' &&
+                (window.location.hostname.includes('run.app') ||
+                  window.location.hostname === 'localhost' ||
+                  window.location.hostname === '127.0.0.1') && (
+                <div className="pt-2 border-t border-amber-200/60">
+                  <p className="text-[11px] font-bold text-amber-950 mb-1.5">
+                    Mod Pratonton AI Studio:
+                  </p>
+                  <div className="space-y-1.5">
+                    {AUTHORIZED_ADMIN_EMAILS.map((email) => (
+                      <button
+                        key={email}
+                        type="button"
+                        onClick={() => handlePreviewAdminLogin(email)}
+                        className="w-full py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <span>Teruskan sebagai {email}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
 

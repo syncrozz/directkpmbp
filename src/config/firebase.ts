@@ -8,8 +8,12 @@ import {
   getDocs, 
   writeBatch,
   onSnapshot,
-  serverTimestamp
+  serverTimestamp,
+  setLogLevel
 } from 'firebase/firestore';
+
+// Silence internal Firestore connection notices (e.g. 10s backend timeout in preview/sandboxes)
+setLogLevel('silent');
 import { 
   getAuth, 
   GoogleAuthProvider, 
@@ -18,11 +22,26 @@ import {
   onAuthStateChanged,
   User 
 } from 'firebase/auth';
+import { getStorage } from 'firebase/storage';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { Staff, StaffCommittee } from '../types';
 
 // Initialize Firebase App
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+
+// Initialize Firebase Storage
+export const storage = getStorage(app);
+
+// Shared SYNCROZZ Platform Storage namespace for DIRECTKPMBP
+export const STORAGE_PLATFORM_NAMESPACE = 'platforms/directkpmbp';
+
+/**
+ * Resolves a storage path scoped within the DIRECTKPMBP platform namespace
+ */
+export function getPlatformStoragePath(subPath: string): string {
+  const clean = subPath.replace(/^\/+/, '');
+  return `${STORAGE_PLATFORM_NAMESPACE}/${clean}`;
+}
 
 // Initialize Firebase Auth
 export const auth = getAuth(app);
@@ -69,18 +88,23 @@ export const syncAdminToFirestore = async (admin: {
 // Initialize Firestore with specific database ID and experimentalForceLongPolling
 // to prevent 10-second WebChannel stream timeouts in iframe/sandbox environments
 export const db = (() => {
+  const dbId = 
+    !firebaseConfig.firestoreDatabaseId || 
+    firebaseConfig.firestoreDatabaseId === 'default' || 
+    firebaseConfig.firestoreDatabaseId === '(default)'
+      ? undefined
+      : firebaseConfig.firestoreDatabaseId;
+
   try {
     return initializeFirestore(
       app,
       {
-        experimentalForceLongPolling: true,
+        experimentalAutoDetectLongPolling: true,
       },
-      firebaseConfig.firestoreDatabaseId || undefined
+      dbId
     );
   } catch (_e) {
-    return firebaseConfig.firestoreDatabaseId
-      ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
-      : getFirestore(app);
+    return dbId ? getFirestore(app, dbId) : getFirestore(app);
   }
 })();
 
@@ -109,6 +133,12 @@ export interface CleanupResult {
  *    keeping the 'staff' collection in exact parity with staffList.
  */
 export const saveStaffListToFirestore = async (staffList: Staff[]): Promise<boolean> => {
+  // Guard: Writing requires an active authenticated administrator
+  if (!auth.currentUser) {
+    console.warn('[Firestore] Notice: Penulisan staf ke Firestore dibatalkan kerana pengguna belum log masuk sebagai pentadbir.');
+    return false;
+  }
+
   try {
     // 1. Single summary container document for instant bulk syncing
     const summaryRef = doc(db, 'system', 'staff_data');
@@ -162,13 +192,16 @@ export const saveStaffListToFirestore = async (staffList: Staff[]): Promise<bool
     }
 
     return true;
-  } catch (error) {
-    console.error('Ralat menyimpan senarai staf ke Firebase Firestore:', error);
-    throw error;
+  } catch (error: any) {
+    console.warn('[Firestore] Notice ralat menyimpan senarai staf ke Firebase Firestore:', error?.message || error);
+    return false;
   }
 };
 
 const withTimeout = <T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> => {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return Promise.resolve(fallback);
+  }
   let timer: any;
   const timeoutPromise = new Promise<T>((resolve) => {
     timer = setTimeout(() => resolve(fallback), timeoutMs);
@@ -245,7 +278,7 @@ export const fetchStaffListFromFirestore = async (): Promise<Staff[]> => {
         return [];
       }
     })(),
-    6000,
+    3000,
     []
   );
 };
@@ -374,6 +407,12 @@ function dedupeCommitteesList(list: StaffCommittee[]): StaffCommittee[] {
  * Save committee list directly to Firebase Firestore
  */
 export const saveCommitteesToFirestore = async (committeesList: StaffCommittee[]): Promise<boolean> => {
+  // Guard: Writing requires an active authenticated administrator
+  if (!auth.currentUser) {
+    console.warn('[Firestore] Notice: Penulisan jawatankuasa ke Firestore dibatalkan kerana pengguna belum log masuk sebagai pentadbir.');
+    return false;
+  }
+
   try {
     const cleaned = dedupeCommitteesList(committeesList);
 
@@ -404,9 +443,9 @@ export const saveCommitteesToFirestore = async (committeesList: StaffCommittee[]
     }
 
     return true;
-  } catch (error) {
-    console.error('Ralat menyimpan jawatankuasa ke Firebase Firestore:', error);
-    throw error;
+  } catch (error: any) {
+    console.warn('[Firestore] Notice ralat menyimpan jawatankuasa ke Firebase Firestore:', error?.message || error);
+    return false;
   }
 };
 
@@ -440,7 +479,7 @@ export const fetchCommitteesFromFirestore = async (): Promise<StaffCommittee[]> 
         return [];
       }
     })(),
-    6000,
+    3000,
     []
   );
 };

@@ -82,6 +82,10 @@
     "/admins/{adminId}": {
       "schema": "admin",
       "description": "Koleksi pentadbir diotorisasi yang dikawal selia oleh Master Admin"
+    },
+    "/platforms/directkpmbp/{documentId}": {
+      "schema": "systemData",
+      "description": "Ruang nama storan data terasing bagi DIRECTKPMBP di platform SYNCROZZ"
     }
   }
 }

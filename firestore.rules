@@ -58,9 +58,15 @@ service cloud.firestore {
     }
 
     // --- Admins Collection ---
-    // Protected: Strictly restricted to verified Master Admin (khaikerr@gmail.com)
+    // Protected: Strictly restricted to verified Master Admin (kpmbp2u@gmail.com or khaikerr@gmail.com)
     match /admins/{adminId} {
       allow read, write: if isMasterAdmin() && isValidId(adminId);
+    }
+
+    // --- Platform Isolated Namespace (SYNCROZZ Shared Platform) ---
+    match /platforms/directkpmbp/{document=**} {
+      allow read: if true;
+      allow write: if isAuthorizedAdmin();
     }
   }
 }

@@ -93,7 +93,6 @@ export default function App() {
         if (Array.isArray(parsed) && parsed.length > 0) {
           const cleaned = deduplicateCommittees(parsed);
           setCommittees(cleaned);
-          saveCommitteesToFirestore(cleaned).catch(console.warn);
           return;
         }
       }

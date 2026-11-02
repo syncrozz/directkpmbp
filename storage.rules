@@ -1,0 +1,41 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Default Deny All Catch-all: Closes unrestricted access across the bucket
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    // --- Authentication & Identity Primitives ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    // DIRECTKPMBP Authorized Master Administrators
+    function isDirectKpmbpAdmin() {
+      return isEmailVerified() && (
+        request.auth.token.email == 'kpmbp2u@gmail.com' ||
+        request.auth.token.email == 'khaikerr@gmail.com'
+      );
+    }
+
+    // Helper: Enforce max 5MB file size and image content type for staff assets
+    function isValidImage() {
+      return request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // --- DIRECTKPMBP Isolated Platform Namespace ---
+    // Public read for official staff avatars and assets
+    // Write strictly restricted to verified DIRECTKPMBP Master Admins
+    match /platforms/directkpmbp/{allPaths=**} {
+      allow read: if true;
+      allow write: if isDirectKpmbpAdmin() && isValidImage();
+    }
+  }
+}
