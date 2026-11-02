@@ -49,6 +49,21 @@
         "count": { "type": "number" },
         "data": { "type": "array" }
       }
+    },
+    "admin": {
+      "title": "AuthorizedAdmin",
+      "description": "Rekod kebenaran pentadbir portal KPMBP",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "level": { "type": "number" },
+        "status": { "type": "string" },
+        "verifiedAt": { "type": "string" }
+      },
+      "required": ["email", "role", "level"]
     }
   },
   "firestore": {
@@ -63,6 +78,10 @@
     "/system/{systemDocId}": {
       "schema": "systemData",
       "description": "Storan data pukal pantas bagi staff dan jawatankuasa"
+    },
+    "/admins/{adminId}": {
+      "schema": "admin",
+      "description": "Koleksi pentadbir diotorisasi yang dikawal selia oleh Master Admin"
     }
   }
 }

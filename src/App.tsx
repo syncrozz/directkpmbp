@@ -140,7 +140,7 @@ export default function App() {
   const [inviteToken, setInviteToken] = useState<string | null>(null);
   const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
 
-  // Listen to Firebase Auth state for automatic session restoration
+  // Listen to Firebase Auth state for automatic session restoration and termination
   useEffect(() => {
     const unsubscribe = subscribeToAuthChanges((user) => {
       if (user && user.email) {
@@ -153,7 +153,20 @@ export default function App() {
         if (result.isValid && result.admin) {
           setIsAdminMode(true);
           setCurrentAdmin(result.admin);
+        } else {
+          // Explicitly reject and revoke admin mode if user is not authorized
+          setIsAdminMode(false);
+          setCurrentAdmin(null);
         }
+      } else {
+        // If user is null (signed out), revoke google-based admin session
+        setCurrentAdmin((prev) => {
+          if (prev?.authProvider === 'google') {
+            setIsAdminMode(false);
+            return null;
+          }
+          return prev;
+        });
       }
     });
     return () => unsubscribe();

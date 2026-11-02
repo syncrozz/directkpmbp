@@ -4,6 +4,24 @@
  */
 
 import { AuthorizedAdmin, AdminInvitation } from '../types';
+import { syncAdminToFirestore } from '../config/firebase';
+
+/**
+ * Menyemak sama ada persekitaran semasa adalah development (pembangunan).
+ */
+export const isDevelopmentEnvironment = (): boolean => {
+  try {
+    if (typeof import.meta !== 'undefined' && import.meta.env) {
+      return Boolean(import.meta.env.DEV);
+    }
+  } catch (_e) {}
+  try {
+    if (typeof process !== 'undefined' && process.env) {
+      return process.env.NODE_ENV !== 'production';
+    }
+  } catch (_e) {}
+  return false;
+};
 
 export const MASTER_ADMIN_PIN = '5313';
 export const MASTER_ADMIN_EMAILS = [
@@ -51,6 +69,9 @@ export function isMasterAdminEmail(email?: string | null): boolean {
  * Mendapatkan senarai semua admin yang diotorisasi oleh Master Admin.
  */
 export function getAuthorizedAdmins(): AuthorizedAdmin[] {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+    return DEFAULT_AUTHORIZED_ADMINS;
+  }
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
@@ -72,6 +93,9 @@ export function getAuthorizedAdmins(): AuthorizedAdmin[] {
  * Menyimpan senarai admin ke storan tempatan (localStorage).
  */
 export function saveAuthorizedAdmins(admins: AuthorizedAdmin[]): void {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+    return;
+  }
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(admins));
   } catch (err) {
@@ -83,6 +107,9 @@ export function saveAuthorizedAdmins(admins: AuthorizedAdmin[]): void {
  * Mendapatkan senarai jemputan Admin Level 2.
  */
 export function getAdminInvitations(): AdminInvitation[] {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+    return [];
+  }
   try {
     const raw = localStorage.getItem(INVITATIONS_STORAGE_KEY);
     if (!raw) return [];
@@ -98,6 +125,9 @@ export function getAdminInvitations(): AdminInvitation[] {
  * Menyimpan senarai jemputan Admin Level 2.
  */
 export function saveAdminInvitations(invitations: AdminInvitation[]): void {
+  if (typeof window === 'undefined' || typeof localStorage === 'undefined') {
+    return;
+  }
   try {
     localStorage.setItem(INVITATIONS_STORAGE_KEY, JSON.stringify(invitations));
   } catch (err) {
@@ -401,7 +431,9 @@ export function removeAuthorizedAdmin(id: string): { success: boolean; message: 
 }
 
 /**
- * Mengesahkan kelayakan admin dengan emel dan PIN 4-digit (atau Master PIN).
+ * Mengesahkan kelayakan Admin Level 2 dengan emel dan PIN 4-digit (IC).
+ * NOTA KESELAMATAN (SES): Master Admin HANYA boleh disahkan melalui Firebase Google Authentication.
+ * PIN tidak dibenarkan memintas atau memberikan akses Master Administrator dalam pengeluaran.
  */
 export function verifyAdminCredentials(
   email: string,
@@ -410,65 +442,81 @@ export function verifyAdminCredentials(
   const cleanPin = pin.replace(/\D/g, '').slice(-4);
   const cleanEmail = email.trim().toLowerCase();
 
-  // 1. Semak jika menggunakan Master Admin PIN secara langsung
+  // 1. Pengesahan Development PIN (Hanya berfungsi dalam mod pembangunan, DILARANG dalam Production)
   if (cleanPin === MASTER_ADMIN_PIN) {
+    if (!isDevelopmentEnvironment()) {
+      return {
+        isValid: false,
+        message: 'PIN 5313 dinyahaktifkan dalam persekitaran Production. Master Admin diwajibkan menggunakan Google Authentication rasmi.',
+      };
+    }
+
     return {
       isValid: true,
-      isMaster: true,
+      isMaster: false,
       admin: {
-        id: 'master-admin',
-        email: cleanEmail || 'khaikerr@gmail.com',
+        id: 'dev-sandbox-tester',
+        email: cleanEmail || 'dev.tester@kpmbp.local',
         pin: MASTER_ADMIN_PIN,
-        name: 'Master Admin',
-        role: 'Master Administrator',
-        level: 1,
+        name: 'Dev Sandbox Tester',
+        role: 'Admin Level 2 (Dev Mode)',
+        level: 2,
         status: 'verified',
         authProvider: 'pin',
       },
+      message: '[DEV MODE] Akses sandbox pembangunan diaktifkan. Master Admin rasmi kekal dilindungi Google Auth.',
+    };
+  }
+
+  // 2. Sekatan Ketat: Master Admin tidak boleh log masuk menggunakan PIN
+  if (isMasterAdminEmail(cleanEmail)) {
+    return {
+      isValid: false,
+      isMaster: false,
+      message: 'Akaun Master Admin (khaikerr@gmail.com) diwajibkan menggunakan Firebase Google Authentication demi keselamatan portal.',
     };
   }
 
   if (!cleanEmail) {
     return {
       isValid: false,
-      message: 'Sila masukkan alamat emel yang sah.',
+      message: 'Sila masukkan alamat emel MARA yang sah.',
     };
   }
 
   if (cleanPin.length !== 4) {
     return {
       isValid: false,
-      message: 'Sila masukkan 4 digit PIN keselamatan.',
+      message: 'Sila masukkan 4 digit PIN keselamatan nombor IC.',
     };
   }
 
-  // 2. Semak dengan senarai admin yang telah diotorisasi oleh Master Admin
+  // 3. Semak dengan senarai Admin Level 2 yang telah diotorisasi
   const admins = getAuthorizedAdmins();
   const matchedAdmin = admins.find(
     (a) => a.email.toLowerCase() === cleanEmail && a.pin === cleanPin
   );
 
   if (matchedAdmin) {
-    const isMaster = isMasterAdminEmail(matchedAdmin.email) || matchedAdmin.level === 1;
     return {
       isValid: true,
-      isMaster,
+      isMaster: false,
       admin: {
         ...matchedAdmin,
-        level: isMaster ? 1 : 2,
-        role: isMaster ? 'Master Administrator' : 'Admin Level 2',
+        level: 2,
+        role: 'Admin Level 2',
       },
     };
   }
 
   return {
     isValid: false,
-    message: 'Kombinasi emel dan 4-digit PIN tidak sepadan atau belum diotorisasi.',
+    message: 'Kombinasi emel MARA dan 4-digit PIN IC tidak sepadan atau belum diotorisasi.',
   };
 }
 
 /**
- * Mengesahkan akaun pengguna Google (cth: khaikerr@gmail.com) untuk akses Admin / Master Admin.
+ * Mengesahkan akaun pengguna Google rasmi untuk akses Master Admin (khaikerr@gmail.com) atau Admin Level 2.
  */
 export function verifyGoogleAdmin(user: {
   email: string | null;
@@ -487,40 +535,65 @@ export function verifyGoogleAdmin(user: {
 
   // 1. Semak jika emel adalah Master Admin rasmi (khaikerr@gmail.com)
   if (isMasterAdminEmail(cleanEmail)) {
+    const masterAdminObj: AuthorizedAdmin = {
+      id: user.uid || 'master-khaikerr',
+      email: cleanEmail,
+      name: user.displayName || 'Khaikerr (Master Admin)',
+      role: 'Master Administrator',
+      level: 1,
+      status: 'verified',
+      photoUrl: user.photoURL || undefined,
+      authProvider: 'google',
+      createdAt: new Date().toISOString().split('T')[0],
+    };
+
+    // Sinkronkan peranan Master Admin ke koleksi Firestore /admins/{uid}
+    if (user.uid) {
+      syncAdminToFirestore({
+        uid: user.uid,
+        email: cleanEmail,
+        name: masterAdminObj.name,
+        role: masterAdminObj.role!,
+        level: 1,
+      }).catch((e) => console.warn('Sync master admin to firestore:', e));
+    }
+
     return {
       isValid: true,
       isMaster: true,
-      admin: {
-        id: user.uid || 'master-khaikerr',
-        email: cleanEmail,
-        name: user.displayName || 'Khaikerr (Master Admin)',
-        role: 'Master Administrator',
-        level: 1,
-        status: 'verified',
-        photoUrl: user.photoURL || undefined,
-        authProvider: 'google',
-        createdAt: new Date().toISOString().split('T')[0],
-      },
+      admin: masterAdminObj,
     };
   }
 
-  // 2. Semak jika emel telah diotorisasi dalam senarai admin
+  // 2. Semak jika emel telah diotorisasi dalam senarai Admin Level 2
   const admins = getAuthorizedAdmins();
   const matchedAdmin = admins.find((a) => a.email.toLowerCase() === cleanEmail);
   if (matchedAdmin) {
-    const isMaster = matchedAdmin.level === 1 || isMasterAdminEmail(matchedAdmin.email);
+    const level2AdminObj: AuthorizedAdmin = {
+      ...matchedAdmin,
+      id: user.uid || matchedAdmin.id,
+      name: user.displayName || matchedAdmin.name,
+      photoUrl: user.photoURL || matchedAdmin.photoUrl,
+      level: 2,
+      role: 'Admin Level 2',
+      status: 'verified',
+      authProvider: 'google',
+    };
+
+    if (user.uid) {
+      syncAdminToFirestore({
+        uid: user.uid,
+        email: cleanEmail,
+        name: level2AdminObj.name,
+        role: level2AdminObj.role!,
+        level: 2,
+      }).catch((e) => console.warn('Sync admin level 2 to firestore:', e));
+    }
+
     return {
       isValid: true,
-      isMaster,
-      admin: {
-        ...matchedAdmin,
-        name: user.displayName || matchedAdmin.name,
-        photoUrl: user.photoURL || matchedAdmin.photoUrl,
-        level: isMaster ? 1 : 2,
-        role: isMaster ? 'Master Administrator' : 'Admin Level 2',
-        status: 'verified',
-        authProvider: 'google',
-      },
+      isMaster: false,
+      admin: level2AdminObj,
     };
   }
 

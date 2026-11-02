@@ -44,6 +44,28 @@ export const subscribeToAuthChanges = (callback: (user: User | null) => void) =>
   return onAuthStateChanged(auth, callback);
 };
 
+/**
+ * Persist or update an authenticated admin document in Firestore '/admins/{uid}'
+ */
+export const syncAdminToFirestore = async (admin: {
+  uid: string;
+  email: string;
+  name?: string;
+  role: string;
+  level: number;
+}): Promise<void> => {
+  try {
+    const adminRef = doc(db, 'admins', admin.uid);
+    await setDoc(adminRef, {
+      ...admin,
+      updatedAt: serverTimestamp(),
+      verifiedAt: serverTimestamp(),
+    }, { merge: true });
+  } catch (err) {
+    console.warn('Notice syncing admin profile to Firestore:', err);
+  }
+};
+
 // Initialize Firestore with specific database ID and experimentalForceLongPolling
 // to prevent 10-second WebChannel stream timeouts in iframe/sandbox environments
 export const db = (() => {
