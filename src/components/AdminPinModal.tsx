@@ -133,6 +133,8 @@ export const AdminPinModal: React.FC<AdminPinModalProps> = ({ isOpen, onClose, o
         const host = typeof window !== 'undefined' ? window.location.hostname : 'domain semasa';
         setUnauthorizedDomain(host);
         setErrorMessage(`Domain aplikasi (${host}) belum dibenarkan (authorized domain) dalam Firebase Authentication projek ${firebaseConfig.projectId}.`);
+      } else if (err?.code === 'auth/api-key-not-valid' || errStr.includes('api-key-not-valid') || errStr.includes('API_KEY_INVALID')) {
+        triggerError('Kunci API Firebase tidak sah atau disekat. Sila klik "Dev PIN" (5313) atau gunakan log masuk alternatif.');
       } else {
         triggerError(err?.message || 'Gagal log masuk dengan akaun Google. Sila cuba lagi.');
       }
