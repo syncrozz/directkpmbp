@@ -105,27 +105,31 @@ export const AdminPinModal: React.FC<AdminPinModalProps> = ({ isOpen, onClose, o
       }
     } catch (err: any) {
       console.warn('[AdminAuth] Handled notice during Google Sign-In:', err?.code || err?.message || err);
-      const errStr = `${err?.code || ''} ${err?.message || ''} ${String(err)}`;
+      const errorCode = err?.code || '';
+      const rawMessage = err?.message || '';
 
-      if (err?.code === 'auth/popup-closed-by-user') {
-        setErrorMessage('Tetingkap log masuk Google ditutup sebelum selesai.');
-      } else if (err?.code === 'auth/cancelled-popup-request') {
-        // Multiple clicks
-      } else if (err?.code === 'auth/popup-blocked') {
+      if (errorCode === 'auth/popup-closed-by-user') {
+        setErrorMessage('Tetingkap log masuk Google ditutup sebelum pengesahan selesai. (Kod: auth/popup-closed-by-user)');
+      } else if (errorCode === 'auth/cancelled-popup-request') {
+        // Ignored: Multiple concurrent popup clicks
+      } else if (errorCode === 'auth/popup-blocked') {
         setPopupBlocked(true);
-        setErrorMessage('Pelayar anda menyekat pembukaan pop-up log masuk Google.');
+        setErrorMessage('Pelayar anda menyekat pembukaan pop-up log masuk Google. Sila benarkan pop-up pada bar alamat pelayar. (Kod: auth/popup-blocked)');
+      } else if (errorCode === 'auth/operation-not-allowed') {
+        triggerError(`Penyedia Google Sign-In belum diaktifkan di Firebase Authentication projek ${firebaseConfig.projectId}. Sila aktifkan penyedia Google di Firebase Console. (Kod: auth/operation-not-allowed)`);
+      } else if (errorCode === 'auth/network-request-failed') {
+        triggerError('Ralat rangkaian semasa menghubungi pelayan Google Auth. Sila semak sambungan internet anda. (Kod: auth/network-request-failed)');
       } else if (
-        err?.code === 'auth/unauthorized-domain' ||
-        errStr.includes('unauthorized-domain') ||
-        errStr.includes('_validateOrigin')
+        errorCode === 'auth/api-key-not-valid' ||
+        errorCode === 'auth/invalid-api-key'
       ) {
+        triggerError(`Kunci API Firebase (${firebaseConfig.apiKey.substring(0, 8)}...) tidak sah atau tidak sepadan dengan projek ${firebaseConfig.projectId}. Sila semak Kunci API Web di Firebase Console. (Kod: ${errorCode})`);
+      } else if (errorCode === 'auth/unauthorized-domain') {
         const host = typeof window !== 'undefined' ? window.location.hostname : 'domain semasa';
         setUnauthorizedDomain(host);
-        setErrorMessage(`Domain aplikasi (${host}) belum didaftarkan di Authorized Domains Firebase Authentication projek ${firebaseConfig.projectId}.`);
-      } else if (err?.code === 'auth/api-key-not-valid' || errStr.includes('api-key-not-valid')) {
-        triggerError('Kunci API Firebase tidak sah. Sila semak konfigurasi projek.');
+        setErrorMessage(`Domain aplikasi (${host}) belum didaftarkan di Authorized Domains Firebase Authentication projek ${firebaseConfig.projectId}, atau Kunci API Web belum diselaraskan dengan projek ${firebaseConfig.projectId}. (Kod: auth/unauthorized-domain)`);
       } else {
-        triggerError(err?.message || 'Gagal log masuk dengan akaun Google. Sila cuba lagi.');
+        triggerError(`${rawMessage || 'Gagal log masuk dengan akaun Google. Sila cuba lagi.'} (Kod: ${errorCode || 'auth/unknown'})`);
       }
     } finally {
       setIsGoogleLoading(false);
@@ -224,9 +228,9 @@ export const AdminPinModal: React.FC<AdminPinModalProps> = ({ isOpen, onClose, o
           {/* Unauthorized Domain Guidance & Fallback Bypass */}
           {unauthorizedDomain && (
             <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl text-left space-y-2.5 text-xs text-amber-900">
-              <p className="font-bold">Domain Hos Belum Dibenarkan</p>
+              <p className="font-bold">Domain Hos Belum Dibenarkan atau Kunci API Tidak Sepadan</p>
               <p className="text-[11px] text-amber-800 leading-relaxed">
-                Domain hos aplikasi preview perlu didaftarkan di <strong>Authorized Domains</strong> Firebase Authentication:
+                Domain hos aplikasi perlu didaftarkan di <strong>Authorized Domains</strong> Firebase Authentication projek {firebaseConfig.projectId}. Jika domain telah didaftarkan, pastikan <strong>Kunci API Web (Web API Key)</strong> yang digunakan sepadan dengan projek {firebaseConfig.projectId} di Firebase Console:
               </p>
               <div className="flex items-center gap-2 p-1.5 bg-white rounded-xl border border-amber-200">
                 <code className="text-[10px] font-mono text-slate-700 flex-1 truncate px-1 select-all">

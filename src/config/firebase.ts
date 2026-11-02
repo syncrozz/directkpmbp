@@ -26,8 +26,13 @@ import { getStorage } from 'firebase/storage';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { Staff, StaffCommittee } from '../types';
 
+export const effectiveFirebaseConfig = {
+  ...firebaseConfig,
+  apiKey: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_API_KEY) || firebaseConfig.apiKey,
+};
+
 // Initialize Firebase App
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+const app = getApps().length === 0 ? initializeApp(effectiveFirebaseConfig) : getApps()[0];
 
 // Initialize Firebase Storage
 export const storage = getStorage(app);
