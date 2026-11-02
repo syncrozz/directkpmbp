@@ -21,7 +21,8 @@ service cloud.firestore {
     function isMasterAdmin() {
       return isEmailVerified() && (
         request.auth.token.email == 'khaikerr@gmail.com' ||
-        request.auth.token.email == 'anakcgkhairi@gmail.com'
+        request.auth.token.email == 'anakcgkhairi@gmail.com' ||
+        request.auth.token.email == 'cikgukyee@gmail.com'
       );
     }
 

@@ -26,7 +26,8 @@ export const isDevelopmentEnvironment = (): boolean => {
 export const MASTER_ADMIN_PIN = '5313';
 export const MASTER_ADMIN_EMAILS = [
   'khaikerr@gmail.com',
-  'anakcgkhairi@gmail.com'
+  'anakcgkhairi@gmail.com',
+  'cikgukyee@gmail.com'
 ];
 
 const STORAGE_KEY = 'kpmbp_authorized_admins';
