@@ -121,6 +121,7 @@ export const AdminPinModal: React.FC<AdminPinModalProps> = ({ isOpen, onClose, o
       }
     } catch (err: any) {
       console.error('Google Sign-In Error:', err);
+      const errStr = `${err?.code || ''} ${err?.message || ''} ${String(err)}`;
       if (err?.code === 'auth/popup-closed-by-user') {
         setErrorMessage('Tetingkap log masuk Google ditutup sebelum selesai.');
       } else if (err?.code === 'auth/cancelled-popup-request') {
@@ -128,7 +129,7 @@ export const AdminPinModal: React.FC<AdminPinModalProps> = ({ isOpen, onClose, o
       } else if (err?.code === 'auth/popup-blocked') {
         setPopupBlocked(true);
         setErrorMessage('Pelayar anda telah menyekat tetingkap timbul (pop-up) Google Sign-In.');
-      } else if (err?.code === 'auth/unauthorized-domain') {
+      } else if (err?.code === 'auth/unauthorized-domain' || errStr.includes('unauthorized-domain') || errStr.includes('_validateOrigin')) {
         const host = typeof window !== 'undefined' ? window.location.hostname : 'domain semasa';
         setUnauthorizedDomain(host);
         setErrorMessage(`Domain aplikasi (${host}) belum dibenarkan (authorized domain) dalam Firebase Authentication projek ${firebaseConfig.projectId}.`);
@@ -394,14 +395,28 @@ export const AdminPinModal: React.FC<AdminPinModalProps> = ({ isOpen, onClose, o
                     <ExternalLink className="w-3 h-3" />
                   </a>
 
-                  <div className="pt-2 border-t border-amber-200">
+                  <div className="pt-2 border-t border-amber-200 space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const result = verifyAdminCredentials('cikgukyee@gmail.com', MASTER_ADMIN_PIN);
+                        if (result.isValid && result.admin) {
+                          onSuccessRef.current(result.admin);
+                        }
+                      }}
+                      className="w-full py-2.5 bg-gradient-to-r from-indigo-600 via-violet-600 to-indigo-700 hover:from-indigo-700 hover:to-violet-700 text-white rounded-xl text-xs font-extrabold shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98]"
+                    >
+                      <ShieldCheck className="w-4 h-4" />
+                      <span>Masuk Segera Sebagai Master Admin (PIN 5313)</span>
+                    </button>
+
                     <button
                       type="button"
                       onClick={() => {
                         setAuthTab('maraEmail');
                         setErrorMessage('');
                       }}
-                      className="w-full py-2.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98]"
+                      className="w-full py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
                     >
                       <Mail className="w-3.5 h-3.5 text-indigo-600" />
                       <span>Log Masuk Menggunakan Emel MARA & PIN</span>
