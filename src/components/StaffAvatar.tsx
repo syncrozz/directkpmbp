@@ -1,6 +1,17 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 import React, { useState, useEffect } from 'react';
 import { Staff } from '../types';
-import { getStaffImageUrl, STAFF_IMAGE_PLACEHOLDER, getInitials } from '../utils/staffPhoto';
+import { 
+  getStaffImageUrl, 
+  getInitials, 
+  formatStaffId,
+  isStaffImageFailed,
+  markStaffImageFailed
+} from '../utils/staffPhoto';
 
 interface StaffAvatarProps {
   staff: Staff;
@@ -19,33 +30,27 @@ export const StaffAvatar: React.FC<StaffAvatarProps> = ({
   showOnlineStatus = false,
   textSizeClassName = 'text-base md:text-lg',
 }) => {
-  const staffId = staff?.staff_id || staff?.ID || '';
+  const rawId = staff?.staff_id || staff?.ID || staff?.StaffID || '';
+  const staffId = formatStaffId(rawId);
   const primaryUrl = getStaffImageUrl(staffId);
 
-  // Print staff_id and generated image URL to browser console before rendering
-  console.log(`staff_id = ${staffId}\n\ngenerated_url =\n${primaryUrl}`);
-
-  const [currentSrc, setCurrentSrc] = useState<string>(primaryUrl);
-  const [useInitialsFallback, setUseInitialsFallback] = useState<boolean>(false);
+  const [hasError, setHasError] = useState<boolean>(() => {
+    return !primaryUrl || isStaffImageFailed(primaryUrl);
+  });
 
   useEffect(() => {
-    const id = staff?.staff_id || staff?.ID || '';
-    const imgUrl = getStaffImageUrl(id);
-    setCurrentSrc(imgUrl);
-    setUseInitialsFallback(false);
-  }, [staff?.staff_id, staff?.ID]);
+    if (!primaryUrl || isStaffImageFailed(primaryUrl)) {
+      setHasError(true);
+    } else {
+      setHasError(false);
+    }
+  }, [primaryUrl]);
 
   const handleImageError = () => {
-    // Print failure message as requested
-    console.log(`Image failed:\n${currentSrc}`);
-
-    if (currentSrc !== STAFF_IMAGE_PLACEHOLDER) {
-      // Step 1: Automatic fallback to SYNCROZZ placeholder image if primary image fails
-      setCurrentSrc(STAFF_IMAGE_PLACEHOLDER);
-    } else {
-      // Step 2: Fallback to initials if placeholder image is also unreachable
-      setUseInitialsFallback(true);
+    if (primaryUrl) {
+      markStaffImageFailed(primaryUrl);
     }
+    setHasError(true);
   };
 
   const initials = getInitials(staff?.Nama || '');
@@ -55,12 +60,13 @@ export const StaffAvatar: React.FC<StaffAvatarProps> = ({
       <div
         className={`${sizeClassName} rounded-full overflow-hidden flex items-center justify-center font-black ${textSizeClassName} border-2 border-white shadow-md ${avatarBgClassName} ${ringClassName} transition-transform duration-200 group-hover:scale-105`}
       >
-        {!useInitialsFallback && currentSrc ? (
+        {!hasError && primaryUrl ? (
           <img
-            src={currentSrc}
-            alt={staff?.Nama || 'Gambar Staf'}
+            src={primaryUrl}
+            alt={staff?.Nama || `Gambar Staf ${staffId}`}
             referrerPolicy="no-referrer"
             onError={handleImageError}
+            loading="lazy"
             className="w-full h-full object-cover rounded-full transition-opacity"
           />
         ) : (
@@ -76,4 +82,3 @@ export const StaffAvatar: React.FC<StaffAvatarProps> = ({
     </div>
   );
 };
-

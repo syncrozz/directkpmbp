@@ -30,6 +30,7 @@ import {
 import { Staff, DivisionType } from '../types';
 import { findDuplicateStaff } from '../utils/staffDeduplication';
 import { formatIC } from '../utils/icFormatter';
+import { StaffAvatar } from './StaffAvatar';
 
 interface SelfRegistrationPageProps {
   existingStaffList: Staff[];
@@ -319,11 +320,17 @@ export const SelfRegistrationPage: React.FC<SelfRegistrationPageProps> = ({
 
             {/* Profile Summary Card */}
             <div className="p-5 bg-gradient-to-br from-indigo-50/60 to-slate-50 rounded-2xl border border-indigo-100 space-y-3">
-              <div className="flex items-start justify-between gap-2 flex-wrap">
-                <div>
-                  <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-indigo-600 text-white">
-                    {registeredStaff.ID}
-                  </span>
+              <div className="flex items-center gap-4 flex-wrap">
+                <StaffAvatar staff={registeredStaff} sizeClassName="w-16 h-16" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-indigo-600 text-white">
+                      {registeredStaff.ID}
+                    </span>
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                      {registeredStaff.Bahagian}
+                    </span>
+                  </div>
                   <h3 className="text-lg font-black text-slate-900 uppercase mt-1">
                     {registeredStaff.Nama}
                   </h3>
@@ -331,9 +338,6 @@ export const SelfRegistrationPage: React.FC<SelfRegistrationPageProps> = ({
                     {registeredStaff.Jawatan} • {registeredStaff.Unit} ({registeredStaff.Gred})
                   </p>
                 </div>
-                <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                  {registeredStaff.Bahagian}
-                </span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs pt-2 border-t border-indigo-100/70 text-slate-600">
