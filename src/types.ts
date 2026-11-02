@@ -54,32 +54,13 @@ export type DivisionType = 'Semua' | 'Pengurusan' | 'Akademik' | 'Sokongan Akade
 export interface AuthorizedAdmin {
   id: string;
   email: string;
-  pin?: string; // 4-digit PIN (last 4 digits of IC) or optional for Google Auth
-  icLast4?: string;
   name?: string;
-  role?: string;
-  level?: 1 | 2; // 1 = Master Admin, 2 = Admin Level 2 (Akses No. IC)
-  status?: 'pending' | 'verified';
-  inviteToken?: string;
-  inviteSentAt?: string;
-  verifiedAt?: string;
+  role: 'Master Administrator';
+  level: 1;
+  status: 'verified';
   photoUrl?: string;
-  authProvider?: 'google' | 'pin';
+  authProvider: 'google';
   createdAt?: string;
-}
-
-export interface AdminInvitation {
-  id: string;
-  email: string;
-  name?: string;
-  level: 2;
-  role: 'Admin Level 2';
-  status: 'pending' | 'verified' | 'revoked';
-  token: string;
-  inviteUrl: string;
-  invitedBy?: string;
-  createdAt: string;
-  verifiedAt?: string;
 }
 
 export interface StudentTimetable {

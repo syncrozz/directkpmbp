@@ -1,4 +1,4 @@
-const CACHE_NAME = 'directory-kpmbp-v1';
+const CACHE_NAME = 'directory-kpmbp-v3';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -8,6 +8,7 @@ const ASSETS_TO_CACHE = [
 
 // Install Event
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       console.log('[SW] Pre-caching offline app shell');
@@ -16,7 +17,6 @@ self.addEventListener('install', (event) => {
       });
     })
   );
-  self.skipWaiting();
 });
 
 // Activate Event
@@ -31,27 +31,44 @@ self.addEventListener('activate', (event) => {
           }
         })
       );
-    })
+    }).then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
-// Fetch Event (Network First for API / Remote Data, Stale-While-Revalidate for Assets)
+// Fetch Event (Network First for Navigations & APIs, Cache with Network Fallback for Static Assets)
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
 
   const url = new URL(event.request.url);
 
-  // Skip caching API proxy calls and Google Sheets calls to ensure live updates
+  // Skip caching API proxy calls and external database requests
   if (
     url.pathname.startsWith('/api') ||
     url.hostname.includes('script.google.com') ||
     url.hostname.includes('googleapis.com') ||
-    url.hostname.includes('firestore')
+    url.hostname.includes('firestore') ||
+    url.hostname.includes('identitytoolkit')
   ) {
     return;
   }
 
+  // Network First for Navigation requests (HTML) to ensure users always receive the latest build
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (response && response.status === 200) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request) || caches.match('/index.html'))
+    );
+    return;
+  }
+
+  // Stale-While-Revalidate for other static assets
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       const fetchPromise = fetch(event.request)
@@ -68,11 +85,9 @@ self.addEventListener('fetch', (event) => {
           }
           return networkResponse;
         })
-        .catch(() => {
-          return cachedResponse;
-        });
+        .catch(() => cachedResponse);
 
-      return cachedResponse || fetchPromise;
+      return fetchPromise || cachedResponse;
     })
   );
 });

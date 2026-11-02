@@ -17,25 +17,13 @@ service cloud.firestore {
       return isSignedIn() && request.auth.token.email_verified == true;
     }
 
-    // Official Master Administrator: Strictly verified via Google Auth
+    // Official Master Administrator: Strictly verified via Google Auth (ONLY khaikerr@gmail.com)
     function isMasterAdmin() {
-      return isEmailVerified() && (
-        request.auth.token.email == 'khaikerr@gmail.com' ||
-        request.auth.token.email == 'anakcgkhairi@gmail.com' ||
-        request.auth.token.email == 'cikgukyee@gmail.com'
-      );
-    }
-
-    // Check if user is registered in the trusted admins collection
-    function isDbAdmin() {
-      return isSignedIn() && (
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
-        (request.auth.token.email != null && exists(/databases/$(database)/documents/admins/$(request.auth.token.email)))
-      );
+      return isEmailVerified() && request.auth.token.email == 'khaikerr@gmail.com';
     }
 
     function isAuthorizedAdmin() {
-      return isMasterAdmin() || isDbAdmin();
+      return isMasterAdmin();
     }
 
     function isValidId(id) {
@@ -44,7 +32,7 @@ service cloud.firestore {
 
     // --- Staff Collection ---
     // Public directory read allowed for general staff card & directory display
-    // Write (create, update, delete) strictly restricted to verified authorized admins
+    // Write strictly restricted to verified Master Admin (khaikerr@gmail.com)
     match /staff/{staffId} {
       allow read: if true;
       allow write: if isAuthorizedAdmin() && isValidId(staffId);
@@ -52,7 +40,7 @@ service cloud.firestore {
 
     // --- Committees Collection ---
     // Public read allowed for official committee display
-    // Write strictly restricted to verified authorized admins
+    // Write strictly restricted to verified Master Admin (khaikerr@gmail.com)
     match /committees/{committeeId} {
       allow read: if true;
       allow write: if isAuthorizedAdmin() && isValidId(committeeId);
@@ -60,18 +48,16 @@ service cloud.firestore {
 
     // --- System Cache Documents (staff_data, committee_data) ---
     // Public read allowed for fast batch directory sync
-    // Write strictly restricted to verified authorized admins
+    // Write strictly restricted to verified Master Admin (khaikerr@gmail.com)
     match /system/{docId} {
       allow read: if true;
       allow write: if isAuthorizedAdmin() && isValidId(docId);
     }
 
     // --- Admins Collection ---
-    // Protected: Only authenticated admins can read administrative records
-    // Modification (create, update, revoke): Strictly restricted to verified Master Admin
+    // Protected: Strictly restricted to verified Master Admin (khaikerr@gmail.com)
     match /admins/{adminId} {
-      allow read: if isAuthorizedAdmin();
-      allow write: if isMasterAdmin() && isValidId(adminId);
+      allow read, write: if isMasterAdmin() && isValidId(adminId);
     }
   }
 }

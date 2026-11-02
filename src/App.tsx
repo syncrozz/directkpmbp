@@ -33,10 +33,9 @@ import { SyncSettings } from './components/SyncSettings';
 import { AddEditStaffModal } from './components/AddEditStaffModal';
 import { CampusReferenceHub } from './components/CampusReferenceHub';
 import { AdminPinModal } from './components/AdminPinModal';
-import { AdminVerificationModal } from './components/AdminVerificationModal';
 import { SelfRegistrationPage } from './components/SelfRegistrationPage';
 import { StudentTimetableHub } from './components/StudentTimetableHub';
-import { verifyGoogleAdmin } from './utils/adminAuthService';
+import { verifyGoogleAdmin, clearLegacyAdminState } from './utils/adminAuthService';
 import { 
   fetchStaffListFromFirestore, 
   fetchCommitteesFromFirestore, 
@@ -137,11 +136,12 @@ export default function App() {
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [currentAdmin, setCurrentAdmin] = useState<AuthorizedAdmin | null>(null);
   const [isAdminPinOpen, setIsAdminPinOpen] = useState(false);
-  const [inviteToken, setInviteToken] = useState<string | null>(null);
-  const [isVerifyModalOpen, setIsVerifyModalOpen] = useState(false);
 
-  // Listen to Firebase Auth state for automatic session restoration and termination
+  // Clear obsolete admin LocalStorage keys and listen to authoritative Firebase Auth state
   useEffect(() => {
+    // Purge legacy authentication keys from previous sessions
+    clearLegacyAdminState();
+
     const unsubscribe = subscribeToAuthChanges((user) => {
       if (user && user.email) {
         const result = verifyGoogleAdmin({
@@ -149,24 +149,18 @@ export default function App() {
           displayName: user.displayName,
           photoURL: user.photoURL,
           uid: user.uid,
+          emailVerified: user.emailVerified,
         });
         if (result.isValid && result.admin) {
           setIsAdminMode(true);
           setCurrentAdmin(result.admin);
         } else {
-          // Explicitly reject and revoke admin mode if user is not authorized
           setIsAdminMode(false);
           setCurrentAdmin(null);
         }
       } else {
-        // If user is null (signed out), revoke google-based admin session
-        setCurrentAdmin((prev) => {
-          if (prev?.authProvider === 'google') {
-            setIsAdminMode(false);
-            return null;
-          }
-          return prev;
-        });
+        setIsAdminMode(false);
+        setCurrentAdmin(null);
       }
     });
     return () => unsubscribe();
@@ -207,12 +201,6 @@ export default function App() {
       const pathname = window.location.pathname.toLowerCase();
       const searchParams = new URLSearchParams(window.location.search);
       const pageParam = (searchParams.get('page') || searchParams.get('tab') || '').toLowerCase();
-      const inviteParam = searchParams.get('invite');
-
-      if (inviteParam) {
-        setInviteToken(inviteParam);
-        setIsVerifyModalOpen(true);
-      }
 
       if (hash.includes('daftar') || pathname.endsWith('/daftar') || pageParam === 'daftar') {
         setActiveHub('daftar');
@@ -1089,20 +1077,6 @@ export default function App() {
         }}
       />
 
-      <AdminVerificationModal
-        isOpen={isVerifyModalOpen}
-        token={inviteToken}
-        onClose={() => {
-          setIsVerifyModalOpen(false);
-          setInviteToken(null);
-        }}
-        onVerified={(admin) => {
-          setIsAdminMode(true);
-          setCurrentAdmin(admin);
-          setIsVerifyModalOpen(false);
-          setInviteToken(null);
-        }}
-      />
 
     </div>
   );
