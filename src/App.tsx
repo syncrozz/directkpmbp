@@ -18,7 +18,8 @@ import {
   Pencil,
   FileSpreadsheet,
   Upload,
-  ChevronDown
+  ChevronDown,
+  GraduationCap
 } from 'lucide-react';
 import { Staff, DivisionType, StaffCommittee, AuthorizedAdmin } from './types';
 import { INITIAL_STAFF_DATA } from './data/initialStaff';
@@ -35,6 +36,7 @@ import { CampusReferenceHub } from './components/CampusReferenceHub';
 import { AdminPinModal } from './components/AdminPinModal';
 import { SelfRegistrationPage } from './components/SelfRegistrationPage';
 import { StudentTimetableHub } from './components/StudentTimetableHub';
+import { LecturerTimetableHub } from './components/LecturerTimetableHub';
 import { verifyGoogleAdmin, clearLegacyAdminState } from './utils/adminAuthService';
 import { 
   fetchStaffListFromFirestore, 
@@ -46,8 +48,8 @@ import {
 } from './config/firebase';
 
 export default function App() {
-  // Navigation State ('directory' | 'rujukan' | 'jadual' | 'daftar')
-  const [activeHub, setActiveHub] = useState<'directory' | 'rujukan' | 'jadual' | 'daftar'>(() => {
+  // Navigation State ('directory' | 'rujukan' | 'jadual' | 'jadual-pensyarah' | 'daftar')
+  const [activeHub, setActiveHub] = useState<'directory' | 'rujukan' | 'jadual' | 'jadual-pensyarah' | 'daftar'>(() => {
     if (typeof window !== 'undefined') {
       const hash = window.location.hash.toLowerCase();
       const pathname = window.location.pathname.toLowerCase();
@@ -55,6 +57,9 @@ export default function App() {
       const pageParam = (searchParams.get('page') || searchParams.get('tab') || '').toLowerCase();
       if (hash.includes('daftar') || pathname.endsWith('/daftar') || pageParam === 'daftar') {
         return 'daftar';
+      }
+      if (hash.includes('pensyarah') || pathname.endsWith('/pensyarah') || pageParam === 'pensyarah') {
+        return 'jadual-pensyarah';
       }
       if (hash.includes('jadual') || pathname.endsWith('/jadual') || pageParam === 'jadual') {
         return 'jadual';
@@ -203,6 +208,8 @@ export default function App() {
 
       if (hash.includes('daftar') || pathname.endsWith('/daftar') || pageParam === 'daftar') {
         setActiveHub('daftar');
+      } else if (hash.includes('pensyarah') || pathname.endsWith('/pensyarah') || pageParam === 'pensyarah') {
+        setActiveHub('jadual-pensyarah');
       } else if (hash.includes('jadual') || pathname.endsWith('/jadual') || pageParam === 'jadual') {
         setActiveHub('jadual');
       } else if (hash.includes('rujukan') || pathname.endsWith('/rujukan') || pageParam === 'rujukan') {
@@ -513,7 +520,17 @@ export default function App() {
     <div className="min-h-screen text-gray-800 flex flex-col font-sans selection:bg-indigo-100 selection:text-indigo-900 relative">
       
       {/* Dynamic Ambient Background Blobs */}
-      <div className="mesh-blob blob-1"></div>
+      <div className={`mesh-blob blob-1 transition-all duration-700 ${
+        activeHub === 'rujukan'
+          ? '!bg-[radial-gradient(circle,rgba(16,185,129,0.18)_0%,rgba(20,184,166,0.06)_100%)]'
+          : activeHub === 'jadual'
+          ? '!bg-[radial-gradient(circle,rgba(245,158,11,0.18)_0%,rgba(249,115,22,0.06)_100%)]'
+          : activeHub === 'jadual-pensyarah'
+          ? '!bg-[radial-gradient(circle,rgba(244,63,94,0.18)_0%,rgba(236,72,153,0.06)_100%)]'
+          : activeHub === 'daftar'
+          ? '!bg-[radial-gradient(circle,rgba(168,85,247,0.18)_0%,rgba(217,70,239,0.06)_100%)]'
+          : ''
+      }`}></div>
       <div className="mesh-blob blob-2"></div>
       <div className="mesh-blob blob-3"></div>
 
@@ -604,57 +621,104 @@ export default function App() {
         </div>
       </header>
 
-      {/* Sub-Header Tab Switcher */}
-      <div className="border-b border-slate-100/80 bg-white/40 backdrop-blur-md relative z-30">
-        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center gap-2">
-          <button
-            onClick={() => {
-              setActiveHub('directory');
-              if (typeof window !== 'undefined' && window.location.hash.includes('daftar')) {
-                window.location.hash = '';
-              }
-            }}
-            className={`px-4 py-2.5 rounded-2xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer ${
-              activeHub === 'directory'
-                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200'
-                : 'bg-white/60 text-slate-700 hover:bg-white/80 border border-slate-100'
-            }`}
-          >
-            <UserCheck className="w-4 h-4" />
-            Directory Staff
-          </button>
-          <button
-            onClick={() => {
-              setActiveHub('rujukan');
-              if (typeof window !== 'undefined' && window.location.hash) {
-                window.location.hash = '#rujukan';
-              }
-            }}
-            className={`px-4 py-2.5 rounded-2xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer ${
-              activeHub === 'rujukan'
-                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200'
-                : 'bg-white/60 text-slate-700 hover:bg-white/80 border border-slate-100'
-            }`}
-          >
-            <BookOpen className="w-4 h-4" />
-            Rujukan Kolej
-          </button>
-          <button
-            onClick={() => {
-              setActiveHub('jadual');
-              if (typeof window !== 'undefined') {
-                window.location.hash = '#jadual';
-              }
-            }}
-            className={`px-4 py-2.5 rounded-2xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer ${
-              activeHub === 'jadual'
-                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200'
-                : 'bg-white/60 text-slate-700 hover:bg-white/80 border border-slate-100'
-            }`}
-          >
-            <Calendar className="w-4 h-4" />
-            Jadual Pelajar
-          </button>
+      {/* Sub-Header Tab Switcher with Dynamic Section Color Identity */}
+      <div className={`transition-all duration-300 border-b relative z-30 backdrop-blur-md ${
+        activeHub === 'directory'
+          ? 'bg-gradient-to-r from-indigo-50/80 via-white/70 to-indigo-50/40 border-indigo-100/90'
+          : activeHub === 'rujukan'
+          ? 'bg-gradient-to-r from-emerald-50/80 via-white/70 to-emerald-50/40 border-emerald-100/90'
+          : activeHub === 'jadual'
+          ? 'bg-gradient-to-r from-amber-50/80 via-white/70 to-amber-50/40 border-amber-100/90'
+          : activeHub === 'jadual-pensyarah'
+          ? 'bg-gradient-to-r from-rose-50/80 via-white/70 to-rose-50/40 border-rose-100/90'
+          : 'bg-gradient-to-r from-purple-50/80 via-white/70 to-purple-50/40 border-purple-100/90'
+      }`}>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between gap-2 overflow-x-auto scrollbar-none">
+          <div className="flex items-center gap-2 shrink-0">
+            {/* Button 1: Directory Staff (Indigo Theme) */}
+            <button
+              onClick={() => {
+                setActiveHub('directory');
+                if (typeof window !== 'undefined' && window.location.hash.includes('daftar')) {
+                  window.location.hash = '';
+                }
+              }}
+              className={`px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-2xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer ${
+                activeHub === 'directory'
+                  ? 'bg-gradient-to-r from-indigo-600 via-indigo-600 to-indigo-700 text-white shadow-md shadow-indigo-300/60 ring-2 ring-indigo-400/30'
+                  : 'bg-white/75 text-slate-700 hover:bg-indigo-50/90 hover:text-indigo-700 border border-slate-200/70 hover:border-indigo-200'
+              }`}
+            >
+              <UserCheck className={`w-4 h-4 transition-colors ${activeHub === 'directory' ? 'text-white' : 'text-indigo-600'}`} />
+              <span>Directory Staff</span>
+              {activeHub === 'directory' && (
+                <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+              )}
+            </button>
+
+            {/* Button 2: Rujukan Kolej (Emerald Theme) */}
+            <button
+              onClick={() => {
+                setActiveHub('rujukan');
+                if (typeof window !== 'undefined' && window.location.hash) {
+                  window.location.hash = '#rujukan';
+                }
+              }}
+              className={`px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-2xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer ${
+                activeHub === 'rujukan'
+                  ? 'bg-gradient-to-r from-emerald-600 via-emerald-600 to-teal-700 text-white shadow-md shadow-emerald-300/60 ring-2 ring-emerald-400/30'
+                  : 'bg-white/75 text-slate-700 hover:bg-emerald-50/90 hover:text-emerald-700 border border-slate-200/70 hover:border-emerald-200'
+              }`}
+            >
+              <BookOpen className={`w-4 h-4 transition-colors ${activeHub === 'rujukan' ? 'text-white' : 'text-emerald-600'}`} />
+              <span>Rujukan Kolej</span>
+              {activeHub === 'rujukan' && (
+                <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+              )}
+            </button>
+
+            {/* Button 3: Jadual Pelajar (Amber Theme) */}
+            <button
+              onClick={() => {
+                setActiveHub('jadual');
+                if (typeof window !== 'undefined') {
+                  window.location.hash = '#jadual';
+                }
+              }}
+              className={`px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-2xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer ${
+                activeHub === 'jadual'
+                  ? 'bg-gradient-to-r from-amber-500 via-amber-600 to-orange-600 text-white shadow-md shadow-amber-300/60 ring-2 ring-amber-400/30'
+                  : 'bg-white/75 text-slate-700 hover:bg-amber-50/90 hover:text-amber-800 border border-slate-200/70 hover:border-amber-200'
+              }`}
+            >
+              <Calendar className={`w-4 h-4 transition-colors ${activeHub === 'jadual' ? 'text-white' : 'text-amber-600'}`} />
+              <span>Jadual Pelajar</span>
+              {activeHub === 'jadual' && (
+                <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+              )}
+            </button>
+
+            {/* Button 4: Jadual Pensyarah (Rose Theme) */}
+            <button
+              onClick={() => {
+                setActiveHub('jadual-pensyarah');
+                if (typeof window !== 'undefined') {
+                  window.location.hash = '#pensyarah';
+                }
+              }}
+              className={`px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-2xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer ${
+                activeHub === 'jadual-pensyarah'
+                  ? 'bg-gradient-to-r from-rose-600 via-rose-600 to-pink-600 text-white shadow-md shadow-rose-300/60 ring-2 ring-rose-400/30'
+                  : 'bg-white/75 text-slate-700 hover:bg-rose-50/90 hover:text-rose-700 border border-slate-200/70 hover:border-rose-200'
+              }`}
+            >
+              <GraduationCap className={`w-4 h-4 transition-colors ${activeHub === 'jadual-pensyarah' ? 'text-white' : 'text-rose-600'}`} />
+              <span>Jadual Pensyarah</span>
+              {activeHub === 'jadual-pensyarah' && (
+                <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+              )}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -933,6 +997,13 @@ export default function App() {
           </div>
         ) : activeHub === 'jadual' ? (
           <StudentTimetableHub />
+        ) : activeHub === 'jadual-pensyarah' ? (
+          <LecturerTimetableHub
+            staffList={staffList}
+            onSelectProfile={(staff) => {
+              setSelectedStaff(staff);
+            }}
+          />
         ) : activeHub === 'rujukan' ? (
           <div className="glass-panel rounded-3xl p-6 md:p-8 border border-white/55 shadow-sm">
             <CampusReferenceHub 

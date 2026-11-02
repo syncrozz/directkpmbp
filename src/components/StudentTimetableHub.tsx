@@ -276,7 +276,7 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initia
     return counts;
   }, [timetables]);
 
-  // Distinct programs for quick filter (excludes DLC & hides any category with 0 count)
+  // Distinct programs for quick filter (includes DCAT, DIA, DLC, DLM, DLS & hides any category with 0 count)
   const programs = useMemo(() => {
     const set = new Set<string>();
     timetables.forEach((t) => {
@@ -384,7 +384,7 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initia
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Cari kod kelas, cth: DCAT7A..."
+              placeholder="Cari kod kelas, cth: DIA1A, DLC1A, DLM3A..."
               className="w-full pl-9 sm:pl-10 pr-9 py-2 sm:py-2.5 md:py-3 bg-slate-50 hover:bg-slate-50/80 border border-slate-200/90 rounded-xl sm:rounded-2xl text-xs sm:text-sm font-semibold text-slate-800 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-inner"
             />
             {searchQuery && (

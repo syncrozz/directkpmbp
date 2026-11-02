@@ -8,21 +8,22 @@ import { StudentTimetable } from '../types';
 export const GITHUB_API_URL = 'https://api.github.com/repos/syncrozz/syncrozz-assets/contents/TimeTable/Jadual%20Kelas%20Pelajar';
 export const RAW_IMAGE_BASE_URL = 'https://raw.githubusercontent.com/syncrozz/syncrozz-assets/main/TimeTable/Jadual%20Kelas%20Pelajar/';
 
-const CACHE_STORAGE_KEY = 'kpmbp_student_timetables_cache_v2';
-const CACHE_TIMESTAMP_KEY = 'kpmbp_student_timetables_cache_ts_v2';
+const CACHE_STORAGE_KEY = 'kpmbp_student_timetables_cache_v3';
+const CACHE_TIMESTAMP_KEY = 'kpmbp_student_timetables_cache_ts_v3';
 const CACHE_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
 
 // Supported image extensions
 const SUPPORTED_IMAGE_EXTS = ['.jpg', '.jpeg', '.png', '.webp'];
 
-// Programs not offered at KPMBP or obsolete
-export const EXCLUDED_PROGRAMS = new Set(['DLC']);
+// Excluded programs (DLC is fully enabled and displayed alongside other programs)
+export const EXCLUDED_PROGRAMS = new Set<string>();
 
 // Authoritative fallback list (used if GitHub API rate limits or network fails with empty cache)
 const FALLBACK_CLASS_FILES = [
   'DCAT7A.jpg', 'DCAT7B.jpg', 'DCAT7C.jpg',
   'DIA1A.jpg', 'DIA1B.jpg', 'DIA1C.jpg', 'DIA1D.jpg', 'DIA3A.jpg',
   'DIA4A.jpg', 'DIA4B.jpg', 'DIA4C.jpg', 'DIA4D.jpg', 'DIA5A.jpg', 'DIA6A.jpg',
+  'DLC1A.jpg', 'DLC1B.jpg', 'DLC1C.jpg',
   'DLM3A.jpg', 'DLM3B.jpg', 'DLM3C.jpg', 'DLM3E.jpg',
   'DLM4A.jpg', 'DLM4B.jpg', 'DLM4C.jpg', 'DLM4D.jpg', 'DLM4E.jpg', 'DLM4F.jpg',
   'DLM6A.jpg', 'DLM6B.jpg', 'DLM6C.jpg',
