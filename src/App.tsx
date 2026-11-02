@@ -676,7 +676,7 @@ export default function App() {
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Cari nama, no. plat (cth: SYM2539), gred, jabatan..."
+                    placeholder="Cari nama, no. plat, gred, jabatan..."
                     className="w-full pl-11 pr-10 py-3 bg-white/90 border border-indigo-200/80 rounded-2xl text-xs md:text-sm font-medium text-slate-800 placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:outline-none transition-all shadow-2xs"
                   />
                   {searchQuery && (

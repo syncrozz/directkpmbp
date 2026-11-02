@@ -53,6 +53,16 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ staff, committees = 
   const [timetableError, setTimetableError] = useState(false);
   const [isTimetableLoading, setIsTimetableLoading] = useState(true);
   const [copiedIc, setCopiedIc] = useState(false);
+  const [copiedName, setCopiedName] = useState(false);
+
+  const handleCopyName = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (navigator?.clipboard && staff?.Nama) {
+      navigator.clipboard.writeText(staff.Nama);
+      setCopiedName(true);
+      setTimeout(() => setCopiedName(false), 2000);
+    }
+  };
 
   const staffIdClean = (staff?.ID || staff?.staff_id || '').toUpperCase().trim();
   const timetableUrl = staffIdClean
@@ -62,6 +72,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ staff, committees = 
   useEffect(() => {
     setTimetableError(false);
     setIsTimetableLoading(true);
+    setCopiedName(false);
+    setCopiedIc(false);
   }, [staffIdClean]);
 
   // Handle ESC key to dismiss modal and manage body scroll lock
@@ -238,9 +250,34 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ staff, committees = 
 
             {/* Main Info */}
             <div className="space-y-1.5 mt-2">
-              <h2 className="text-xl font-bold text-slate-900 tracking-normal leading-snug uppercase">
-                {staff.Nama}
-              </h2>
+              <div className="flex items-start justify-between gap-2.5">
+                <h2 className="text-xl font-bold text-slate-900 tracking-normal leading-snug uppercase flex-1">
+                  {staff.Nama}
+                </h2>
+                <button
+                  type="button"
+                  onClick={handleCopyName}
+                  title="Salin Nama Kakitangan"
+                  aria-label="Salin Nama Kakitangan"
+                  className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 cursor-pointer border shadow-2xs group active:scale-95 ${
+                    copiedName
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                      : 'bg-white hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 border-slate-200 hover:border-indigo-200'
+                  }`}
+                >
+                  {copiedName ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-600" />
+                      <span className="text-[11px] font-extrabold text-emerald-600">Disalin</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600" />
+                      <span className="text-[11px] font-bold">Salin</span>
+                    </>
+                  )}
+                </button>
+              </div>
               <div className="flex items-center gap-2 flex-wrap">
                 {(() => {
                   const resolvedGred = getStaffGrade(staff);
