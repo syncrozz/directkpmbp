@@ -34,6 +34,7 @@ import {
   FALLBACK_LECTURER_TIMETABLE_IDS
 } from '../services/lecturerTimetableService';
 import { StaffAvatar } from './StaffAvatar';
+import { getShortName } from '../utils/shortName';
 
 interface LecturerTimetableHubProps {
   staffList: Staff[];
@@ -448,7 +449,7 @@ export const LecturerTimetableHub: React.FC<LecturerTimetableHubProps> = ({
                         <h4 className={`text-xs font-extrabold truncate leading-tight ${
                           isSelected ? 'text-white' : 'text-slate-900 group-hover:text-rose-700'
                         }`}>
-                          {staff.Nama}
+                          {getShortName(staff.Nama)}
                         </h4>
 
                         <p className={`text-[11px] truncate ${
@@ -490,8 +491,11 @@ export const LecturerTimetableHub: React.FC<LecturerTimetableHubProps> = ({
                   </div>
                   <div className="space-y-0.5">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">
-                        {selectedStaff.Nama}
+                      <h3
+                        title={selectedStaff.Nama}
+                        className="text-base sm:text-lg font-black text-slate-900 tracking-tight"
+                      >
+                        {getShortName(selectedStaff.Nama)}
                       </h3>
                       <span className="px-2 py-0.5 rounded-md font-mono text-xs font-black bg-rose-100 text-rose-800 border border-rose-200/80">
                         {currentStaffId}
@@ -666,8 +670,11 @@ export const LecturerTimetableHub: React.FC<LecturerTimetableHubProps> = ({
               <span className="font-mono text-sm font-black bg-rose-600 px-2 py-0.5 rounded-md">
                 {currentStaffId}
               </span>
-              <span className="text-sm font-bold truncate max-w-xs sm:max-w-md">
-                {selectedStaff.Nama}
+              <span
+                title={selectedStaff.Nama}
+                className="text-sm font-bold truncate max-w-xs sm:max-w-md"
+              >
+                {getShortName(selectedStaff.Nama)}
               </span>
             </div>
 
