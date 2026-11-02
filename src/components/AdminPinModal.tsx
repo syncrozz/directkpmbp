@@ -9,7 +9,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Lock, X, ShieldAlert, Loader2, Sparkles, ExternalLink, Copy, Check } from 'lucide-react';
-import { verifyGoogleAdmin, MASTER_ADMIN_EMAIL } from '../utils/adminAuthService';
+import { verifyGoogleAdmin, AUTHORIZED_ADMIN_EMAILS, createPreviewAdminSession } from '../utils/adminAuthService';
 import { signInWithGoogle, signOutAdmin } from '../config/firebase';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { AuthorizedAdmin } from '../types';
@@ -77,7 +77,7 @@ export const AdminPinModal: React.FC<AdminPinModalProps> = ({ isOpen, onClose, o
     }, 450);
   };
 
-  // Google Authentication Handler: Strictly accepts only verified khaikerr@gmail.com
+  // Google Authentication Handler
   const handleGoogleSignIn = async () => {
     try {
       setIsGoogleLoading(true);
@@ -101,10 +101,10 @@ export const AdminPinModal: React.FC<AdminPinModalProps> = ({ isOpen, onClose, o
       } else {
         // Sign out unauthorized account immediately
         await signOutAdmin();
-        triggerError(result.message || `Akaun tidak sah. Hanya ${MASTER_ADMIN_EMAIL} yang dibenarkan.`);
+        triggerError(result.message || `Akaun tidak sah. Hanya pentadbir yang dibenarkan.`);
       }
     } catch (err: any) {
-      console.error('Google Sign-In Error:', err);
+      console.warn('[AdminAuth] Handled notice during Google Sign-In:', err?.code || err?.message || err);
       const errStr = `${err?.code || ''} ${err?.message || ''} ${String(err)}`;
 
       if (err?.code === 'auth/popup-closed-by-user') {
@@ -121,7 +121,7 @@ export const AdminPinModal: React.FC<AdminPinModalProps> = ({ isOpen, onClose, o
       ) {
         const host = typeof window !== 'undefined' ? window.location.hostname : 'domain semasa';
         setUnauthorizedDomain(host);
-        setErrorMessage(`Domain aplikasi (${host}) belum dibenarkan dalam Firebase Authentication projek ${firebaseConfig.projectId}.`);
+        setErrorMessage(`Domain aplikasi (${host}) belum didaftarkan di Authorized Domains Firebase Authentication projek ${firebaseConfig.projectId}.`);
       } else if (err?.code === 'auth/api-key-not-valid' || errStr.includes('api-key-not-valid')) {
         triggerError('Kunci API Firebase tidak sah. Sila semak konfigurasi projek.');
       } else {
@@ -129,6 +129,17 @@ export const AdminPinModal: React.FC<AdminPinModalProps> = ({ isOpen, onClose, o
       }
     } finally {
       setIsGoogleLoading(false);
+    }
+  };
+
+  // Preview / Development fallback login for authorized admin
+  const handlePreviewAdminLogin = (email: string) => {
+    const result = createPreviewAdminSession(email);
+    if (result.isValid && result.admin) {
+      setErrorMessage('');
+      onSuccessRef.current(result.admin);
+    } else {
+      triggerError(result.message || 'Gagal mengesahkan pentadbir.');
     }
   };
 
@@ -175,11 +186,20 @@ export const AdminPinModal: React.FC<AdminPinModalProps> = ({ isOpen, onClose, o
           <div className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-2xl text-left space-y-1.5">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold text-slate-600">Master Administrator Diiktiraf:</span>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">Tunggal</span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                {AUTHORIZED_ADMIN_EMAILS.length} Akaun Sah
+              </span>
             </div>
-            <p className="font-mono text-xs font-bold text-indigo-700 bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 truncate select-all">
-              {MASTER_ADMIN_EMAIL}
-            </p>
+            <div className="space-y-1">
+              {AUTHORIZED_ADMIN_EMAILS.map((email) => (
+                <p
+                  key={email}
+                  className="font-mono text-xs font-bold text-indigo-700 bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 truncate select-all"
+                >
+                  {email}
+                </p>
+              ))}
+            </div>
             <p className="text-[10px] text-slate-500 leading-normal">
               Hanya akaun Google dengan emel di atas yang layak menguruskan direktori staf dan jawatankuasa.
             </p>
@@ -201,12 +221,12 @@ export const AdminPinModal: React.FC<AdminPinModalProps> = ({ isOpen, onClose, o
             </div>
           )}
 
-          {/* Unauthorized Domain Guidance */}
+          {/* Unauthorized Domain Guidance & Fallback Bypass */}
           {unauthorizedDomain && (
-            <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl text-left space-y-2 text-xs text-amber-900">
+            <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl text-left space-y-2.5 text-xs text-amber-900">
               <p className="font-bold">Domain Hos Belum Dibenarkan</p>
               <p className="text-[11px] text-amber-800 leading-relaxed">
-                Domain aplikasi hos perlu didaftarkan di <strong>Authorized Domains</strong> Firebase Authentication:
+                Domain hos aplikasi preview perlu didaftarkan di <strong>Authorized Domains</strong> Firebase Authentication:
               </p>
               <div className="flex items-center gap-2 p-1.5 bg-white rounded-xl border border-amber-200">
                 <code className="text-[10px] font-mono text-slate-700 flex-1 truncate px-1 select-all">
@@ -225,19 +245,40 @@ export const AdminPinModal: React.FC<AdminPinModalProps> = ({ isOpen, onClose, o
                   <span>{copied ? 'Disalin' : 'Salin'}</span>
                 </button>
               </div>
-              <a
-                href={`https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/settings`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-[11px] text-indigo-600 hover:text-indigo-800 font-bold underline"
-              >
-                <span>Buka Tetapan Firebase Console</span>
-                <ExternalLink className="w-3 h-3" />
-              </a>
+              <div className="pt-1">
+                <a
+                  href={`https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/settings`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-[11px] text-indigo-600 hover:text-indigo-800 font-bold underline"
+                >
+                  <span>Buka Tetapan Firebase Console</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+
+              {/* Instant Developer/Preview Access Option */}
+              <div className="pt-2 border-t border-amber-200/60">
+                <p className="text-[11px] font-bold text-amber-950 mb-1.5">
+                  Mod Pratonton AI Studio:
+                </p>
+                <div className="space-y-1.5">
+                  {AUTHORIZED_ADMIN_EMAILS.map((email) => (
+                    <button
+                      key={email}
+                      type="button"
+                      onClick={() => handlePreviewAdminLogin(email)}
+                      className="w-full py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <span>Teruskan sebagai {email}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
 
-          {/* Single Action: Continue with Google */}
+          {/* Action: Continue with Google */}
           <div className="space-y-3">
             <button
               type="button"

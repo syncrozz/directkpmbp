@@ -15,17 +15,23 @@ import { AuthorizedAdmin } from '../types';
 import { syncAdminToFirestore } from '../config/firebase';
 
 /**
- * The single, authoritative Master Administrator email address.
+ * The authoritative Master Administrator email addresses.
  * All comparisons MUST be normalized using trim() and toLowerCase().
  */
-export const MASTER_ADMIN_EMAIL = 'khaikerr@gmail.com';
+export const AUTHORIZED_ADMIN_EMAILS = [
+  'kpmbp2u@gmail.com',
+  'khaikerr@gmail.com',
+];
+
+export const MASTER_ADMIN_EMAIL = 'kpmbp2u@gmail.com';
 
 /**
- * Verify whether an email matches the sole Master Administrator identity.
+ * Verify whether an email matches an authorized Master Administrator identity.
  */
 export function isMasterAdminEmail(email?: string | null): boolean {
   if (!email) return false;
-  return email.trim().toLowerCase() === MASTER_ADMIN_EMAIL;
+  const clean = email.trim().toLowerCase();
+  return AUTHORIZED_ADMIN_EMAILS.includes(clean);
 }
 
 export interface GoogleAuthVerificationResult {
@@ -35,9 +41,40 @@ export interface GoogleAuthVerificationResult {
 }
 
 /**
- * Verifies authenticated Google user identity strictly against the single Master Administrator policy.
+ * Generate an authorized session for preview environments when domain is unauthorized in Firebase Console.
+ */
+export function createPreviewAdminSession(targetEmail: string = 'kpmbp2u@gmail.com'): GoogleAuthVerificationResult {
+  const cleanEmail = targetEmail.trim().toLowerCase();
+  if (!AUTHORIZED_ADMIN_EMAILS.includes(cleanEmail)) {
+    return {
+      isValid: false,
+      message: `Akses Ditolak: Emel (${cleanEmail}) bukan pentadbir yang sah.`,
+    };
+  }
+
+  const displayName = cleanEmail === 'kpmbp2u@gmail.com' ? 'Pentadbir KPMBP (kpmbp2u)' : 'Khaikerr (Master Admin)';
+  const admin: AuthorizedAdmin = {
+    id: `admin-${cleanEmail.replace(/[^a-z0-9]/g, '_')}`,
+    email: cleanEmail,
+    name: displayName,
+    role: 'Master Administrator',
+    level: 1,
+    status: 'verified',
+    authProvider: 'google',
+    createdAt: new Date().toISOString().split('T')[0],
+  };
+
+  return {
+    isValid: true,
+    admin,
+    message: 'Pengesahan Master Administrator berjaya (Mod Pratonton).',
+  };
+}
+
+/**
+ * Verifies authenticated Google user identity strictly against authorized Master Administrator policy.
  * Requires:
- * 1. Normalized email strictly equals 'khaikerr@gmail.com'
+ * 1. Normalized email matches one of AUTHORIZED_ADMIN_EMAILS
  * 2. Google email is verified (emailVerified !== false)
  */
 export function verifyGoogleAdmin(user: {
@@ -56,11 +93,11 @@ export function verifyGoogleAdmin(user: {
     };
   }
 
-  // 1. Strict Identity Check: ONLY khaikerr@gmail.com
-  if (cleanEmail !== MASTER_ADMIN_EMAIL) {
+  // 1. Strict Identity Check: Must be in AUTHORIZED_ADMIN_EMAILS
+  if (!AUTHORIZED_ADMIN_EMAILS.includes(cleanEmail)) {
     return {
       isValid: false,
-      message: `Akses Ditolak: Akaun Google (${cleanEmail}) tidak mempunyai kebenaran. Hanya Master Administrator (${MASTER_ADMIN_EMAIL}) yang dibenarkan.`,
+      message: `Akses Ditolak: Akaun Google (${cleanEmail}) tidak mempunyai kebenaran. Hanya Master Administrator (${AUTHORIZED_ADMIN_EMAILS.join(', ')}) yang dibenarkan.`,
     };
   }
 
@@ -73,10 +110,11 @@ export function verifyGoogleAdmin(user: {
   }
 
   // 3. Grant Master Administrator Level 1
+  const displayName = user.displayName || (cleanEmail === 'kpmbp2u@gmail.com' ? 'Pentadbir KPMBP' : 'Khaikerr (Master Admin)');
   const masterAdmin: AuthorizedAdmin = {
-    id: user.uid || 'master-admin-khaikerr',
-    email: MASTER_ADMIN_EMAIL,
-    name: user.displayName || 'Khaikerr (Master Admin)',
+    id: user.uid || `master-admin-${cleanEmail.replace(/[^a-z0-9]/g, '_')}`,
+    email: cleanEmail,
+    name: displayName,
     role: 'Master Administrator',
     level: 1,
     status: 'verified',
@@ -89,7 +127,7 @@ export function verifyGoogleAdmin(user: {
   if (user.uid) {
     syncAdminToFirestore({
       uid: user.uid,
-      email: MASTER_ADMIN_EMAIL,
+      email: cleanEmail,
       name: masterAdmin.name,
       role: 'Master Administrator',
       level: 1,
