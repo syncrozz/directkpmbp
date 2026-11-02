@@ -1,12 +1,12 @@
 {
   "projectId": "syncrozz-platform",
   "appId": "1:165207391688:web:e33d816413e8a927c4d4fd",
-  "apiKey": "AIzaSyCmeZE1321g0zi1d4OgCxm5a4jIJFxq_1g",
+  "apiKey": "AIzaSyAILrcL4QlS-EwpitezwRKzxq9dK7B_Wvw",
   "authDomain": "syncrozz-platform.firebaseapp.com",
   "firestoreDatabaseId": "(default)",
   "storageBucket": "syncrozz-platform.firebasestorage.app",
   "messagingSenderId": "165207391688",
   "measurementId": "",
-  "oAuthClientId": "",
+  "oAuthClientId": "165207391688-2nf7t41aveba1p6benemt5uqkke7c21o.apps.googleusercontent.com",
   "recaptchaSiteKey": ""
 }

@@ -28,7 +28,10 @@ import { Staff, StaffCommittee } from '../types';
 
 export const effectiveFirebaseConfig = {
   ...firebaseConfig,
-  apiKey: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_API_KEY) || firebaseConfig.apiKey,
+  apiKey: 
+    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_API_KEY) || 
+    (typeof process !== 'undefined' && process.env?.FIREBASE_API_KEY) || 
+    firebaseConfig.apiKey,
 };
 
 // Initialize Firebase App
