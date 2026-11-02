@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, MessageCircle, Mail, GraduationCap, Award, Building2, Hash, Pencil, Camera, ChevronRight, Calendar, ExternalLink, Car, MapPin, Lock, ShieldCheck, Copy, Check } from 'lucide-react';
+import { X, MessageCircle, Mail, GraduationCap, Award, Building2, Hash, Pencil, Camera, ChevronRight, Calendar, ExternalLink, Car, MapPin, Lock, ShieldCheck, Copy, CopyCheck, Check } from 'lucide-react';
 import { Staff, StaffCommittee } from '../types';
 import { getGredBadgeStyle } from '../utils/gredColors';
 import { getBahagianTheme } from '../utils/bahagianColors';
@@ -49,18 +49,88 @@ export const parseQualificationLines = (raw: string | undefined): string[] => {
   return results.length > 0 ? results : [raw.trim()];
 };
 
+/**
+ * Converts text into Title Case format (e.g. "MUHAMMAD FAZLY BIN JAMALUDDIN" -> "Muhammad Fazly Bin Jamaluddin")
+ */
+export const toTitleCase = (str?: string): string => {
+  if (!str) return '';
+  return str
+    .trim()
+    .replace(/\s+/g, ' ')
+    .split(' ')
+    .map((word) => {
+      if (!word) return '';
+      return word
+        .split('-')
+        .map((sub) => {
+          if (!sub) return '';
+          return sub.charAt(0).toUpperCase() + sub.slice(1).toLowerCase();
+        })
+        .join('-');
+    })
+    .join(' ');
+};
+
 export const ProfileModal: React.FC<ProfileModalProps> = ({ staff, committees = [], onClose, isAdminMode, onEditStaff, onOpenCommittee, onOpenAdminPin }) => {
   const [timetableError, setTimetableError] = useState(false);
   const [isTimetableLoading, setIsTimetableLoading] = useState(true);
   const [copiedIc, setCopiedIc] = useState(false);
-  const [copiedName, setCopiedName] = useState(false);
+  const [copiedType, setCopiedType] = useState<'caps' | 'title' | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  const handleCopyName = (e: React.MouseEvent) => {
+  const handleCopyAllCaps = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (navigator?.clipboard && staff?.Nama) {
-      navigator.clipboard.writeText(staff.Nama);
-      setCopiedName(true);
-      setTimeout(() => setCopiedName(false), 2000);
+    if (!staff?.Nama) return;
+    const text = staff.Nama.trim().toUpperCase();
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      }
+      setCopiedType('caps');
+      setToastMessage('Nama ALL CAPS berjaya disalin.');
+      setTimeout(() => {
+        setCopiedType((prev) => (prev === 'caps' ? null : prev));
+        setToastMessage((prev) => (prev === 'Nama ALL CAPS berjaya disalin.' ? null : prev));
+      }, 2500);
+    } catch (err) {
+      console.warn('Gagal menyalin teks ALL CAPS:', err);
+      setToastMessage('Gagal menyalin teks ke papan keratan.');
+      setTimeout(() => setToastMessage(null), 3000);
+    }
+  };
+
+  const handleCopyTitleCase = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!staff?.Nama) return;
+    const text = toTitleCase(staff.Nama);
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+      }
+      setCopiedType('title');
+      setToastMessage('Nama Title Case berjaya disalin.');
+      setTimeout(() => {
+        setCopiedType((prev) => (prev === 'title' ? null : prev));
+        setToastMessage((prev) => (prev === 'Nama Title Case berjaya disalin.' ? null : prev));
+      }, 2500);
+    } catch (err) {
+      console.warn('Gagal menyalin teks Title Case:', err);
+      setToastMessage('Gagal menyalin teks ke papan keratan.');
+      setTimeout(() => setToastMessage(null), 3000);
     }
   };
 
@@ -72,7 +142,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ staff, committees = 
   useEffect(() => {
     setTimetableError(false);
     setIsTimetableLoading(true);
-    setCopiedName(false);
+    setCopiedType(null);
+    setToastMessage(null);
     setCopiedIc(false);
   }, [staffIdClean]);
 
@@ -178,6 +249,22 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ staff, committees = 
           transition={{ duration: 0.25, ease: 'easeOut' }}
           className="relative glass-modal rounded-[32px] max-w-lg w-full overflow-hidden shadow-2xl z-50 border border-white/50 my-auto"
         >
+          {/* Toast Notification for Clipboard Copy */}
+          <AnimatePresence>
+            {toastMessage && (
+              <motion.div
+                initial={{ opacity: 0, y: -12, scale: 0.92 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -12, scale: 0.92 }}
+                transition={{ duration: 0.2 }}
+                className="absolute top-4 left-1/2 -translate-x-1/2 z-60 px-4 py-2 bg-slate-900/95 text-white text-xs font-bold rounded-full shadow-2xl backdrop-blur-md flex items-center gap-2 border border-slate-700/80 pointer-events-none whitespace-nowrap"
+              >
+                <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span>{toastMessage}</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* Cover Color Strip */}
           <div className={`h-24 w-full relative ${theme.banner} bg-opacity-90 backdrop-blur-sm`}>
             {/* Action Buttons on Banner (Edit Icon on the left of X Close Button) */}
@@ -254,29 +341,47 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ staff, committees = 
                 <h2 className="text-xl font-bold text-slate-900 tracking-normal leading-snug uppercase flex-1">
                   {staff.Nama}
                 </h2>
-                <button
-                  type="button"
-                  onClick={handleCopyName}
-                  title="Salin Nama Kakitangan"
-                  aria-label="Salin Nama Kakitangan"
-                  className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 cursor-pointer border shadow-2xs group active:scale-95 ${
-                    copiedName
-                      ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
-                      : 'bg-white hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 border-slate-200 hover:border-indigo-200'
-                  }`}
-                >
-                  {copiedName ? (
-                    <>
+
+                {/* Dual Name Copy Icons (ALL CAPS & Title Case) */}
+                <div className="flex items-center gap-1.5 shrink-0 pt-0.5">
+                  {/* ICON 1 — ALL CAPS */}
+                  <button
+                    type="button"
+                    onClick={handleCopyAllCaps}
+                    title="Salin ALL CAPS"
+                    aria-label="Salin ALL CAPS"
+                    className={`p-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center shrink-0 cursor-pointer border shadow-2xs group active:scale-95 ${
+                      copiedType === 'caps'
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                        : 'bg-white hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 border-slate-200 hover:border-indigo-200'
+                    }`}
+                  >
+                    {copiedType === 'caps' ? (
                       <Check className="w-3.5 h-3.5 text-emerald-600" />
-                      <span className="text-[11px] font-extrabold text-emerald-600">Disalin</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-600" />
-                      <span className="text-[11px] font-bold">Salin</span>
-                    </>
-                  )}
-                </button>
+                    ) : (
+                      <Copy className="w-3.5 h-3.5 text-slate-500 group-hover:text-indigo-600 transition-colors" />
+                    )}
+                  </button>
+
+                  {/* ICON 2 — TITLE CASE */}
+                  <button
+                    type="button"
+                    onClick={handleCopyTitleCase}
+                    title="Salin Title Case"
+                    aria-label="Salin Title Case"
+                    className={`p-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center shrink-0 cursor-pointer border shadow-2xs group active:scale-95 ${
+                      copiedType === 'title'
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                        : 'bg-white hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 border-slate-200 hover:border-indigo-200'
+                    }`}
+                  >
+                    {copiedType === 'title' ? (
+                      <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    ) : (
+                      <CopyCheck className="w-3.5 h-3.5 text-slate-500 group-hover:text-indigo-600 transition-colors" />
+                    )}
+                  </button>
+                </div>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
                 {(() => {
