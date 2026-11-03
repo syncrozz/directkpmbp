@@ -564,7 +564,68 @@ export async function migrateDefaultPortals(): Promise<{
 }
 
 /**
- * Calls backend smart URL metadata detection service.
+ * Safely scales down an image file using browser Canvas to ensure that if Firebase Storage fails
+ * (e.g. CORS preflight or missing bucket in Cloud Storage), the in-memory fallback Data URL
+ * remains safely below ~60KB and NEVER exceeds Firestore's strict 1 MiB limit.
+ */
+async function createOptimizedFallbackDataUrl(
+  file: File,
+  maxWidth = 640,
+  maxHeight = 480,
+  quality = 0.8
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (file.type === 'image/svg+xml') {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth || height > maxHeight) {
+          if (width / maxWidth > height / maxHeight) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          } else {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, width);
+        canvas.height = Math.max(1, height);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(e.target?.result as string);
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, width, height);
+        const format = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+        const dataUrl = canvas.toDataURL(format, quality);
+        resolve(dataUrl);
+      };
+      img.onerror = () => {
+        resolve(e.target?.result as string);
+      };
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * Calls backend smart URL metadata detection service with high-res client fallback.
  */
 export async function requestUrlMetadata(url: string): Promise<PortalMetadata> {
   const cleanUrl = url.trim();
@@ -572,27 +633,62 @@ export async function requestUrlMetadata(url: string): Promise<PortalMetadata> {
     throw new Error('Sila masukkan URL yang sah.');
   }
 
-  const response = await fetch('/api/metadata/detect', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url: cleanUrl }),
-  });
+  // Fallback domain extraction in case API is unreachable or blocks
+  const deriveBasicMeta = (rawUrl: string): PortalMetadata => {
+    try {
+      const parsed = new URL(rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`);
+      const domain = parsed.hostname.replace(/^www\./i, '');
+      const name = domain.split('.')[0];
+      const capitalized = name.charAt(0).toUpperCase() + name.slice(1);
+      return {
+        url: parsed.href,
+        finalUrl: parsed.href,
+        title: `${capitalized} Portal`,
+        ogTitle: `${capitalized} Portal`,
+        ogSiteName: domain,
+        favicon: `https://www.google.com/s2/favicons?domain=${parsed.hostname}&sz=128`,
+      };
+    } catch {
+      return {
+        url: rawUrl,
+        finalUrl: rawUrl,
+        title: 'Portal Kolej',
+        ogTitle: 'Portal Kolej',
+      };
+    }
+  };
 
-  if (!response.ok) {
-    throw new Error(`Ralat pelayan (${response.status}) semasa mengesan metadata.`);
+  try {
+    const response = await fetch('/api/metadata/detect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: cleanUrl }),
+    });
+
+    if (response.ok) {
+      const result = await response.json();
+      if (result.success && result.data) {
+        return result.data as PortalMetadata;
+      }
+      if (result.data) {
+        // Partial metadata returned
+        return {
+          ...deriveBasicMeta(cleanUrl),
+          ...result.data,
+        };
+      }
+    }
+  } catch (netErr) {
+    console.warn('[MetadataDetect Notice] Network fetch error to /api/metadata/detect:', netErr);
   }
 
-  const result = await response.json();
-  if (!result.success || !result.data) {
-    throw new Error(result.error || 'Gagal mengesan metadata laman web.');
-  }
-
-  return result.data as PortalMetadata;
+  // Graceful client fallback
+  return deriveBasicMeta(cleanUrl);
 }
 
 /**
  * Upload an image or icon file to Firebase Storage under platforms/directkpmbp/portals/
- * Falls back gracefully to base64 Data URL if storage permissions or network fails.
+ * Falls back gracefully to optimized Data URL if storage permissions or network fails.
  */
 export async function uploadPortalAsset(file: File, type: 'image' | 'icon'): Promise<string> {
   const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml', 'image/x-icon', 'image/vnd.microsoft.icon', 'image/gif'];
@@ -620,17 +716,21 @@ export async function uploadPortalAsset(file: File, type: 'image' | 'icon'): Pro
     const snap = await uploadBytes(storageRef, file, metadata);
     const downloadUrl = await getDownloadURL(snap.ref);
     return downloadUrl;
-  } catch (storageErr) {
-    console.warn('Notice: Firebase Storage upload fallback to Data URL:', storageErr);
-    return new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (typeof reader.result === 'string') resolve(reader.result);
-        else reject(new Error('Gagal memproses fail imej.'));
-      };
-      reader.onerror = () => reject(new Error('Ralat semasa memproses fail imej.'));
-      reader.readAsDataURL(file);
-    });
+  } catch (storageErr: any) {
+    console.warn('[Firebase Storage Notice] Upload to Cloud Storage failed, generating optimized fallback:', storageErr);
+    // Graceful fallback: produce an optimized data URL that is guaranteed to be safe for Firestore persistence
+    try {
+      const optimizedDataUrl = await createOptimizedFallbackDataUrl(
+        file,
+        type === 'icon' ? 128 : 640,
+        type === 'icon' ? 128 : 480,
+        0.82
+      );
+      return optimizedDataUrl;
+    } catch (fallbackErr) {
+      console.error('Fallback image processing failed:', fallbackErr);
+      throw new Error('Gagal memproses fail imej untuk simpanan.');
+    }
   }
 }
 

@@ -17,9 +17,10 @@ service cloud.firestore {
       return isSignedIn() && request.auth.token.email_verified == true;
     }
 
-    // Official Master Administrator: Strictly verified via Google Auth (kpmbp2u@gmail.com or khaikerr@gmail.com)
+    // Official Master Administrator: Strictly verified via Google Auth
     function isMasterAdmin() {
       return isEmailVerified() && (
+        request.auth.token.email == 'cikgukyee@gmail.com' ||
         request.auth.token.email == 'kpmbp2u@gmail.com' ||
         request.auth.token.email == 'khaikerr@gmail.com' ||
         request.auth.token.email == 'festivalseni.kpmbp@gmail.com'

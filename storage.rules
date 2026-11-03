@@ -19,6 +19,7 @@ service firebase.storage {
     // DIRECTKPMBP Authorized Master Administrators
     function isDirectKpmbpAdmin() {
       return isEmailVerified() && (
+        request.auth.token.email == 'cikgukyee@gmail.com' ||
         request.auth.token.email == 'kpmbp2u@gmail.com' ||
         request.auth.token.email == 'khaikerr@gmail.com' ||
         request.auth.token.email == 'festivalseni.kpmbp@gmail.com'

@@ -19,6 +19,7 @@ import { syncAdminToFirestore } from '../config/firebase';
  * All comparisons MUST be normalized using trim() and toLowerCase().
  */
 export const AUTHORIZED_ADMIN_EMAILS = [
+  'cikgukyee@gmail.com',
   'kpmbp2u@gmail.com',
   'khaikerr@gmail.com',
   'festivalseni.kpmbp@gmail.com',
@@ -69,7 +70,11 @@ export function createPreviewAdminSession(targetEmail: string = 'kpmbp2u@gmail.c
     };
   }
 
-  const displayName = cleanEmail === 'kpmbp2u@gmail.com' ? 'Pentadbir KPMBP (kpmbp2u)' : cleanEmail === 'festivalseni.kpmbp@gmail.com' ? 'Pentadbir KPMBP (Festival Seni)' : 'Khaikerr (Master Admin)';
+  const displayName = 
+    cleanEmail === 'cikgukyee@gmail.com' ? 'Cikgu Kyee (Master Admin)' :
+    cleanEmail === 'kpmbp2u@gmail.com' ? 'Pentadbir KPMBP (kpmbp2u)' : 
+    cleanEmail === 'festivalseni.kpmbp@gmail.com' ? 'Pentadbir KPMBP (Festival Seni)' : 
+    'Khaikerr (Master Admin)';
   const admin: AuthorizedAdmin = {
     id: `admin-${cleanEmail.replace(/[^a-z0-9]/g, '_')}`,
     email: cleanEmail,
@@ -127,7 +132,12 @@ export function verifyGoogleAdmin(user: {
   }
 
   // 3. Grant Master Administrator Level 1
-  const displayName = user.displayName || (cleanEmail === 'kpmbp2u@gmail.com' ? 'Pentadbir KPMBP' : cleanEmail === 'festivalseni.kpmbp@gmail.com' ? 'Pentadbir KPMBP' : 'Khaikerr (Master Admin)');
+  const displayName = user.displayName || (
+    cleanEmail === 'cikgukyee@gmail.com' ? 'Cikgu Kyee (Master Admin)' :
+    cleanEmail === 'kpmbp2u@gmail.com' ? 'Pentadbir KPMBP' : 
+    cleanEmail === 'festivalseni.kpmbp@gmail.com' ? 'Pentadbir KPMBP' : 
+    'Khaikerr (Master Admin)'
+  );
   const masterAdmin: AuthorizedAdmin = {
     id: user.uid || `master-admin-${cleanEmail.replace(/[^a-z0-9]/g, '_')}`,
     email: cleanEmail,
