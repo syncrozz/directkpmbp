@@ -112,3 +112,19 @@ export interface PortalMetadata {
   manifestIcons?: Array<{ src: string; sizes?: string; type?: string }>;
 }
 
+export type PortalSyncStatus = 
+  | 'loading'          // Initial loading state
+  | 'ready_empty'      // State A: Successfully queried Firestore, collection empty (eligible for migration)
+  | 'ready_migrated'   // State B: Successfully queried Firestore, contains records (migration complete)
+  | 'permission_denied'// State C: Firestore permission denied (do not show migration banner)
+  | 'error_network';   // State D: Network or connection failure (do not show migration banner)
+
+export interface PortalSubscriptionResult {
+  portals: PortalLink[];
+  isMigrated: boolean;
+  status: PortalSyncStatus;
+  errorMessage?: string;
+  source: 'firestore' | 'fallback';
+}
+
+

@@ -64,7 +64,13 @@ service cloud.firestore {
       allow read, write: if isMasterAdmin() && isValidId(adminId);
     }
 
-    // --- Platform Isolated Namespace (SYNCROZZ Shared Platform) ---
+    // --- Platform Isolated Namespace (SYNCROZZ Shared Platform - Portal Kolej) ---
+    match /platforms/directkpmbp/portalLinks/{portalId} {
+      allow read: if true;
+      allow write: if isAuthorizedAdmin() && isValidId(portalId);
+    }
+
+    // --- Platform Isolated Namespace Catch-all ---
     match /platforms/directkpmbp/{document=**} {
       allow read: if true;
       allow write: if isAuthorizedAdmin();

@@ -21,7 +21,8 @@ import {
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, auth, storage, getPlatformStoragePath } from '../config/firebase';
-import { PortalLink, PortalMetadata } from '../types';
+import { PortalLink, PortalMetadata, PortalSyncStatus, PortalSubscriptionResult } from '../types';
+import { AUTHORIZED_ADMIN_EMAILS } from '../utils/adminAuthService';
 
 export enum OperationType {
   CREATE = 'create',
@@ -56,6 +57,19 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   };
   console.error('[Firestore Error]:', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
+}
+
+/**
+ * Ensures the currently authenticated user's ID token is fresh before write operations.
+ */
+async function ensureFreshAuthToken(): Promise<void> {
+  if (auth.currentUser) {
+    try {
+      await auth.currentUser.getIdToken(true);
+    } catch (e) {
+      console.warn('Notice refreshing ID token:', e);
+    }
+  }
 }
 
 /**
@@ -128,10 +142,9 @@ export const DEFAULT_PORTAL_LINKS: PortalLink[] = [
 const PORTALS_PATH = 'platforms/directkpmbp/portalLinks';
 
 /**
- * Fetch all portal records from Firestore.
- * Does NOT auto-seed if empty. Returns fallback defaults with isMigrated=false.
+ * Fetch all portal records from Firestore with explicit 4-state categorization.
  */
-export async function fetchPortalLinks(): Promise<{ portals: PortalLink[]; isMigrated: boolean }> {
+export async function fetchPortalLinks(): Promise<PortalSubscriptionResult> {
   try {
     const colRef = collection(db, 'platforms', 'directkpmbp', 'portalLinks');
     const snapshot = await getDocs(colRef);
@@ -140,6 +153,8 @@ export async function fetchPortalLinks(): Promise<{ portals: PortalLink[]; isMig
       return {
         portals: [...DEFAULT_PORTAL_LINKS],
         isMigrated: false,
+        status: 'ready_empty',
+        source: 'fallback',
       };
     }
 
@@ -157,21 +172,34 @@ export async function fetchPortalLinks(): Promise<{ portals: PortalLink[]; isMig
     return {
       portals,
       isMigrated: true,
+      status: 'ready_migrated',
+      source: 'firestore',
     };
-  } catch (error) {
-    console.warn('Notice reading portals from Firestore (fallback active):', error);
+  } catch (error: any) {
+    const isPermission =
+      error?.code === 'permission-denied' ||
+      String(error?.message || '').toLowerCase().includes('permission');
+
     return {
       portals: [...DEFAULT_PORTAL_LINKS],
       isMigrated: false,
+      status: isPermission ? 'permission_denied' : 'error_network',
+      errorMessage: error?.message || 'Ralat membaca rekod portal dari Firestore.',
+      source: 'fallback',
     };
   }
 }
 
 /**
  * Real-time listener for portal records.
+ * Categorizes response into 4 distinct states per Phase 4 specification:
+ * State A: Successfully loaded and empty collection (ready_empty) -> eligible for migration
+ * State B: Successfully loaded collection containing records (ready_migrated) -> migration completed
+ * State C: Firestore permission denied (permission_denied) -> rules/auth blocker, hide migration banner
+ * State D: Network or connection failure (error_network) -> offline/unavailable, hide migration banner
  */
 export function subscribeToPortalLinks(
-  callback: (result: { portals: PortalLink[]; isMigrated: boolean }) => void
+  callback: (result: PortalSubscriptionResult) => void
 ): () => void {
   const colRef = collection(db, 'platforms', 'directkpmbp', 'portalLinks');
 
@@ -182,6 +210,8 @@ export function subscribeToPortalLinks(
         callback({
           portals: [...DEFAULT_PORTAL_LINKS],
           isMigrated: false,
+          status: 'ready_empty',
+          source: 'fallback',
         });
         return;
       }
@@ -200,14 +230,34 @@ export function subscribeToPortalLinks(
       callback({
         portals,
         isMigrated: true,
+        status: 'ready_migrated',
+        source: 'firestore',
       });
     },
-    (err) => {
+    (err: any) => {
       console.warn('Notice on portal snapshot listener:', err);
-      callback({
-        portals: [...DEFAULT_PORTAL_LINKS],
-        isMigrated: false,
-      });
+      const isPermissionDenied =
+        err?.code === 'permission-denied' ||
+        String(err?.message || '').toLowerCase().includes('insufficient permissions') ||
+        String(err?.message || '').toLowerCase().includes('permission-denied');
+
+      if (isPermissionDenied) {
+        callback({
+          portals: [...DEFAULT_PORTAL_LINKS],
+          isMigrated: false,
+          status: 'permission_denied',
+          errorMessage: 'Ralat kebenaran Firestore (Missing or insufficient permissions). Sila pastikan firestore.rules telah diterbitkan di Firebase Console bagi projek syncrozz-platform.',
+          source: 'fallback',
+        });
+      } else {
+        callback({
+          portals: [...DEFAULT_PORTAL_LINKS],
+          isMigrated: false,
+          status: 'error_network',
+          errorMessage: err?.message || 'Gagal menghubungi pelayan Firestore (Ralat Rangkaian).',
+          source: 'fallback',
+        });
+      }
     }
   );
 }
@@ -218,6 +268,8 @@ export function subscribeToPortalLinks(
 export async function savePortalLink(portal: PortalLink): Promise<boolean> {
   const docId = portal.id || `portal_${Date.now()}`;
   const docPath = `${PORTALS_PATH}/${docId}`;
+
+  await ensureFreshAuthToken();
 
   try {
     const docRef = doc(db, 'platforms', 'directkpmbp', 'portalLinks', docId);
@@ -244,6 +296,8 @@ export async function savePortalLink(portal: PortalLink): Promise<boolean> {
  */
 export async function deletePortalLink(portalId: string): Promise<boolean> {
   const docPath = `${PORTALS_PATH}/${portalId}`;
+  await ensureFreshAuthToken();
+
   try {
     const docRef = doc(db, 'platforms', 'directkpmbp', 'portalLinks', portalId);
     await deleteDoc(docRef);
@@ -258,6 +312,8 @@ export async function deletePortalLink(portalId: string): Promise<boolean> {
  */
 export async function togglePortalStatus(portalId: string, isActive: boolean): Promise<boolean> {
   const docPath = `${PORTALS_PATH}/${portalId}`;
+  await ensureFreshAuthToken();
+
   try {
     const docRef = doc(db, 'platforms', 'directkpmbp', 'portalLinks', portalId);
     await updateDoc(docRef, {
@@ -273,7 +329,8 @@ export async function togglePortalStatus(portalId: string, isActive: boolean): P
 
 /**
  * Safe, controlled one-time migration of the 6 default portals to Firestore.
- * Implements duplicate protection based on ID and URL matching.
+ * Implements strict Pre-flight authentication & fresh token verification,
+ * duplicate protection based on ID and URL matching, and post-migration verification.
  */
 export async function migrateDefaultPortals(): Promise<{
   success: boolean;
@@ -281,6 +338,30 @@ export async function migrateDefaultPortals(): Promise<{
   total: number;
   error?: string;
 }> {
+  // 1. Pre-flight check: Must be authenticated with Firebase Auth
+  if (!auth.currentUser) {
+    return {
+      success: false,
+      migratedCount: 0,
+      total: 0,
+      error: 'Sila log masuk dengan Google Auth sebagai Pentadbir yang sah sebelum melaksanakan migrasi.',
+    };
+  }
+
+  // 2. Pre-flight check: Master Admin authorization
+  const userEmail = (auth.currentUser.email || '').trim().toLowerCase();
+  if (!AUTHORIZED_ADMIN_EMAILS.includes(userEmail)) {
+    return {
+      success: false,
+      migratedCount: 0,
+      total: 0,
+      error: `Akses ditolak: Akaun Google (${userEmail}) bukan Master Administrator yang sah.`,
+    };
+  }
+
+  // 3. Force-refresh token to prevent stale token rejection
+  await ensureFreshAuthToken();
+
   try {
     const colRef = collection(db, 'platforms', 'directkpmbp', 'portalLinks');
     const existingSnap = await getDocs(colRef);
@@ -302,6 +383,7 @@ export async function migrateDefaultPortals(): Promise<{
       const urlKey = portal.url.trim().toLowerCase();
 
       // Duplicate protection: Skip if already exists by ID or URL
+      // Do not overwrite existing customized portal records
       if (!existingIds.has(idKey) && !existingUrls.has(urlKey)) {
         const docRef = doc(db, 'platforms', 'directkpmbp', 'portalLinks', portal.id);
         batch.set(
@@ -322,7 +404,7 @@ export async function migrateDefaultPortals(): Promise<{
       await batch.commit();
     }
 
-    // Verify written count
+    // Post-migration verification: Read collection to verify records exist
     const verifySnap = await getDocs(colRef);
     return {
       success: true,
@@ -330,12 +412,20 @@ export async function migrateDefaultPortals(): Promise<{
       total: verifySnap.size,
     };
   } catch (error: any) {
-    console.error('Ralat semasa migrasi portal ke Firestore:', error);
+    const isPermissionError = 
+      error?.code === 'permission-denied' || 
+      String(error?.message || '').toLowerCase().includes('permission');
+
+    const errorMsg = isPermissionError
+      ? 'Akses Firestore Ditolak (Missing or insufficient permissions). Sila pastikan firestore.rules telah diterbitkan di Firebase Console bagi projek syncrozz-platform.'
+      : (error?.message || 'Ralat semasa menjalankan migrasi ke Firestore.');
+
+    console.error('[Migration Error]:', error);
     return {
       success: false,
       migratedCount: 0,
       total: 0,
-      error: error?.message || 'Ralat migrasi ke Firestore.',
+      error: errorMsg,
     };
   }
 }
