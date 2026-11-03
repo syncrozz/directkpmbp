@@ -1,6 +1,7 @@
 import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
+import { detectUrlMetadata } from './src/services/serverMetadata';
 
 async function startServer() {
   const app = express();
@@ -47,7 +48,6 @@ async function startServer() {
     }
 
     try {
-      const { detectUrlMetadata } = await import('./src/services/serverMetadata');
       const metadata = await detectUrlMetadata(url.trim());
       return res.status(200).json({ success: true, data: metadata });
     } catch (err: any) {
