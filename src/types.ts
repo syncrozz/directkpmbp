@@ -87,7 +87,11 @@ export interface PortalLink {
   detectedMeta?: {
     title?: string;
     description?: string;
+    ogTitle?: string;
+    ogDescription?: string;
     ogImage?: string;
+    ogUrl?: string;
+    ogSiteName?: string;
     favicon?: string;
     pwaIcon?: string;
     manifestName?: string;
@@ -101,11 +105,14 @@ export interface PortalLink {
 
 export interface PortalMetadata {
   url: string;
+  finalUrl?: string;
   title?: string;
   description?: string;
   ogTitle?: string;
   ogDescription?: string;
   ogImage?: string;
+  ogUrl?: string;
+  ogSiteName?: string;
   favicon?: string;
   manifestUrl?: string;
   manifestName?: string;

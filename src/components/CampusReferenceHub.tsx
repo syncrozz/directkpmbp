@@ -26,7 +26,8 @@ import {
   Database,
   Check,
   AlertCircle,
-  Loader2
+  Loader2,
+  Globe
 } from 'lucide-react';
 import { CampusLocationMap } from './CampusLocationMap';
 import { PortalLink, PortalSyncStatus } from '../types';
@@ -36,7 +37,8 @@ import {
   savePortalLink, 
   deletePortalLink, 
   migrateDefaultPortals,
-  resolvePortalVisual
+  resolvePortalVisual,
+  getPortalSiteName
 } from '../services/portalService';
 import { AddEditPortalModal } from './AddEditPortalModal';
 
@@ -60,29 +62,192 @@ interface CampusReferenceHubProps {
   onNavigateToTimetables?: () => void;
 }
 
-const PortalCardVisual: React.FC<{ link: PortalLink }> = ({ link }) => {
+interface SmartPortalCardProps {
+  link: PortalLink;
+  isAdminMode: boolean;
+  onEdit: (link: PortalLink) => void;
+}
+
+const SmartPortalCard: React.FC<SmartPortalCardProps> = ({ link, isAdminMode, onEdit }) => {
   const visual = resolvePortalVisual(link);
-  const [hasError, setHasError] = useState(false);
+  const siteName = getPortalSiteName(link);
+  const favUrl = link.detectedMeta?.favicon || link.faviconUrl;
+
+  const [imageFailed, setImageFailed] = useState(false);
+  const [favFailed, setFavFailed] = useState(false);
 
   useEffect(() => {
-    setHasError(false);
+    setImageFailed(false);
   }, [link.id, visual.url]);
 
-  if (visual.url && !hasError) {
-    return (
-      <img
-        src={visual.url}
-        alt=""
-        className="w-5 h-5 rounded object-contain bg-white/90 border border-slate-200/80 p-0.5 shadow-2xs"
-        onError={() => setHasError(true)}
-      />
-    );
-  }
+  useEffect(() => {
+    setFavFailed(false);
+  }, [link.id, favUrl]);
+
+  const hasHeroImage = Boolean(
+    visual.url &&
+    (visual.source === 'og_image' || visual.source === 'custom_image') &&
+    !imageFailed
+  );
+
+  const domainDisplay = link.url
+    .replace(/^https?:\/\//i, '')
+    .replace(/^www\./i, '')
+    .replace(/\/$/, '');
 
   return (
-    <div className="w-5 h-5 rounded bg-indigo-50 border border-indigo-200/80 text-indigo-700 flex items-center justify-center text-[10px] font-black shadow-2xs">
-      {(link.title || 'P').trim().charAt(0).toUpperCase()}
-    </div>
+    <a
+      href={link.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`group block glass-card rounded-[24px] border border-white/60 hover:border-indigo-300 shadow-xs hover:shadow-lg hover:-translate-y-1 transition-all duration-300 overflow-hidden relative text-left no-underline cursor-pointer ${
+        link.isActive === false ? 'opacity-65 bg-slate-100/70' : 'bg-white/85'
+      }`}
+      aria-label={`Buka portal ${link.title}`}
+    >
+      {/* Admin-only Edit Button: Icon-only pencil in top-right corner */}
+      {isAdminMode && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onEdit(link);
+          }}
+          title="Kemaskini Portal"
+          aria-label="Kemaskini Portal"
+          className="absolute top-3 right-3 z-30 p-2 rounded-xl bg-white/95 hover:bg-indigo-600 text-slate-600 hover:text-white shadow-md border border-slate-200/80 transition-all cursor-pointer group/btn backdrop-blur-md"
+        >
+          <Pencil className="w-3.5 h-3.5 transition-transform group-hover/btn:scale-110" />
+        </button>
+      )}
+
+      {/* Hero Visual Banner (OG Image / Custom Image) */}
+      {hasHeroImage ? (
+        <div className="relative w-full aspect-[2/1] sm:aspect-[2.2/1] bg-slate-100 overflow-hidden border-b border-slate-100/80">
+          <img
+            src={visual.url}
+            alt={link.title}
+            onError={() => setImageFailed(true)}
+            className="w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
+            loading="lazy"
+          />
+          {/* Subtle gradient overlay */}
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/45 via-transparent to-transparent opacity-75 group-hover:opacity-40 transition-opacity" />
+
+          {/* Badges on hero banner */}
+          <div className="absolute bottom-2.5 left-3 flex items-center flex-wrap gap-1.5 z-10 pr-12">
+            <span
+              className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full backdrop-blur-md shadow-2xs border ${
+                link.audience === 'Pelajar'
+                  ? 'bg-blue-600/90 text-white border-blue-400/40'
+                  : link.audience === 'Staf'
+                    ? 'bg-amber-600/90 text-white border-amber-400/40'
+                    : 'bg-indigo-600/90 text-white border-indigo-400/40'
+              }`}
+            >
+              Sesuai: {link.audience}
+            </span>
+            {link.category && link.category !== 'portal' && (
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-900/75 text-slate-100 backdrop-blur-md border border-white/20">
+                {link.category}
+              </span>
+            )}
+          </div>
+        </div>
+      ) : (
+        /* Fallback Header Banner */
+        <div className="relative w-full p-4 bg-gradient-to-r from-indigo-50/90 via-white/80 to-purple-50/70 border-b border-indigo-100/60 flex items-center justify-between">
+          <div className="flex items-center gap-2.5 pr-12">
+            <div className="w-10 h-10 rounded-xl bg-white shadow-xs border border-indigo-100 flex items-center justify-center overflow-hidden shrink-0">
+              {favUrl && !favFailed ? (
+                <img
+                  src={favUrl}
+                  alt=""
+                  onError={() => setFavFailed(true)}
+                  className="w-5 h-5 object-contain"
+                />
+              ) : (
+                <span className="text-sm font-black text-indigo-700">
+                  {(link.title || 'P').trim().charAt(0).toUpperCase()}
+                </span>
+              )}
+            </div>
+            <div className="flex flex-col">
+              <span className="text-[11px] font-extrabold text-slate-700">
+                {siteName}
+              </span>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span
+                  className={`text-[9px] font-bold px-2 py-0.2 rounded-full border ${
+                    link.audience === 'Pelajar'
+                      ? 'bg-blue-50 text-blue-700 border-blue-100'
+                      : link.audience === 'Staf'
+                        ? 'bg-amber-50 text-amber-700 border-amber-100'
+                        : 'bg-indigo-50 text-indigo-700 border-indigo-100'
+                  }`}
+                >
+                  Sesuai: {link.audience}
+                </span>
+                {link.category && link.category !== 'portal' && (
+                  <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-purple-50 text-purple-700 border border-purple-100">
+                    {link.category}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Content Body */}
+      <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between space-y-3">
+        <div className="space-y-1.5">
+          {/* Identity line if hero visual was displayed */}
+          {hasHeroImage && (
+            <div className="flex items-center gap-1.5 text-slate-400 text-[11px] font-medium">
+              {favUrl && !favFailed ? (
+                <img
+                  src={favUrl}
+                  alt=""
+                  onError={() => setFavFailed(true)}
+                  className="w-3.5 h-3.5 rounded-xs object-contain shrink-0 bg-white p-0.5 border border-slate-200/60 shadow-2xs"
+                />
+              ) : (
+                <Globe className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              )}
+              <span className="font-mono text-slate-600 font-semibold truncate max-w-[200px]">
+                {siteName}
+              </span>
+              {link.isActive === false && (
+                <span className="ml-auto text-[9px] font-bold px-1.5 py-0.2 rounded bg-rose-50 text-rose-700 border border-rose-200">
+                  Tidak Aktif
+                </span>
+              )}
+            </div>
+          )}
+
+          <h4 className="font-sans font-extrabold text-slate-900 text-sm sm:text-base group-hover:text-indigo-600 transition-colors line-clamp-2 leading-snug">
+            {link.title}
+          </h4>
+          <p className="text-xs text-slate-500 font-medium leading-relaxed line-clamp-3">
+            {link.desc}
+          </p>
+        </div>
+
+        {/* Footer */}
+        <div className="pt-3 border-t border-slate-100/90 flex items-center justify-between text-xs">
+          <span className="text-[10px] font-mono text-slate-400 truncate max-w-[150px] sm:max-w-[210px] flex items-center gap-1">
+            <Globe className="w-3 h-3 text-slate-300 shrink-0" />
+            <span>{domainDisplay}</span>
+          </span>
+          <span className="text-xs font-extrabold text-indigo-600 group-hover:text-indigo-700 flex items-center gap-1 shrink-0 group-hover:translate-x-0.5 transition-transform">
+            <span>Buka Portal</span>
+            <ExternalLink className="w-3.5 h-3.5" />
+          </span>
+        </div>
+      </div>
+    </a>
   );
 };
 
@@ -232,7 +397,10 @@ export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({
       item.title.toLowerCase().includes(q) ||
       item.desc.toLowerCase().includes(q) ||
       item.audience.toLowerCase().includes(q) ||
-      item.url.toLowerCase().includes(q)
+      item.url.toLowerCase().includes(q) ||
+      (item.category && item.category.toLowerCase().includes(q)) ||
+      (item.detectedMeta?.ogSiteName && item.detectedMeta.ogSiteName.toLowerCase().includes(q)) ||
+      (item.detectedMeta?.ogTitle && item.detectedMeta.ogTitle.toLowerCase().includes(q))
     );
   });
 
@@ -443,115 +611,49 @@ export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({
             )}
 
             {/* Portals Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4.5">
               {filteredPortals.map((link) => (
-                <div 
-                  key={link.id} 
-                    className={`p-5.5 glass-card rounded-[24px] flex flex-col justify-between border border-white/55 shadow-sm hover:scale-[1.01] transition-transform duration-300 relative group ${
-                      link.isActive === false ? 'opacity-65 bg-slate-100/60' : ''
-                    }`}
-                  >
-                    <div className="space-y-2.5">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center flex-wrap gap-2">
-                          <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-lg border ${
-                            link.audience === 'Pelajar' 
-                              ? 'bg-blue-50 text-blue-700 border-blue-100' 
-                              : link.audience === 'Staf' 
-                                ? 'bg-amber-50 text-amber-700 border-amber-100' 
-                                : 'bg-indigo-50 text-indigo-700 border-indigo-100'
-                          }`}>
-                            Sesuai: {link.audience}
-                          </span>
-
-                          {link.category && link.category !== 'portal' && (
-                            <span className="text-[10px] font-extrabold px-2.5 py-1 rounded-lg bg-purple-50 text-purple-700 border border-purple-100 capitalize">
-                              {link.category}
-                            </span>
-                          )}
-
-                          {link.isActive === false && (
-                            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200">
-                              Tidak Aktif
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="flex items-center gap-1.5">
-                          {/* Admin-only Edit Button: Icon-only pencil */}
-                          {isAdminMode && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                setEditingPortal(link);
-                                setIsAddEditPortalOpen(true);
-                              }}
-                              title="Kemaskini Portal"
-                              aria-label="Kemaskini Portal"
-                              className="p-1.5 rounded-lg bg-white/90 hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 border border-slate-200 shadow-2xs transition-all cursor-pointer"
-                            >
-                              <Pencil className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-
-                          <PortalCardVisual link={link} />
-                        </div>
-                      </div>
-
-                      <h4 className="font-sans font-extrabold text-slate-900 text-sm">{link.title}</h4>
-                      <p className="text-xs text-slate-500 font-medium leading-relaxed">{link.desc}</p>
-                    </div>
-
-                    <div className="mt-5 pt-3.5 border-t border-slate-100 flex items-center justify-between">
-                      <span className="text-[10px] font-mono text-slate-400 truncate max-w-[200px]">
-                        {link.url.replace(/^https?:\/\//i, '').replace(/\/$/, '')}
-                      </span>
-                      <a 
-                        href={link.url} 
-                        target="_blank" 
-                        rel="noreferrer"
-                        className="text-xs font-extrabold text-indigo-700 hover:text-indigo-900 flex items-center gap-1 shrink-0"
-                      >
-                        Buka Portal <ChevronRight className="w-3.5 h-3.5" />
-                      </a>
-                    </div>
-                  </div>
-                ))}
+                <SmartPortalCard
+                  key={link.id}
+                  link={link}
+                  isAdminMode={isAdminMode}
+                  onEdit={(target) => {
+                    setEditingPortal(target);
+                    setIsAddEditPortalOpen(true);
+                  }}
+                />
+              ))}
 
               {isLoadingPortals && (
                 <>
-                  <div className="p-5.5 glass-card rounded-[24px] border border-white/55 shadow-sm animate-pulse space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div className="h-5 w-24 bg-slate-200/70 rounded-lg" />
-                      <div className="h-6 w-6 bg-slate-200/70 rounded-md" />
-                    </div>
-                    <div className="h-4 w-3/4 bg-slate-200/70 rounded" />
-                    <div className="h-3 w-full bg-slate-200/70 rounded" />
-                    <div className="pt-3 border-t border-slate-100 flex justify-between">
-                      <div className="h-3 w-28 bg-slate-200/70 rounded" />
-                      <div className="h-3 w-16 bg-slate-200/70 rounded" />
+                  <div className="glass-card rounded-[24px] border border-white/60 shadow-sm overflow-hidden animate-pulse space-y-3">
+                    <div className="h-32 bg-slate-200/70 w-full" />
+                    <div className="p-4 sm:p-5 space-y-3">
+                      <div className="h-4 w-3/4 bg-slate-200/70 rounded-md" />
+                      <div className="h-3 w-full bg-slate-200/70 rounded-md" />
+                      <div className="pt-3 border-t border-slate-100 flex justify-between">
+                        <div className="h-3 w-28 bg-slate-200/70 rounded-md" />
+                        <div className="h-3 w-16 bg-slate-200/70 rounded-md" />
+                      </div>
                     </div>
                   </div>
-                  <div className="p-5.5 glass-card rounded-[24px] border border-white/55 shadow-sm animate-pulse space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div className="h-5 w-24 bg-slate-200/70 rounded-lg" />
-                      <div className="h-6 w-6 bg-slate-200/70 rounded-md" />
-                    </div>
-                    <div className="h-4 w-3/4 bg-slate-200/70 rounded" />
-                    <div className="h-3 w-full bg-slate-200/70 rounded" />
-                    <div className="pt-3 border-t border-slate-100 flex justify-between">
-                      <div className="h-3 w-28 bg-slate-200/70 rounded" />
-                      <div className="h-3 w-16 bg-slate-200/70 rounded" />
+                  <div className="glass-card rounded-[24px] border border-white/60 shadow-sm overflow-hidden animate-pulse space-y-3">
+                    <div className="h-32 bg-slate-200/70 w-full" />
+                    <div className="p-4 sm:p-5 space-y-3">
+                      <div className="h-4 w-3/4 bg-slate-200/70 rounded-md" />
+                      <div className="h-3 w-full bg-slate-200/70 rounded-md" />
+                      <div className="pt-3 border-t border-slate-100 flex justify-between">
+                        <div className="h-3 w-28 bg-slate-200/70 rounded-md" />
+                        <div className="h-3 w-16 bg-slate-200/70 rounded-md" />
+                      </div>
                     </div>
                   </div>
                 </>
               )}
 
               {!isLoadingPortals && filteredPortals.length === 0 && (
-                <div className="col-span-full py-8 text-center glass-panel rounded-2xl border border-slate-200/60 p-6 space-y-2">
-                  <Search className="w-6 h-6 text-slate-400 mx-auto" />
+                <div className="col-span-full py-10 text-center glass-panel rounded-2xl border border-slate-200/60 p-6 space-y-2">
+                  <Search className="w-7 h-7 text-slate-400 mx-auto" />
                   <p className="text-xs text-slate-500 font-semibold">
                     {searchQuery.trim()
                       ? 'Tiada pautan portal yang sepadan dengan carian.'

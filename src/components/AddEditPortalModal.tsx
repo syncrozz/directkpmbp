@@ -106,6 +106,15 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
 
   const imageFileInputRef = useRef<HTMLInputElement>(null);
   const iconFileInputRef = useRef<HTMLInputElement>(null);
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -136,9 +145,11 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
           url: portal.url,
           title: portal.detectedMeta.title,
           description: portal.detectedMeta.description,
-          ogTitle: portal.detectedMeta.title,
-          ogDescription: portal.detectedMeta.description,
+          ogTitle: portal.detectedMeta.ogTitle || portal.detectedMeta.title,
+          ogDescription: portal.detectedMeta.ogDescription || portal.detectedMeta.description,
           ogImage: portal.detectedMeta.ogImage,
+          ogUrl: portal.detectedMeta.ogUrl,
+          ogSiteName: portal.detectedMeta.ogSiteName,
           favicon: portal.detectedMeta.favicon,
           manifestIcons: portal.detectedMeta.pwaIcon ? [{ src: portal.detectedMeta.pwaIcon }] : undefined,
         });
@@ -245,6 +256,7 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
       // If Admin hasn't customized image or icon, adopt detected assets
       if (!manuallyModified.imageUrl && !imageUrl.trim() && meta.ogImage) {
         setImageUrl(meta.ogImage);
+        setPreviewImageFailed(false);
       }
 
       if (!manuallyModified.iconUrl && !iconUrl.trim()) {
@@ -265,6 +277,52 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
       );
     } finally {
       setIsDetecting(false);
+    }
+  };
+
+  // Debounced URL Change Handler
+  const handleUrlChange = (newVal: string) => {
+    setUrl(newVal);
+    setDetectStatus(null);
+    setErrorMessage(null);
+
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+
+    const trimmed = newVal.trim();
+    // Auto-trigger if URL has valid prefix or dot pattern
+    if (
+      trimmed.length > 7 &&
+      (trimmed.startsWith('http://') || trimmed.startsWith('https://') || (trimmed.includes('.') && !trimmed.endsWith('.')))
+    ) {
+      debounceTimerRef.current = setTimeout(() => {
+        handleDetectMetadata(trimmed);
+      }, 650);
+    }
+  };
+
+  // Immediate URL Paste Handler
+  const handleUrlPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const pastedText = e.clipboardData.getData('text').trim();
+    if (pastedText) {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+      let target = pastedText;
+      if (!/^https?:\/\//i.test(target) && target.includes('.')) {
+        target = `https://${target}`;
+      }
+      setUrl(target);
+      setDetectStatus(null);
+      setErrorMessage(null);
+
+      // Trigger detection immediately without debounce
+      setTimeout(() => {
+        handleDetectMetadata(target);
+      }, 20);
     }
   };
 
@@ -364,10 +422,18 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
     const detectedData: Record<string, string> = {};
     if (detectedMeta) {
       const dt = detectedMeta.ogTitle || detectedMeta.title;
-      if (dt) detectedData.title = dt;
+      if (dt) {
+        detectedData.title = dt;
+        detectedData.ogTitle = dt;
+      }
       const dd = detectedMeta.ogDescription || detectedMeta.description;
-      if (dd) detectedData.description = dd;
+      if (dd) {
+        detectedData.description = dd;
+        detectedData.ogDescription = dd;
+      }
       if (detectedMeta.ogImage) detectedData.ogImage = detectedMeta.ogImage;
+      if (detectedMeta.ogUrl) detectedData.ogUrl = detectedMeta.ogUrl;
+      if (detectedMeta.ogSiteName) detectedData.ogSiteName = detectedMeta.ogSiteName;
       if (detectedMeta.favicon) detectedData.favicon = detectedMeta.favicon;
       const pwa = detectedMeta.manifestIcons?.[0]?.src;
       if (pwa) detectedData.pwaIcon = pwa;
@@ -383,7 +449,7 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
       category: finalCategory,
       imageUrl: imageUrl.trim() || '',
       iconUrl: iconUrl.trim() || '',
-      faviconUrl: detectedMeta?.favicon || '',
+      faviconUrl: detectedMeta?.favicon || portal?.faviconUrl || '',
       sortOrder: Number(sortOrder) || existingCount + 1,
       isActive,
       createdAt: portal?.createdAt || new Date().toISOString(),
@@ -420,6 +486,15 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
     }
   };
 
+  const domainDisplay = (url.trim() || 'https://bpenawar.kpm.edu.my/')
+    .replace(/^https?:\/\//i, '')
+    .replace(/^www\./i, '')
+    .replace(/\/$/, '');
+
+  const previewSiteName = detectedMeta?.ogSiteName || domainDisplay.split('/')[0] || 'Portal Rasmi';
+  const previewFavicon = detectedMeta?.favicon || iconUrl;
+  const hasHeroImage = Boolean(resolvedVisual.url && (resolvedVisual.source === 'og_image' || resolvedVisual.source === 'custom_image') && !previewImageFailed);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/70 backdrop-blur-md overflow-y-auto">
       <div className="relative w-full max-w-3xl my-6 bg-white rounded-3xl p-5 sm:p-8 shadow-2xl border border-slate-100 text-left space-y-6">
@@ -435,7 +510,7 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
                 {portal ? 'Kemaskini Portal & Override Penuh' : 'Tambah Portal Baharu & Tetapan Penuh'}
               </h3>
               <p className="text-xs text-slate-500 font-medium">
-                Kawalan Metadata Tersuai Penuh (Full Custom Metadata Override)
+                Pengesanan Automatik Metadata & Kawalan Override Manual Penuh
               </p>
             </div>
           </div>
@@ -456,12 +531,12 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
           </div>
         )}
 
-        {/* Live Card Preview with Image Priority Indicator */}
-        <div className="space-y-2 p-4 bg-slate-50/70 rounded-2xl border border-slate-200/70">
+        {/* Live Smart Card Preview */}
+        <div className="space-y-2.5 p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <span className="text-xs font-extrabold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
               <Layers className="w-3.5 h-3.5 text-indigo-600" />
-              Pratonton Langsung Kad Portal
+              Pratonton Langsung Kad Interaktif
             </span>
             <div className="flex items-center gap-2">
               <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border ${visualPriorityBadge.color}`}>
@@ -477,59 +552,103 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
             </div>
           </div>
 
-          <div className={`p-5 glass-card rounded-[24px] border border-slate-200 shadow-sm flex flex-col justify-between transition-all ${
+          {/* Interactive Card Replica */}
+          <div className={`glass-card rounded-[22px] border border-slate-200 shadow-sm overflow-hidden flex flex-col justify-between transition-all ${
             !isActive ? 'opacity-65' : ''
           }`}>
-            <div className="space-y-2.5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-lg border ${
-                    audience === 'Pelajar' 
-                      ? 'bg-blue-50 text-blue-700 border-blue-100' 
-                      : audience === 'Staf' 
-                        ? 'bg-amber-50 text-amber-700 border-amber-100' 
-                        : 'bg-indigo-50 text-indigo-700 border-indigo-100'
+            {/* Visual Header / Hero */}
+            {hasHeroImage ? (
+              <div className="relative w-full aspect-[2.1/1] sm:aspect-[2.4/1] bg-slate-100 overflow-hidden border-b border-slate-100">
+                <img
+                  src={resolvedVisual.url}
+                  alt={title || 'Pratonton Portal'}
+                  onError={() => setPreviewImageFailed(true)}
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/40 via-transparent to-transparent opacity-60" />
+                <div className="absolute bottom-2.5 left-3 flex items-center flex-wrap gap-1.5 z-10">
+                  <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full backdrop-blur-md shadow-2xs border ${
+                    audience === 'Pelajar'
+                      ? 'bg-blue-600/90 text-white border-blue-400/40'
+                      : audience === 'Staf'
+                        ? 'bg-amber-600/90 text-white border-amber-400/40'
+                        : 'bg-indigo-600/90 text-white border-indigo-400/40'
                   }`}>
-                    Sesuai: {audience}
+                    {audience}
                   </span>
-                  <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-900/70 text-slate-100 backdrop-blur-md border border-white/20">
                     {category === 'Lain-lain' ? (customCategory || 'Lain-lain') : category}
                   </span>
                 </div>
-
-                <div className="flex items-center gap-2">
-                  {/* Visual Render according to Image Priority */}
-                  {resolvedVisual.url && !previewImageFailed ? (
-                    <img 
-                      src={resolvedVisual.url} 
-                      alt="" 
-                      className="w-6 h-6 rounded-md object-contain bg-white border border-slate-200 p-0.5 shadow-2xs" 
-                      onError={() => setPreviewImageFailed(true)}
-                    />
-                  ) : (
-                    <div className="w-6 h-6 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-700 flex items-center justify-center text-[11px] font-black shadow-2xs">
-                      {title.trim() ? title.trim().charAt(0).toUpperCase() : 'P'}
+              </div>
+            ) : (
+              <div className="p-4 bg-gradient-to-r from-indigo-50/80 via-white/80 to-purple-50/70 border-b border-indigo-100/60 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-white shadow-xs border border-indigo-100 flex items-center justify-center overflow-hidden shrink-0">
+                    {previewFavicon ? (
+                      <img src={previewFavicon} alt="" className="w-5 h-5 object-contain" />
+                    ) : (
+                      <span className="text-xs font-black text-indigo-700">
+                        {title.trim() ? title.trim().charAt(0).toUpperCase() : 'P'}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[11px] font-extrabold text-slate-700">
+                      {previewSiteName}
+                    </span>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className={`text-[9px] font-bold px-2 py-0.2 rounded-full border ${
+                        audience === 'Pelajar'
+                          ? 'bg-blue-50 text-blue-700 border-blue-100'
+                          : audience === 'Staf'
+                            ? 'bg-amber-50 text-amber-700 border-amber-100'
+                            : 'bg-indigo-50 text-indigo-700 border-indigo-100'
+                      }`}>
+                        {audience}
+                      </span>
+                      <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-purple-50 text-purple-700 border border-purple-100">
+                        {category === 'Lain-lain' ? (customCategory || 'Lain-lain') : category}
+                      </span>
                     </div>
-                  )}
-                  <ExternalLink className="w-4 h-4 text-slate-400" />
+                  </div>
                 </div>
               </div>
+            )}
 
-              <h4 className="font-sans font-extrabold text-slate-900 text-sm">
-                {title.trim() || 'Nama / Tajuk Portal'}
-              </h4>
-              <p className="text-xs text-slate-500 font-medium leading-relaxed">
-                {desc.trim() || 'Penerangan ringkas portal serta perkhidmatan sistem digital kolej...'}
-              </p>
-            </div>
+            {/* Content Body */}
+            <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between space-y-3">
+              <div className="space-y-1.5">
+                {hasHeroImage && (
+                  <div className="flex items-center gap-1.5 text-slate-400 text-[11px] font-medium">
+                    {previewFavicon ? (
+                      <img src={previewFavicon} alt="" className="w-3.5 h-3.5 rounded-xs object-contain shrink-0" />
+                    ) : (
+                      <Globe className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    )}
+                    <span className="font-mono text-slate-600 font-semibold truncate max-w-[220px]">
+                      {previewSiteName}
+                    </span>
+                  </div>
+                )}
+                <h4 className="font-sans font-extrabold text-slate-900 text-sm sm:text-base leading-snug">
+                  {title.trim() || 'Nama / Tajuk Portal'}
+                </h4>
+                <p className="text-xs text-slate-500 font-medium leading-relaxed line-clamp-3">
+                  {desc.trim() || 'Penerangan ringkas portal serta perkhidmatan sistem digital kolej...'}
+                </p>
+              </div>
 
-            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
-              <span className="text-[11px] font-mono text-slate-400 truncate max-w-[200px] sm:max-w-xs">
-                {url.trim() || 'https://bpenawar.kpm.edu.my/'}
-              </span>
-              <span className="text-xs font-extrabold text-indigo-700 flex items-center gap-1">
-                Buka Portal <ChevronRight className="w-3.5 h-3.5" />
-              </span>
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                <span className="text-[10px] font-mono text-slate-400 truncate max-w-[200px] flex items-center gap-1">
+                  <Globe className="w-3 h-3 text-slate-300 shrink-0" />
+                  <span>{domainDisplay}</span>
+                </span>
+                <span className="text-xs font-extrabold text-indigo-600 flex items-center gap-1">
+                  <span>Buka Portal</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -539,22 +658,29 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
           
           {/* 1. URL & Detection Bar */}
           <div className="space-y-1.5 p-4 bg-indigo-50/50 border border-indigo-100 rounded-2xl">
-            <label className="block text-xs font-extrabold text-indigo-950">
-              1. Alamat Laman Web / Portal URL (Boleh Disunting) <span className="text-rose-500">*</span>
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-extrabold text-indigo-950">
+                1. Alamat Laman Web / Portal URL (Kesan Automatik & Tampal) <span className="text-rose-500">*</span>
+              </label>
+              <span className="text-[10px] text-indigo-600 font-semibold">
+                Auto-detect aktif (Tampal atau taip URL)
+              </span>
+            </div>
+
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
               <div className="relative flex-1">
                 <Globe className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input
                   type="text"
                   value={url}
-                  onChange={(e) => {
-                    setUrl(e.target.value);
-                    setDetectStatus(null);
-                  }}
-                  placeholder="https://bpenawar.kpm.edu.my/spmp/"
-                  className="w-full pl-10 pr-3 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  onChange={(e) => handleUrlChange(e.target.value)}
+                  onPaste={handleUrlPaste}
+                  placeholder="https://bpenawar.kpm.edu.my/spmp/ atau tampal URL..."
+                  className="w-full pl-10 pr-9 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                 />
+                {isDetecting && (
+                  <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-indigo-600 animate-spin" />
+                )}
               </div>
 
               <button
@@ -571,7 +697,7 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
                 ) : (
                   <>
                     <Sparkles className="w-3.5 h-3.5" />
-                    <span>Kesan Metadata Laman</span>
+                    <span>Semak Semula / Retry</span>
                   </>
                 )}
               </button>

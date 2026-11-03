@@ -678,8 +678,9 @@ export function resolvePortalVisual(portal: {
   }
 
   // 4b. Detected Favicon (Avoid speculative /favicon.ico that may not exist and causes 404 errors)
-  if (portal.faviconUrl && portal.faviconUrl.trim()) {
-    const fav = portal.faviconUrl.trim();
+  const favCandidate = portal.faviconUrl || portal.detectedMeta?.favicon;
+  if (favCandidate && favCandidate.trim()) {
+    const fav = favCandidate.trim();
     if (!fav.endsWith('/favicon.ico') && !fav.endsWith('favicon.ico')) {
       return { url: fav, source: 'favicon' };
     }
@@ -687,5 +688,20 @@ export function resolvePortalVisual(portal: {
 
   // 5. System default placeholder
   return { source: 'placeholder' };
+}
+
+/**
+ * Returns the brand or site name of a portal (e.g. from og:site_name or domain hostname).
+ */
+export function getPortalSiteName(portal: { url: string; detectedMeta?: { ogSiteName?: string } }): string {
+  if (portal.detectedMeta?.ogSiteName && portal.detectedMeta.ogSiteName.trim()) {
+    return portal.detectedMeta.ogSiteName.trim();
+  }
+  try {
+    const parsed = new URL(portal.url);
+    return parsed.hostname.replace(/^www\./i, '');
+  } catch {
+    return portal.url.replace(/^https?:\/\//i, '').split('/')[0] || 'Laman Web';
+  }
 }
 

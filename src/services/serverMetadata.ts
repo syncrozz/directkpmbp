@@ -17,6 +17,8 @@ export interface ExtractedPortalMetadata {
   ogTitle?: string;
   ogDescription?: string;
   ogImage?: string;
+  ogUrl?: string;
+  ogSiteName?: string;
   favicon?: string;
   manifestUrl?: string;
   manifestName?: string;
@@ -270,12 +272,33 @@ export async function detectUrlMetadata(inputUrl: string): Promise<ExtractedPort
     title = decodeHtmlEntities(titleMatch[1]);
   }
 
-  // 2. Open Graph Meta
-  const ogTitle = extractMeta(responseText, 'og:title');
-  const ogDescription = extractMeta(responseText, 'og:description');
-  const metaDescription = extractMeta(responseText, 'description');
-  const rawOgImage = extractMeta(responseText, 'og:image') || extractMeta(responseText, 'og:image:url');
+  // 2. Open Graph & Twitter Meta
+  const ogTitle = extractMeta(responseText, 'og:title') || extractMeta(responseText, 'twitter:title') || title;
+  const ogDescription = 
+    extractMeta(responseText, 'og:description') || 
+    extractMeta(responseText, 'twitter:description') || 
+    extractMeta(responseText, 'description');
+
+  const rawOgImage = 
+    extractMeta(responseText, 'og:image') || 
+    extractMeta(responseText, 'og:image:url') || 
+    extractMeta(responseText, 'og:image:secure_url') ||
+    extractMeta(responseText, 'twitter:image') ||
+    extractMeta(responseText, 'twitter:image:src');
   const ogImage = rawOgImage ? resolveUrl(rawOgImage, finalUrl) : undefined;
+
+  const rawOgUrl = extractMeta(responseText, 'og:url') || extractLinkHref(responseText, /canonical/);
+  const ogUrl = rawOgUrl ? (resolveUrl(rawOgUrl, finalUrl) || finalUrl) : finalUrl;
+
+  let ogSiteName = extractMeta(responseText, 'og:site_name') || extractMeta(responseText, 'application-name');
+  if (!ogSiteName) {
+    try {
+      const parsedUrl = new URL(finalUrl);
+      ogSiteName = parsedUrl.hostname.replace(/^www\./i, '');
+    } catch {
+      ogSiteName = undefined;
+    }
+  }
 
   // 3. Favicon & Apple Touch Icon (only set if explicit icon link tag is found to avoid 404 network errors)
   const rawIcon =
@@ -325,10 +348,12 @@ export async function detectUrlMetadata(inputUrl: string): Promise<ExtractedPort
     url: inputUrl,
     finalUrl,
     title: ogTitle || title,
-    description: ogDescription || metaDescription,
+    description: ogDescription,
     ogTitle,
     ogDescription,
     ogImage,
+    ogUrl,
+    ogSiteName,
     favicon,
     manifestUrl,
     manifestName,
