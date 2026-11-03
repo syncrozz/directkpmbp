@@ -20,6 +20,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   X, 
   Sparkles, 
@@ -115,6 +116,35 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
       }
     };
   }, []);
+
+  // Lock body scroll and listen for Escape key to close modal safely
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const originalOverflow = document.body.style.overflow;
+    const originalPaddingRight = document.body.style.paddingRight;
+    const scrollBarWidth = window.innerWidth - document.documentElement.clientWidth;
+    if (scrollBarWidth > 0) {
+      document.body.style.paddingRight = `${scrollBarWidth}px`;
+    }
+    document.body.style.overflow = 'hidden';
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' || e.key === 'Esc') {
+        if (!isSaving) {
+          onClose();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+      document.body.style.paddingRight = originalPaddingRight;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, isSaving, onClose]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -495,44 +525,62 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
   const previewFavicon = detectedMeta?.favicon || iconUrl;
   const hasHeroImage = Boolean(resolvedVisual.url && (resolvedVisual.source === 'og_image' || resolvedVisual.source === 'custom_image') && !previewImageFailed);
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/70 backdrop-blur-md overflow-y-auto">
-      <div className="relative w-full max-w-3xl my-6 bg-white rounded-3xl p-5 sm:p-8 shadow-2xl border border-slate-100 text-left space-y-6">
-        
-        {/* Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-          <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-700 flex items-center justify-center shadow-xs">
+  const modalContent = (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6 bg-slate-950/75 backdrop-blur-md overflow-hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="portal-modal-title"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !isSaving) {
+          onClose();
+        }
+      }}
+    >
+      <div
+        className="relative w-full max-w-3xl max-h-[90dvh] flex flex-col bg-white rounded-3xl shadow-2xl border border-slate-100 text-left overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Fixed Header */}
+        <div className="shrink-0 px-5 sm:px-7 py-4.5 border-b border-slate-100 flex items-center justify-between bg-white z-10">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-indigo-50 border border-indigo-100 text-indigo-700 flex items-center justify-center shadow-xs shrink-0">
               <Globe className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-lg font-extrabold text-slate-900 tracking-tight">
+              <h3 id="portal-modal-title" className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight leading-tight">
                 {portal ? 'Kemaskini Portal & Override Penuh' : 'Tambah Portal Baharu & Tetapan Penuh'}
               </h3>
-              <p className="text-xs text-slate-500 font-medium">
+              <p className="text-[11px] sm:text-xs text-slate-500 font-medium mt-0.5">
                 Pengesanan Automatik Metadata & Kawalan Override Manual Penuh
               </p>
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-full transition-colors cursor-pointer"
+            disabled={isSaving}
+            className="p-2 text-slate-400 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-full transition-colors cursor-pointer disabled:opacity-50"
             aria-label="Tutup"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Error Banner */}
-        {errorMessage && (
-          <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-xs font-bold text-rose-700 flex items-start gap-2.5">
-            <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />
-            <span className="leading-snug">{errorMessage}</span>
-          </div>
-        )}
+        {/* Main Form wrapping scrollable content and fixed footer */}
+        <form onSubmit={handleSubmit} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          {/* Scrollable Content Body */}
+          <div className="flex-1 overflow-y-auto px-5 sm:px-7 py-5 space-y-6">
+            {/* Error Banner */}
+            {errorMessage && (
+              <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-xs font-bold text-rose-700 flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />
+                <span className="leading-snug">{errorMessage}</span>
+              </div>
+            )}
 
-        {/* Live Smart Card Preview */}
-        <div className="space-y-2.5 p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80">
+            {/* Live Smart Card Preview */}
+            <div className="space-y-2.5 p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <span className="text-xs font-extrabold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
               <Layers className="w-3.5 h-3.5 text-indigo-600" />
@@ -653,8 +701,8 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
           </div>
         </div>
 
-        {/* Main Form */}
-        <form onSubmit={handleSubmit} className="space-y-5">
+        {/* Form Inputs Container */}
+        <div className="space-y-5">
           
           {/* 1. URL & Detection Bar */}
           <div className="space-y-1.5 p-4 bg-indigo-50/50 border border-indigo-100 rounded-2xl">
@@ -1038,55 +1086,63 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
             </div>
 
           </div>
-
-          {/* Action Footer */}
-          <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div>
-              {portal && onDelete && (
-                <button
-                  type="button"
-                  onClick={handleDelete}
-                  disabled={isSaving}
-                  className="w-full sm:w-auto px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  <span>Padam Portal</span>
-                </button>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2.5 w-full sm:w-auto">
-              <button
-                type="button"
-                onClick={onClose}
-                disabled={isSaving}
-                className="flex-1 sm:flex-none px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-extrabold transition-colors cursor-pointer"
-              >
-                Batal
-              </button>
-              <button
-                type="submit"
-                disabled={isSaving || isDetecting || isUploadingImage || isUploadingIcon}
-                className="flex-1 sm:flex-none px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-extrabold shadow-md shadow-indigo-200 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-              >
-                {isSaving ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Menyimpan ke Firestore...</span>
-                  </>
-                ) : (
-                  <>
-                    <Check className="w-4 h-4" />
-                    <span>Simpan Portal</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-
-        </form>
-
+        </div>
       </div>
-    </div>
-  );
+
+      {/* Sticky / Fixed Action Footer */}
+      <div className="shrink-0 px-5 sm:px-7 py-4 bg-slate-50 border-t border-slate-200/80 flex flex-col sm:flex-row items-center justify-between gap-3 z-10">
+        <div>
+          {portal && onDelete && (
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={isSaving}
+              className="w-full sm:w-auto px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span>Padam Portal</span>
+            </button>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2.5 w-full sm:w-auto">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isSaving}
+            className="flex-1 sm:flex-none px-5 py-2.5 bg-slate-200/80 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-extrabold transition-colors cursor-pointer disabled:opacity-50"
+          >
+            Batal
+          </button>
+          <button
+            type="submit"
+            disabled={isSaving || isDetecting || isUploadingImage || isUploadingIcon}
+            className="flex-1 sm:flex-none px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-extrabold shadow-md shadow-indigo-200 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+          >
+            {isSaving ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Menyimpan ke Firestore...</span>
+              </>
+            ) : (
+              <>
+                <Check className="w-4 h-4" />
+                <span>Simpan Portal</span>
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
+    </form>
+
+  </div>
+</div>
+);
+
+if (typeof document === 'undefined') {
+  return modalContent;
+}
+
+return createPortal(modalContent, document.body);
 };
