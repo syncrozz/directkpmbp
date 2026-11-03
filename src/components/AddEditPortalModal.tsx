@@ -107,10 +107,28 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
   });
 
   const [previewImageFailed, setPreviewImageFailed] = useState(false);
+  const [activePreviewFav, setActivePreviewFav] = useState('');
+  const [previewFavFailed, setPreviewFavFailed] = useState(false);
 
   const imageFileInputRef = useRef<HTMLInputElement>(null);
   const iconFileInputRef = useRef<HTMLInputElement>(null);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Synchronize active preview favicon whenever url, detectedMeta, or iconUrl changes
+  useEffect(() => {
+    let googleFallbackFav = '';
+    try {
+      const rawUrl = url.trim() || 'https://bpenawar.kpm.edu.my/';
+      const host = new URL(rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`).hostname;
+      if (host) {
+        googleFallbackFav = `https://www.google.com/s2/favicons?domain=${host}&sz=128`;
+      }
+    } catch {}
+
+    const initialFav = detectedMeta?.favicon || iconUrl || googleFallbackFav;
+    setActivePreviewFav(initialFav);
+    setPreviewFavFailed(false);
+  }, [url, detectedMeta?.favicon, iconUrl]);
 
   useEffect(() => {
     return () => {
@@ -549,15 +567,6 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
       googleFallbackFav = `https://www.google.com/s2/favicons?domain=${host}&sz=128`;
     }
   } catch {}
-
-  const initialFav = detectedMeta?.favicon || iconUrl || googleFallbackFav;
-  const [activePreviewFav, setActivePreviewFav] = useState(initialFav);
-  const [previewFavFailed, setPreviewFavFailed] = useState(false);
-
-  useEffect(() => {
-    setActivePreviewFav(initialFav);
-    setPreviewFavFailed(false);
-  }, [initialFav]);
 
   const handlePreviewFavError = () => {
     if (activePreviewFav !== googleFallbackFav && googleFallbackFav) {
