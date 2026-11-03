@@ -21,9 +21,22 @@ async function startServer() {
     res.json({ status: 'ok', service: 'Directory KPMBP' });
   });
 
+  // Serve static files from public directory
+  app.use(express.static(path.join(process.cwd(), 'public')));
+
   // Local favicon fallback route to prevent 404s
   app.get('/favicon.ico', (req, res) => {
     res.sendFile(path.join(process.cwd(), 'public', 'favicon.svg'));
+  });
+
+  // Request status logger to monitor any 404s
+  app.use((req, res, next) => {
+    res.on('finish', () => {
+      if (res.statusCode === 404) {
+        console.warn(`[HTTP 404 Trace] ${req.method} ${req.originalUrl}`);
+      }
+    });
+    next();
   });
 
   // Smart URL metadata detection endpoint with SSRF guard

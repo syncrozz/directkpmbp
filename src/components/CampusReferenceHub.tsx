@@ -64,6 +64,10 @@ const PortalCardVisual: React.FC<{ link: PortalLink }> = ({ link }) => {
   const visual = resolvePortalVisual(link);
   const [hasError, setHasError] = useState(false);
 
+  useEffect(() => {
+    setHasError(false);
+  }, [link.id, visual.url]);
+
   if (visual.url && !hasError) {
     return (
       <img
@@ -89,8 +93,8 @@ export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({
   const [activeRefTab, setActiveRefTab] = useState<'portal' | 'peta' | 'takwim' | 'panduan'>('portal');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Dynamic Portals State
-  const [portalLinks, setPortalLinks] = useState<PortalLink[]>(DEFAULT_PORTAL_LINKS);
+  // Dynamic Portals State (Initialized to empty to prevent flashing deleted records on refresh)
+  const [portalLinks, setPortalLinks] = useState<PortalLink[]>([]);
   const [isPortalsMigrated, setIsPortalsMigrated] = useState(false);
   const [portalSyncStatus, setPortalSyncStatus] = useState<PortalSyncStatus>('loading');
   const [syncErrorMessage, setSyncErrorMessage] = useState<string | null>(null);
@@ -516,11 +520,44 @@ export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({
                   </div>
                 ))}
 
-              {filteredPortals.length === 0 && (
+              {isLoadingPortals && (
+                <>
+                  <div className="p-5.5 glass-card rounded-[24px] border border-white/55 shadow-sm animate-pulse space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="h-5 w-24 bg-slate-200/70 rounded-lg" />
+                      <div className="h-6 w-6 bg-slate-200/70 rounded-md" />
+                    </div>
+                    <div className="h-4 w-3/4 bg-slate-200/70 rounded" />
+                    <div className="h-3 w-full bg-slate-200/70 rounded" />
+                    <div className="pt-3 border-t border-slate-100 flex justify-between">
+                      <div className="h-3 w-28 bg-slate-200/70 rounded" />
+                      <div className="h-3 w-16 bg-slate-200/70 rounded" />
+                    </div>
+                  </div>
+                  <div className="p-5.5 glass-card rounded-[24px] border border-white/55 shadow-sm animate-pulse space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="h-5 w-24 bg-slate-200/70 rounded-lg" />
+                      <div className="h-6 w-6 bg-slate-200/70 rounded-md" />
+                    </div>
+                    <div className="h-4 w-3/4 bg-slate-200/70 rounded" />
+                    <div className="h-3 w-full bg-slate-200/70 rounded" />
+                    <div className="pt-3 border-t border-slate-100 flex justify-between">
+                      <div className="h-3 w-28 bg-slate-200/70 rounded" />
+                      <div className="h-3 w-16 bg-slate-200/70 rounded" />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {!isLoadingPortals && filteredPortals.length === 0 && (
                 <div className="col-span-full py-8 text-center glass-panel rounded-2xl border border-slate-200/60 p-6 space-y-2">
                   <Search className="w-6 h-6 text-slate-400 mx-auto" />
                   <p className="text-xs text-slate-500 font-semibold">
-                    Tiada pautan portal yang sepadan dengan carian.
+                    {searchQuery.trim()
+                      ? 'Tiada pautan portal yang sepadan dengan carian.'
+                      : isAdminMode
+                        ? 'Tiada rekod portal dalam pangkalan data. Sila klik "Tambah Portal" untuk memulakan.'
+                        : 'Tiada pautan portal tersedia pada masa ini.'}
                   </p>
                 </div>
               )}

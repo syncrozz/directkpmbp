@@ -11,6 +11,7 @@
 import { 
   collection, 
   doc, 
+  getDoc,
   getDocs, 
   setDoc, 
   deleteDoc, 
@@ -205,8 +206,34 @@ export function subscribeToPortalLinks(
 
   return onSnapshot(
     colRef,
-    (snapshot) => {
+    async (snapshot) => {
       if (snapshot.empty) {
+        // Check if database was ever initialized/migrated or if a delete took place
+        let isInitialized = false;
+        try {
+          const metaRef = doc(db, 'platforms', 'directkpmbp', 'config', 'portalMeta');
+          const metaSnap = await getDoc(metaRef);
+          if (metaSnap.exists() && metaSnap.data()?.initialized) {
+            isInitialized = true;
+          }
+        } catch (_mErr) {
+          if (typeof window !== 'undefined' && localStorage.getItem('directkpmbp_portals_initialized') === 'true') {
+            isInitialized = true;
+          }
+        }
+
+        if (isInitialized) {
+          // Empty collection after deletion must REMAIN empty! Do not restore default portals.
+          callback({
+            portals: [],
+            isMigrated: true,
+            status: 'ready_empty',
+            source: 'firestore',
+          });
+          return;
+        }
+
+        // Pristine, never-migrated state: Show default portals as read-only preview/fallback
         callback({
           portals: [...DEFAULT_PORTAL_LINKS],
           isMigrated: false,
@@ -214,6 +241,11 @@ export function subscribeToPortalLinks(
           source: 'fallback',
         });
         return;
+      }
+
+      // Mark collection as initialized
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('directkpmbp_portals_initialized', 'true');
       }
 
       const portals: PortalLink[] = [];
@@ -325,14 +357,73 @@ export async function savePortalLink(portal: PortalLink): Promise<boolean> {
 
 /**
  * Delete a portal record from Firestore.
+ * Ensures data integrity:
+ * 1. If deleting from unmigrated defaults, seeds remaining defaults so deleted one never returns.
+ * 2. Marks config/portalMeta as initialized so empty collections stay empty and never restore defaults.
  */
 export async function deletePortalLink(portalId: string): Promise<boolean> {
   const docPath = `${PORTALS_PATH}/${portalId}`;
   await ensureFreshAuthToken();
 
   try {
+    const colRef = collection(db, 'platforms', 'directkpmbp', 'portalLinks');
+    const existingSnap = await getDocs(colRef);
+
+    // If Firestore collection has no documents yet (user is deleting from initial default view):
+    if (existingSnap.empty) {
+      const batch = writeBatch(db);
+      // Seed all DEFAULT_PORTAL_LINKS EXCEPT the deleted one
+      DEFAULT_PORTAL_LINKS.forEach((portal) => {
+        if (portal.id !== portalId) {
+          const docRef = doc(db, 'platforms', 'directkpmbp', 'portalLinks', portal.id);
+          const safeData = sanitizeFirestorePayload({
+            ...portal,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            updatedBy: auth.currentUser?.email || 'admin',
+          });
+          batch.set(docRef, safeData, { merge: true });
+        }
+      });
+
+      // Mark config/portalMeta as initialized
+      const metaRef = doc(db, 'platforms', 'directkpmbp', 'config', 'portalMeta');
+      batch.set(metaRef, {
+        initialized: true,
+        isMigrated: true,
+        migratedAt: new Date().toISOString(),
+        updatedBy: auth.currentUser?.email || 'admin',
+      }, { merge: true });
+
+      await batch.commit();
+
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('directkpmbp_portals_initialized', 'true');
+      }
+      return true;
+    }
+
+    // Normal deletion of existing document in Firestore
     const docRef = doc(db, 'platforms', 'directkpmbp', 'portalLinks', portalId);
     await deleteDoc(docRef);
+
+    // Ensure config/portalMeta is permanently marked initialized
+    try {
+      const metaRef = doc(db, 'platforms', 'directkpmbp', 'config', 'portalMeta');
+      await setDoc(metaRef, {
+        initialized: true,
+        isMigrated: true,
+        lastDeletedAt: new Date().toISOString(),
+        updatedBy: auth.currentUser?.email || 'admin',
+      }, { merge: true });
+    } catch (_mErr) {
+      // Non-blocking
+    }
+
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('directkpmbp_portals_initialized', 'true');
+    }
+
     return true;
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, docPath);
@@ -429,8 +520,21 @@ export async function migrateDefaultPortals(): Promise<{
       }
     });
 
+    // Mark config/portalMeta as initialized
+    const metaRef = doc(db, 'platforms', 'directkpmbp', 'config', 'portalMeta');
+    batch.set(metaRef, {
+      initialized: true,
+      isMigrated: true,
+      migratedAt: new Date().toISOString(),
+      updatedBy: auth.currentUser?.email || 'admin-migration',
+    }, { merge: true });
+
     if (toMigrateCount > 0) {
       await batch.commit();
+    }
+
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('directkpmbp_portals_initialized', 'true');
     }
 
     // Post-migration verification: Read collection to verify records exist
@@ -573,9 +677,12 @@ export function resolvePortalVisual(portal: {
     return { url: portal.detectedMeta.pwaIcon.trim(), source: 'pwa_icon' };
   }
 
-  // 4b. Detected Favicon
+  // 4b. Detected Favicon (Avoid speculative /favicon.ico that may not exist and causes 404 errors)
   if (portal.faviconUrl && portal.faviconUrl.trim()) {
-    return { url: portal.faviconUrl.trim(), source: 'favicon' };
+    const fav = portal.faviconUrl.trim();
+    if (!fav.endsWith('/favicon.ico') && !fav.endsWith('favicon.ico')) {
+      return { url: fav, source: 'favicon' };
+    }
   }
 
   // 5. System default placeholder
