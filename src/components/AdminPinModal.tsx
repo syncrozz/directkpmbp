@@ -186,29 +186,6 @@ export const AdminPinModal: React.FC<AdminPinModalProps> = ({ isOpen, onClose, o
             </p>
           </div>
 
-          {/* Identity Notification */}
-          <div className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-2xl text-left space-y-1.5">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold text-slate-600">Master Administrator Diiktiraf:</span>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                {AUTHORIZED_ADMIN_EMAILS.length} Akaun Sah
-              </span>
-            </div>
-            <div className="space-y-1">
-              {AUTHORIZED_ADMIN_EMAILS.map((email) => (
-                <p
-                  key={email}
-                  className="font-mono text-xs font-bold text-indigo-700 bg-white px-2.5 py-1.5 rounded-xl border border-slate-200 truncate select-all"
-                >
-                  {email}
-                </p>
-              ))}
-            </div>
-            <p className="text-[10px] text-slate-500 leading-normal">
-              Hanya akaun Google dengan emel di atas yang layak menguruskan direktori staf dan jawatankuasa.
-            </p>
-          </div>
-
           {/* Error Message Box */}
           {errorMessage && (
             <div className="p-3 bg-rose-50 border border-rose-200 rounded-2xl text-xs font-bold text-rose-700 text-left flex items-start gap-2.5">

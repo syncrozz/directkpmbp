@@ -17,7 +17,6 @@ import {
   Sparkles, 
   ChevronRight, 
   FileText, 
-  Bookmark, 
   Shield, 
   HelpCircle, 
   Clock3, 
@@ -54,7 +53,7 @@ interface CampusReferenceHubProps {
 }
 
 export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({ onNavigateToTimetables }) => {
-  const [activeRefTab, setActiveRefTab] = useState<'semua' | 'peta' | 'portal' | 'takwim' | 'panduan'>('semua');
+  const [activeRefTab, setActiveRefTab] = useState<'portal' | 'peta' | 'takwim' | 'panduan'>('portal');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Sample data designed specifically for KPMBP
@@ -210,15 +209,15 @@ export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({ onNaviga
       {/* Segmented Selector for reference types with soft pastel themes */}
       <div className="flex flex-wrap gap-2">
         <button
-          onClick={() => setActiveRefTab('semua')}
+          onClick={() => setActiveRefTab('portal')}
           className={`px-4.5 py-2.5 rounded-2xl text-xs font-extrabold transition-all flex items-center gap-2 cursor-pointer ${
-            activeRefTab === 'semua'
-              ? 'bg-indigo-100/90 text-indigo-950 border-2 border-indigo-500 shadow-xs'
-              : 'bg-indigo-50/70 text-indigo-800 hover:bg-indigo-100/70 border border-indigo-200/60'
+            activeRefTab === 'portal'
+              ? 'bg-purple-100/90 text-purple-950 border-2 border-purple-500 shadow-xs'
+              : 'bg-purple-50/70 text-purple-800 hover:bg-purple-100/70 border border-purple-200/60'
           }`}
         >
-          <Bookmark className={`w-3.5 h-3.5 ${activeRefTab === 'semua' ? 'text-indigo-600' : 'text-indigo-500'}`} />
-          Semua Sumber
+          <Link className={`w-3.5 h-3.5 ${activeRefTab === 'portal' ? 'text-purple-600' : 'text-purple-500'}`} />
+          Portal Kolej
         </button>
         <button
           onClick={() => setActiveRefTab('peta')}
@@ -230,17 +229,6 @@ export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({ onNaviga
         >
           <Compass className={`w-3.5 h-3.5 ${activeRefTab === 'peta' ? 'text-blue-600' : 'text-blue-500'}`} />
           Peta Lokasi Kampus
-        </button>
-        <button
-          onClick={() => setActiveRefTab('portal')}
-          className={`px-4.5 py-2.5 rounded-2xl text-xs font-extrabold transition-all flex items-center gap-2 cursor-pointer ${
-            activeRefTab === 'portal'
-              ? 'bg-purple-100/90 text-purple-950 border-2 border-purple-500 shadow-xs'
-              : 'bg-purple-50/70 text-purple-800 hover:bg-purple-100/70 border border-purple-200/60'
-          }`}
-        >
-          <Link className={`w-3.5 h-3.5 ${activeRefTab === 'portal' ? 'text-purple-600' : 'text-purple-500'}`} />
-          Portal Kolej
         </button>
         <button
           onClick={() => setActiveRefTab('takwim')}
@@ -270,12 +258,12 @@ export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({ onNaviga
       <div className="space-y-8">
         
         {/* SECTION: Campus Location Map */}
-        {(activeRefTab === 'semua' || activeRefTab === 'peta') && (
+        {activeRefTab === 'peta' && (
           <CampusLocationMap />
         )}
 
         {/* SECTION: Quick Portals Links */}
-        {(activeRefTab === 'semua' || activeRefTab === 'portal') && (
+        {activeRefTab === 'portal' && (
           <div className="space-y-4">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-xl bg-indigo-50/60 border border-indigo-100/40 flex items-center justify-center text-indigo-700 font-extrabold">
@@ -329,7 +317,7 @@ export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({ onNaviga
         )}
 
         {/* SECTION: Academic Calendar Events */}
-        {(activeRefTab === 'semua' || activeRefTab === 'takwim') && (
+        {activeRefTab === 'takwim' && (
           <div className="space-y-4">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-xl bg-indigo-50/60 border border-indigo-100/40 flex items-center justify-center text-indigo-700 font-extrabold">
@@ -394,7 +382,7 @@ export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({ onNaviga
         )}
 
         {/* SECTION: Rules & Student Guide */}
-        {(activeRefTab === 'semua' || activeRefTab === 'panduan') && (
+        {activeRefTab === 'panduan' && (
           <div className="space-y-4">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-xl bg-indigo-50/60 border border-indigo-100/40 flex items-center justify-center text-indigo-700 font-extrabold">
