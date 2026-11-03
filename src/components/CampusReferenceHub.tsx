@@ -7,7 +7,6 @@ import React, { useState } from 'react';
 import { 
   Calendar, 
   Link, 
-  PhoneCall, 
   BookOpen, 
   MapPin, 
   Info, 
@@ -17,13 +16,12 @@ import {
   CheckCircle2, 
   Sparkles, 
   ChevronRight, 
-  MessageCircle,
-  FileText,
-  Bookmark,
-  Shield,
-  HelpCircle,
-  Clock3,
-  Compass
+  FileText, 
+  Bookmark, 
+  Shield, 
+  HelpCircle, 
+  Clock3, 
+  Compass 
 } from 'lucide-react';
 import { CampusLocationMap } from './CampusLocationMap';
 
@@ -44,16 +42,6 @@ interface CalendarEvent {
   type: 'akademik' | 'aktiviti' | 'cuti';
 }
 
-interface ContactItem {
-  id: string;
-  department: string;
-  role: string;
-  phone: string;
-  whatsapp: string;
-  extension?: string;
-  email?: string;
-}
-
 interface RuleItem {
   id: string;
   title: string;
@@ -66,7 +54,7 @@ interface CampusReferenceHubProps {
 }
 
 export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({ onNavigateToTimetables }) => {
-  const [activeRefTab, setActiveRefTab] = useState<'semua' | 'peta' | 'portal' | 'takwim' | 'bantuan' | 'panduan'>('semua');
+  const [activeRefTab, setActiveRefTab] = useState<'semua' | 'peta' | 'portal' | 'takwim' | 'panduan'>('semua');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Sample data designed specifically for KPMBP
@@ -166,61 +154,6 @@ export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({ onNaviga
     }
   ];
 
-  const keyContacts: ContactItem[] = [
-    {
-      id: 'c1',
-      department: 'Unit Hal Ehwal Pelajar (HEP)',
-      role: 'Urusan asrama, kebajikan, disiplin, biasiswa, dan aktiviti persatuan pelajar.',
-      phone: '07-8842222',
-      whatsapp: '60183854235',
-      extension: '210',
-      email: 'hep.penawar@mara.gov.my'
-    },
-    {
-      id: 'c2',
-      department: 'Unit Hal Ehwal Akademik (HEA)',
-      role: 'Semakan jadual kuliah, pendaftaran kelas, dewan peperiksaan, dan slip keputusan.',
-      phone: '07-8842222',
-      whatsapp: '60174693512',
-      extension: '215',
-      email: 'hea.penawar@mara.gov.my'
-    },
-    {
-      id: 'c3',
-      department: 'Warden Blok Asrama Lelaki (On-Duty)',
-      role: 'Kebajikan asrama, keselamatan pelajar, kecemasan di luar waktu pejabat.',
-      phone: '07-8843100',
-      whatsapp: '60139500149',
-      email: 'warden.lelaki@mara.gov.my'
-    },
-    {
-      id: 'c4',
-      department: 'Warden Blok Asrama Perempuan (On-Duty)',
-      role: 'Hubungi untuk laporan asrama, kemudahan asrama, atau kecemasan kesihatan pelajar.',
-      phone: '07-8843102',
-      whatsapp: '60138661616',
-      email: 'warden.perempuan@mara.gov.my'
-    },
-    {
-      id: 'c5',
-      department: 'Unit Pentadbiran & Kewangan Kolej',
-      role: 'Pembayaran yuran pengajian, tuntutan elaun wang saku MARA, urusan pendaftaran masuk.',
-      phone: '07-8842222',
-      whatsapp: '60138661616',
-      extension: '100',
-      email: 'pentadbiran.penawar@mara.gov.my'
-    },
-    {
-      id: 'c6',
-      department: 'Unit Teknologi Maklumat & Sokongan Direktori KPMBP',
-      role: 'Akses Wi-Fi kampus, penetapan emel rasmi, ID Teams, dan sokongan sistem digital.',
-      phone: '07-8842222',
-      whatsapp: '60137254391',
-      extension: '144',
-      email: 'it.penawar@mara.gov.my'
-    }
-  ];
-
   const collegeRules: RuleItem[] = [
     {
       id: 'r1',
@@ -254,19 +187,6 @@ export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({ onNaviga
     }
   ];
 
-  // Helper trigger action
-  const handleAction = (type: 'call' | 'whatsapp' | 'email', item: ContactItem) => {
-    if (type === 'call') {
-      window.location.href = `tel:${item.phone}`;
-    } else if (type === 'whatsapp') {
-      const cleanWa = item.whatsapp.replace(/\D/g, '');
-      const waUrl = `https://wa.me/${cleanWa.startsWith('6') ? cleanWa : '60' + cleanWa}`;
-      window.open(waUrl, '_blank');
-    } else if (type === 'email' && item.email) {
-      window.location.href = `mailto:${item.email}`;
-    }
-  };
-
   // Searching logic
   const filteredLinks = quickLinks.filter(item => 
     item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -277,12 +197,6 @@ export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({ onNaviga
   const filteredCalendar = calendarEvents.filter(item =>
     item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     item.dateRange.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const filteredContacts = keyContacts.filter(item =>
-    item.department.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    item.role.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    item.email?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const filteredRules = collegeRules.filter(item =>
@@ -338,17 +252,6 @@ export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({ onNaviga
         >
           <Calendar className={`w-3.5 h-3.5 ${activeRefTab === 'takwim' ? 'text-emerald-600' : 'text-emerald-500'}`} />
           Takwim Akademik
-        </button>
-        <button
-          onClick={() => setActiveRefTab('bantuan')}
-          className={`px-4.5 py-2.5 rounded-2xl text-xs font-extrabold transition-all flex items-center gap-2 cursor-pointer ${
-            activeRefTab === 'bantuan'
-              ? 'bg-rose-100/90 text-rose-950 border-2 border-rose-500 shadow-xs'
-              : 'bg-rose-50/70 text-rose-800 hover:bg-rose-100/70 border border-rose-200/60'
-          }`}
-        >
-          <PhoneCall className={`w-3.5 h-3.5 ${activeRefTab === 'bantuan' ? 'text-rose-600' : 'text-rose-500'}`} />
-          Talian Bantuan & Warden
         </button>
         <button
           onClick={() => setActiveRefTab('panduan')}
@@ -486,68 +389,6 @@ export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({ onNaviga
                   <p className="p-6 text-xs text-gray-500">Tiada acara takwim yang sepadan dengan carian.</p>
                 )}
               </div>
-            </div>
-          </div>
-        )}
-
-        {/* SECTION: Helpdesk & Warden Contacts */}
-        {(activeRefTab === 'semua' || activeRefTab === 'bantuan') && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-indigo-50/60 border border-indigo-100/40 flex items-center justify-center text-indigo-700 font-extrabold">
-                <PhoneCall className="w-4 h-4" />
-              </div>
-              <h3 className="text-xs font-extrabold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
-                Talian Bantuan Kampus, Kaunter & Warden ({filteredContacts.length})
-              </h3>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {filteredContacts.map((contact) => (
-                <div 
-                  key={contact.id} 
-                  className="p-5.5 glass-card rounded-[24px] flex flex-col justify-between border border-white/55 shadow-sm hover:scale-[1.01] transition-transform duration-300 text-left"
-                >
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-indigo-500 shrink-0" />
-                      <h4 className="font-sans font-extrabold text-slate-900 text-sm tracking-tight leading-snug">
-                        {contact.department}
-                      </h4>
-                    </div>
-                    <p className="text-xs text-slate-500 font-semibold leading-relaxed">{contact.role}</p>
-                    
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-slate-700">{contact.phone}</span>
-                      {contact.extension && (
-                        <span className="text-xs font-mono font-extrabold text-indigo-700 bg-indigo-50/70 border border-indigo-100/50 px-2 py-0.5 rounded-lg">
-                          ({contact.extension})
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  
-                  {/* Action row with direct triggers */}
-                  <div className="mt-5 pt-4 border-t border-slate-100 grid grid-cols-2 gap-2">
-                    <button
-                      onClick={() => handleAction('call', contact)}
-                      className="py-2 rounded-xl border border-slate-100 bg-white hover:bg-slate-50 text-slate-700 text-[11px] font-extrabold flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer transition-colors"
-                    >
-                      <PhoneCall className="w-3.5 h-3.5 text-indigo-600 animate-pulse" /> Hubungi
-                    </button>
-                    <button
-                      onClick={() => handleAction('whatsapp', contact)}
-                      className="py-2 rounded-xl border border-slate-100 bg-emerald-50 text-emerald-800 hover:bg-emerald-100/70 text-[11px] font-extrabold flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer transition-colors"
-                    >
-                      <MessageCircle className="w-3.5 h-3.5 text-emerald-600" /> WhatsApp
-                    </button>
-                  </div>
-                </div>
-              ))}
-              {filteredContacts.length === 0 && (
-                <p className="text-xs text-gray-500">Tiada talian kecemasan sepadan dengan carian.</p>
-              )}
             </div>
           </div>
         )}
