@@ -49,10 +49,13 @@ async function startServer() {
     try {
       const { detectUrlMetadata } = await import('./src/services/serverMetadata');
       const metadata = await detectUrlMetadata(url.trim());
-      return res.json({ success: true, data: metadata });
+      return res.status(200).json({ success: true, data: metadata });
     } catch (err: any) {
       console.warn('[MetadataDetect] Notice:', err?.message || err);
-      return res.status(200).json({
+      const isValidationOrSsrf = err?.message?.includes('SSRF') || err?.message?.includes('tidak sah');
+      const isTimeout = err?.message?.includes('tamat');
+      const statusCode = isValidationOrSsrf ? 400 : isTimeout ? 504 : 502;
+      return res.status(statusCode).json({
         success: false,
         error: err?.message || 'Gagal mengesan maklumat secara automatik.',
         data: { url: url.trim() },

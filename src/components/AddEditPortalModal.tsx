@@ -38,7 +38,8 @@ import {
   RotateCcw,
   Tag,
   Sliders,
-  CheckCircle2
+  CheckCircle2,
+  AlertTriangle
 } from 'lucide-react';
 import { PortalLink, PortalMetadata } from '../types';
 import { requestUrlMetadata, uploadPortalAsset, resolvePortalVisual } from '../services/portalService';
@@ -84,7 +85,9 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
   // Auto-Detected Metadata (Preserved alongside manual overrides)
   const [detectedMeta, setDetectedMeta] = useState<PortalMetadata | null>(null);
   const [isDetecting, setIsDetecting] = useState(false);
+  const [detectState, setDetectState] = useState<'idle' | 'loading' | 'success' | 'partial' | 'error'>('idle');
   const [detectStatus, setDetectStatus] = useState<string | null>(null);
+  const [detectError, setDetectError] = useState<string | null>(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isUploadingIcon, setIsUploadingIcon] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -213,6 +216,7 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
       });
     }
 
+    setDetectState('idle');
     setDetectStatus(null);
     setErrorMessage(null);
     setPreviewImageFailed(false);
@@ -254,7 +258,9 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
   const handleDetectMetadata = async (targetUrl?: string) => {
     const toCheck = (targetUrl || url).trim();
     if (!toCheck) {
-      setErrorMessage('Sila masukkan URL portal terlebih dahulu.');
+      setDetectState('error');
+      setDetectStatus(null);
+      setDetectError('Sila masukkan URL portal terlebih dahulu.');
       return;
     }
 
@@ -266,10 +272,11 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
 
     try {
       setIsDetecting(true);
-      setErrorMessage(null);
-      setDetectStatus('Sedang mengesan metadata laman web...');
+      setDetectState('loading');
+      setDetectStatus('Sedang menghubungi pelayan dan menganalisis metadata...');
+      setDetectError(null);
 
-      const meta = await requestUrlMetadata(formattedUrl);
+      const { status, data: meta } = await requestUrlMetadata(formattedUrl);
       setDetectedMeta(meta);
 
       // Rule: METADATA PRIORITY — Do not overwrite manually customized values
@@ -298,13 +305,22 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
         }
       }
 
-      setDetectStatus('Metadata berjaya dikesan secara automatik.');
+      if (status === 'success') {
+        setDetectState('success');
+        setDetectStatus('Metadata lengkap (OG Image, Tajuk & Deskripsi) berjaya dikesan secara automatik.');
+      } else {
+        setDetectState('partial');
+        setDetectStatus('Metadata separa dikesan (sesetengah maklumat seperti imej tiada).');
+      }
+      setDetectError(null);
     } catch (err: any) {
-      console.warn('Metadata detection notice:', err);
+      console.warn('[MetadataDetect Notice]:', err?.message || err);
+      setDetectState('error');
       setDetectStatus(null);
-      setErrorMessage(
-        err?.message || 'Pengesanan metadata automatik tidak berjaya. Anda boleh mengisi semua maklumat secara manual di bawah.'
+      setDetectError(
+        err?.message || 'Pengesanan metadata tidak berjaya. Anda boleh mengisi semua maklumat secara manual di bawah.'
       );
+      // Strictly preserve previous metadata fields; do not overwrite on failure
     } finally {
       setIsDetecting(false);
     }
@@ -313,8 +329,9 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
   // Debounced URL Change Handler
   const handleUrlChange = (newVal: string) => {
     setUrl(newVal);
+    setDetectState('idle');
     setDetectStatus(null);
-    setErrorMessage(null);
+    setDetectError(null);
 
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
@@ -346,8 +363,9 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
         target = `https://${target}`;
       }
       setUrl(target);
+      setDetectState('idle');
       setDetectStatus(null);
-      setErrorMessage(null);
+      setDetectError(null);
 
       // Trigger detection immediately without debounce
       setTimeout(() => {
@@ -522,7 +540,33 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
     .replace(/\/$/, '');
 
   const previewSiteName = detectedMeta?.ogSiteName || domainDisplay.split('/')[0] || 'Portal Rasmi';
-  const previewFavicon = detectedMeta?.favicon || iconUrl;
+
+  let googleFallbackFav = '';
+  try {
+    const rawUrl = url.trim() || 'https://bpenawar.kpm.edu.my/';
+    const host = new URL(rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`).hostname;
+    if (host) {
+      googleFallbackFav = `https://www.google.com/s2/favicons?domain=${host}&sz=128`;
+    }
+  } catch {}
+
+  const initialFav = detectedMeta?.favicon || iconUrl || googleFallbackFav;
+  const [activePreviewFav, setActivePreviewFav] = useState(initialFav);
+  const [previewFavFailed, setPreviewFavFailed] = useState(false);
+
+  useEffect(() => {
+    setActivePreviewFav(initialFav);
+    setPreviewFavFailed(false);
+  }, [initialFav]);
+
+  const handlePreviewFavError = () => {
+    if (activePreviewFav !== googleFallbackFav && googleFallbackFav) {
+      setActivePreviewFav(googleFallbackFav);
+    } else {
+      setPreviewFavFailed(true);
+    }
+  };
+
   const hasHeroImage = Boolean(resolvedVisual.url && (resolvedVisual.source === 'og_image' || resolvedVisual.source === 'custom_image') && !previewImageFailed);
 
   const modalContent = (
@@ -633,8 +677,13 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
               <div className="p-4 bg-gradient-to-r from-indigo-50/80 via-white/80 to-purple-50/70 border-b border-indigo-100/60 flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
                   <div className="w-9 h-9 rounded-xl bg-white shadow-xs border border-indigo-100 flex items-center justify-center overflow-hidden shrink-0">
-                    {previewFavicon ? (
-                      <img src={previewFavicon} alt="" className="w-5 h-5 object-contain" />
+                    {activePreviewFav && !previewFavFailed ? (
+                      <img
+                        src={activePreviewFav}
+                        alt=""
+                        onError={handlePreviewFavError}
+                        className="w-5 h-5 object-contain"
+                      />
                     ) : (
                       <span className="text-xs font-black text-indigo-700">
                         {title.trim() ? title.trim().charAt(0).toUpperCase() : 'P'}
@@ -669,8 +718,13 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
               <div className="space-y-1.5">
                 {hasHeroImage && (
                   <div className="flex items-center gap-1.5 text-slate-400 text-[11px] font-medium">
-                    {previewFavicon ? (
-                      <img src={previewFavicon} alt="" className="w-3.5 h-3.5 rounded-xs object-contain shrink-0" />
+                    {activePreviewFav && !previewFavFailed ? (
+                      <img
+                        src={activePreviewFav}
+                        alt=""
+                        onError={handlePreviewFavError}
+                        className="w-3.5 h-3.5 rounded-xs object-contain shrink-0"
+                      />
                     ) : (
                       <Globe className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                     )}
@@ -751,10 +805,37 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
               </button>
             </div>
 
-            {detectStatus && (
-              <div className="flex items-center gap-1.5 text-[11px] font-bold text-indigo-800 bg-white/90 p-2 rounded-lg border border-indigo-100 mt-1.5">
-                <Check className="w-3.5 h-3.5 text-emerald-600" />
-                <span>{detectStatus}</span>
+            {/* 5-State Feedback Banner (idle, loading, success, partial, error) */}
+            {detectState === 'loading' && (
+              <div className="flex items-center gap-2 text-[11px] font-semibold text-indigo-800 bg-indigo-50/90 p-2.5 rounded-xl border border-indigo-200 mt-2 animate-pulse">
+                <Loader2 className="w-4 h-4 text-indigo-600 animate-spin shrink-0" />
+                <span>Sedang mengesan metadata web (Open Graph, favicon, tajuk)...</span>
+              </div>
+            )}
+
+            {detectState === 'success' && (
+              <div className="flex items-center gap-2 text-[11px] font-bold text-emerald-800 bg-emerald-50/90 p-2.5 rounded-xl border border-emerald-200 mt-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{detectStatus || 'Metadata lengkap (OG Image, Tajuk & Deskripsi) berjaya dikesan secara automatik.'}</span>
+              </div>
+            )}
+
+            {detectState === 'partial' && (
+              <div className="flex items-center gap-2 text-[11px] font-semibold text-amber-800 bg-amber-50/90 p-2.5 rounded-xl border border-amber-200 mt-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>{detectStatus || 'Metadata separa dikesan (sesetengah aset seperti Open Graph image tiada pada laman ini).'}</span>
+              </div>
+            )}
+
+            {detectState === 'error' && (
+              <div className="flex items-start gap-2.5 text-[11px] font-semibold text-rose-800 bg-rose-50/90 p-2.5 rounded-xl border border-rose-200 mt-2">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="font-bold">Pengesanan Metadata Gagal</p>
+                  <p className="text-[10px] text-rose-700 font-normal mt-0.5 leading-snug">
+                    {detectError || 'Pelayan tidak dapat membaca metadata URL ini. Maklumat sedia ada dikekalkan dan anda boleh mengisi atau mengedit borang secara manual.'}
+                  </p>
+                </div>
               </div>
             )}
           </div>

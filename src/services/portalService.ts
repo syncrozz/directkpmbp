@@ -624,66 +624,72 @@ async function createOptimizedFallbackDataUrl(
   });
 }
 
+export interface MetadataDetectionResult {
+  status: 'success' | 'partial';
+  data: PortalMetadata;
+}
+
 /**
- * Calls backend smart URL metadata detection service with high-res client fallback.
+ * Calls backend smart URL metadata detection service with strict status evaluation.
+ * Throws on HTTP 400, 500, 502, 504, or network error to avoid false successes.
  */
-export async function requestUrlMetadata(url: string): Promise<PortalMetadata> {
+export async function requestUrlMetadata(url: string): Promise<MetadataDetectionResult> {
   const cleanUrl = url.trim();
   if (!cleanUrl) {
-    throw new Error('Sila masukkan URL yang sah.');
+    throw new Error('Sila masukkan URL portal yang sah.');
   }
 
-  // Fallback domain extraction in case API is unreachable or blocks
-  const deriveBasicMeta = (rawUrl: string): PortalMetadata => {
-    try {
-      const parsed = new URL(rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`);
-      const domain = parsed.hostname.replace(/^www\./i, '');
-      const name = domain.split('.')[0];
-      const capitalized = name.charAt(0).toUpperCase() + name.slice(1);
-      return {
-        url: parsed.href,
-        finalUrl: parsed.href,
-        title: `${capitalized} Portal`,
-        ogTitle: `${capitalized} Portal`,
-        ogSiteName: domain,
-        favicon: `https://www.google.com/s2/favicons?domain=${parsed.hostname}&sz=128`,
-      };
-    } catch {
-      return {
-        url: rawUrl,
-        finalUrl: rawUrl,
-        title: 'Portal Kolej',
-        ogTitle: 'Portal Kolej',
-      };
-    }
-  };
-
+  let response: Response;
   try {
-    const response = await fetch('/api/metadata/detect', {
+    response = await fetch('/api/metadata/detect', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url: cleanUrl }),
     });
-
-    if (response.ok) {
-      const result = await response.json();
-      if (result.success && result.data) {
-        return result.data as PortalMetadata;
-      }
-      if (result.data) {
-        // Partial metadata returned
-        return {
-          ...deriveBasicMeta(cleanUrl),
-          ...result.data,
-        };
-      }
-    }
-  } catch (netErr) {
-    console.warn('[MetadataDetect Notice] Network fetch error to /api/metadata/detect:', netErr);
+  } catch (netErr: any) {
+    console.error('[MetadataDetect Error] Network failure:', netErr);
+    throw new Error('Ralat sambungan rangkaian ke pelayan metadata. Sila semak sambungan internet anda.');
   }
 
-  // Graceful client fallback
-  return deriveBasicMeta(cleanUrl);
+  let result: any = null;
+  try {
+    result = await response.json();
+  } catch (_jsonErr) {
+    // Non-JSON response (e.g. raw gateway 500/502 HTML)
+  }
+
+  if (!response.ok) {
+    if (response.status === 400) {
+      throw new Error(result?.error || 'Format URL tidak sah atau akses disekat oleh keselamatan (HTTP 400).');
+    }
+    if (response.status === 504) {
+      throw new Error(result?.error || 'Masa menunggu tamat (Timeout 6.5s) semasa menghubungi pelayan web (HTTP 504).');
+    }
+    if (response.status === 502) {
+      throw new Error(result?.error || 'Laman web sasaran tidak dapat dihubungi atau menyekat permintaan automatik (HTTP 502).');
+    }
+    if (response.status === 500) {
+      throw new Error(result?.error || 'Ralat dalaman pelayan (HTTP 500) semasa memproses metadata laman web.');
+    }
+    throw new Error(result?.error || `Pelayan membalas dengan status kod ralat HTTP ${response.status}.`);
+  }
+
+  if (!result || !result.success || !result.data) {
+    throw new Error(result?.error || 'Gagal mengekstrak metadata yang boleh digunakan.');
+  }
+
+  const data = result.data as PortalMetadata;
+
+  // Determine if full rich success or partial metadata
+  const hasRichData = Boolean(
+    data.ogImage || 
+    (data.title && (data.description || data.ogDescription))
+  );
+
+  return {
+    status: hasRichData ? 'success' : 'partial',
+    data,
+  };
 }
 
 /**

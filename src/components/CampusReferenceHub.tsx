@@ -71,8 +71,14 @@ interface SmartPortalCardProps {
 const SmartPortalCard: React.FC<SmartPortalCardProps> = ({ link, isAdminMode, onEdit }) => {
   const visual = resolvePortalVisual(link);
   const siteName = getPortalSiteName(link);
-  const favUrl = link.detectedMeta?.favicon || link.faviconUrl;
+  const primaryFav = link.detectedMeta?.favicon || link.faviconUrl;
+  let googleFallbackFav = '';
+  try {
+    const host = new URL(link.url).hostname;
+    googleFallbackFav = `https://www.google.com/s2/favicons?domain=${host}&sz=128`;
+  } catch {}
 
+  const [currentFav, setCurrentFav] = useState(primaryFav || googleFallbackFav);
   const [imageFailed, setImageFailed] = useState(false);
   const [favFailed, setFavFailed] = useState(false);
 
@@ -81,8 +87,17 @@ const SmartPortalCard: React.FC<SmartPortalCardProps> = ({ link, isAdminMode, on
   }, [link.id, visual.url]);
 
   useEffect(() => {
+    setCurrentFav(primaryFav || googleFallbackFav);
     setFavFailed(false);
-  }, [link.id, favUrl]);
+  }, [link.id, primaryFav, googleFallbackFav]);
+
+  const handleFavError = () => {
+    if (currentFav !== googleFallbackFav && googleFallbackFav) {
+      setCurrentFav(googleFallbackFav);
+    } else {
+      setFavFailed(true);
+    }
+  };
 
   const hasHeroImage = Boolean(
     visual.url &&
@@ -160,12 +175,13 @@ const SmartPortalCard: React.FC<SmartPortalCardProps> = ({ link, isAdminMode, on
         <div className="relative w-full p-4 bg-gradient-to-r from-indigo-50/90 via-white/80 to-purple-50/70 border-b border-indigo-100/60 flex items-center justify-between">
           <div className="flex items-center gap-2.5 pr-12">
             <div className="w-10 h-10 rounded-xl bg-white shadow-xs border border-indigo-100 flex items-center justify-center overflow-hidden shrink-0">
-              {favUrl && !favFailed ? (
+              {currentFav && !favFailed ? (
                 <img
-                  src={favUrl}
+                  src={currentFav}
                   alt=""
-                  onError={() => setFavFailed(true)}
+                  onError={handleFavError}
                   className="w-5 h-5 object-contain"
+                  loading="lazy"
                 />
               ) : (
                 <span className="text-sm font-black text-indigo-700">
@@ -206,12 +222,13 @@ const SmartPortalCard: React.FC<SmartPortalCardProps> = ({ link, isAdminMode, on
           {/* Identity line if hero visual was displayed */}
           {hasHeroImage && (
             <div className="flex items-center gap-1.5 text-slate-400 text-[11px] font-medium">
-              {favUrl && !favFailed ? (
+              {currentFav && !favFailed ? (
                 <img
-                  src={favUrl}
+                  src={currentFav}
                   alt=""
-                  onError={() => setFavFailed(true)}
+                  onError={handleFavError}
                   className="w-3.5 h-3.5 rounded-xs object-contain shrink-0 bg-white p-0.5 border border-slate-200/60 shadow-2xs"
+                  loading="lazy"
                 />
               ) : (
                 <Globe className="w-3.5 h-3.5 text-slate-400 shrink-0" />

@@ -300,11 +300,44 @@ export async function detectUrlMetadata(inputUrl: string): Promise<ExtractedPort
     }
   }
 
-  // 3. Favicon & Apple Touch Icon (only set if explicit icon link tag is found to avoid 404 network errors)
-  const rawIcon =
-    extractLinkHref(responseText, /apple-touch-icon(?:-precomposed)?/) ||
-    extractLinkHref(responseText, /(?:shortcut )?icon/);
-  const favicon = rawIcon ? resolveUrl(rawIcon, finalUrl) : undefined;
+  // 3. Favicon Resolution with 4-Tier Priority
+  // Priority 1: HTML declared icon
+  const htmlFavicon =
+    extractLinkHref(responseText, /(?:shortcut )?icon/i) ||
+    extractLinkHref(responseText, /icon/i);
+
+  // Priority 2: Apple Touch Icon
+  const appleTouchIcon =
+    extractLinkHref(responseText, /apple-touch-icon(?:-precomposed)?/i);
+
+  let favicon: string | undefined;
+  if (htmlFavicon) {
+    favicon = resolveUrl(htmlFavicon, finalUrl);
+  } else if (appleTouchIcon) {
+    favicon = resolveUrl(appleTouchIcon, finalUrl);
+  } else if (finalUrl) {
+    // Priority 3: Standard target host /favicon.ico
+    try {
+      favicon = new URL('/favicon.ico', finalUrl).href;
+    } catch {
+      favicon = undefined;
+    }
+  }
+
+  // Priority 4: Safe universal fallback icon (Google Favicon service)
+  let fallbackFavicon: string | undefined;
+  try {
+    const domainHost = new URL(finalUrl).hostname;
+    if (domainHost) {
+      fallbackFavicon = `https://www.google.com/s2/favicons?domain=${domainHost}&sz=128`;
+    }
+  } catch {
+    fallbackFavicon = undefined;
+  }
+
+  if (!favicon && fallbackFavicon) {
+    favicon = fallbackFavicon;
+  }
 
   // 4. PWA Manifest Detection
   const rawManifest = extractLinkHref(responseText, /manifest/);
