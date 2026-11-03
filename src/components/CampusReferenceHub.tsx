@@ -35,7 +35,8 @@ import {
   subscribeToPortalLinks, 
   savePortalLink, 
   deletePortalLink, 
-  migrateDefaultPortals 
+  migrateDefaultPortals,
+  resolvePortalVisual
 } from '../services/portalService';
 import { AddEditPortalModal } from './AddEditPortalModal';
 
@@ -361,91 +362,94 @@ export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({
 
             {/* Portals Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {filteredPortals.map((link) => (
-                <div 
-                  key={link.id} 
-                  className={`p-5.5 glass-card rounded-[24px] flex flex-col justify-between border border-white/55 shadow-sm hover:scale-[1.01] transition-transform duration-300 relative group ${
-                    link.isActive === false ? 'opacity-65 bg-slate-100/60' : ''
-                  }`}
-                >
-                  <div className="space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-lg border ${
-                          link.audience === 'Pelajar' 
-                            ? 'bg-blue-50 text-blue-700 border-blue-100' 
-                            : link.audience === 'Staf' 
-                              ? 'bg-amber-50 text-amber-700 border-amber-100' 
-                              : 'bg-indigo-50 text-indigo-700 border-indigo-100'
-                        }`}>
-                          Sesuai: {link.audience}
-                        </span>
+              {filteredPortals.map((link) => {
+                const visual = resolvePortalVisual(link);
 
-                        {link.isActive === false && (
-                          <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200">
-                            Tidak Aktif
+                return (
+                  <div 
+                    key={link.id} 
+                    className={`p-5.5 glass-card rounded-[24px] flex flex-col justify-between border border-white/55 shadow-sm hover:scale-[1.01] transition-transform duration-300 relative group ${
+                      link.isActive === false ? 'opacity-65 bg-slate-100/60' : ''
+                    }`}
+                  >
+                    <div className="space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center flex-wrap gap-2">
+                          <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-lg border ${
+                            link.audience === 'Pelajar' 
+                              ? 'bg-blue-50 text-blue-700 border-blue-100' 
+                              : link.audience === 'Staf' 
+                                ? 'bg-amber-50 text-amber-700 border-amber-100' 
+                                : 'bg-indigo-50 text-indigo-700 border-indigo-100'
+                          }`}>
+                            Sesuai: {link.audience}
                           </span>
-                        )}
+
+                          {link.category && link.category !== 'portal' && (
+                            <span className="text-[10px] font-extrabold px-2.5 py-1 rounded-lg bg-purple-50 text-purple-700 border border-purple-100 capitalize">
+                              {link.category}
+                            </span>
+                          )}
+
+                          {link.isActive === false && (
+                            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200">
+                              Tidak Aktif
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          {/* Admin-only Edit Button: Icon-only pencil */}
+                          {isAdminMode && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setEditingPortal(link);
+                                setIsAddEditPortalOpen(true);
+                              }}
+                              title="Kemaskini Portal"
+                              aria-label="Kemaskini Portal"
+                              className="p-1.5 rounded-lg bg-white/90 hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 border border-slate-200 shadow-2xs transition-all cursor-pointer"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+
+                          {visual.url ? (
+                            <img 
+                              src={visual.url} 
+                              alt="" 
+                              className="w-5 h-5 rounded object-contain bg-white/80 border border-slate-100 p-0.5"
+                              onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
+                            />
+                          ) : (
+                            <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 transition-colors" />
+                          )}
+                        </div>
                       </div>
 
-                      <div className="flex items-center gap-1.5">
-                        {/* Admin-only Edit Button: Icon-only pencil */}
-                        {isAdminMode && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setEditingPortal(link);
-                              setIsAddEditPortalOpen(true);
-                            }}
-                            title="Kemaskini Portal"
-                            aria-label="Kemaskini Portal"
-                            className="p-1.5 rounded-lg bg-white/90 hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 border border-slate-200 shadow-2xs transition-all cursor-pointer"
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-
-                        {link.imageUrl ? (
-                          <img 
-                            src={link.imageUrl} 
-                            alt="" 
-                            className="w-5 h-5 rounded object-contain bg-white/80 border border-slate-100 p-0.5"
-                            onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
-                          />
-                        ) : link.faviconUrl ? (
-                          <img 
-                            src={link.faviconUrl} 
-                            alt="" 
-                            className="w-4 h-4 rounded object-contain"
-                            onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
-                          />
-                        ) : (
-                          <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-indigo-600" />
-                        )}
-                      </div>
+                      <h4 className="font-sans font-extrabold text-slate-900 text-sm">{link.title}</h4>
+                      <p className="text-xs text-slate-500 font-medium leading-relaxed">{link.desc}</p>
                     </div>
 
-                    <h4 className="font-sans font-extrabold text-slate-900 text-sm">{link.title}</h4>
-                    <p className="text-xs text-slate-500 font-medium leading-relaxed">{link.desc}</p>
+                    <div className="mt-5 pt-3.5 border-t border-slate-100 flex items-center justify-between">
+                      <span className="text-[10px] font-mono text-slate-400 truncate max-w-[200px]">
+                        {link.url.replace(/^https?:\/\//i, '').replace(/\/$/, '')}
+                      </span>
+                      <a 
+                        href={link.url} 
+                        target="_blank" 
+                        rel="noreferrer"
+                        className="text-xs font-extrabold text-indigo-700 hover:text-indigo-900 flex items-center gap-1 shrink-0"
+                      >
+                        Buka Portal <ChevronRight className="w-3.5 h-3.5" />
+                      </a>
+                    </div>
                   </div>
-
-                  <div className="mt-5 pt-3.5 border-t border-slate-100 flex items-center justify-between">
-                    <span className="text-[10px] font-mono text-slate-400 truncate max-w-[200px]">
-                      {link.url.replace(/^https?:\/\//i, '')}
-                    </span>
-                    <a 
-                      href={link.url} 
-                      target="_blank" 
-                      rel="noreferrer"
-                      className="text-xs font-extrabold text-indigo-700 hover:text-indigo-900 flex items-center gap-1 shrink-0"
-                    >
-                      Buka Portal <ChevronRight className="w-3.5 h-3.5" />
-                    </a>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
 
               {filteredPortals.length === 0 && (
                 <div className="col-span-full py-8 text-center glass-panel rounded-2xl border border-slate-200/60 p-6 space-y-2">

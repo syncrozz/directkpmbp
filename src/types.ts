@@ -80,9 +80,18 @@ export interface PortalLink {
   desc: string;
   url: string;
   audience: 'Pelajar' | 'Staf' | 'Kedua-dua';
-  category: 'portal' | 'akademik' | 'hebahan';
+  category: string;
   imageUrl?: string;
+  iconUrl?: string;
   faviconUrl?: string;
+  detectedMeta?: {
+    title?: string;
+    description?: string;
+    ogImage?: string;
+    favicon?: string;
+    pwaIcon?: string;
+    manifestName?: string;
+  };
   sortOrder: number;
   isActive: boolean;
   createdAt?: string;

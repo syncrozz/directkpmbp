@@ -2,8 +2,21 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
  * 
- * DIRECTKPMBP — ADD / EDIT PORTAL MODAL
- * Includes Smart URL Metadata Detection, Live Card Preview, and Manual Overrides.
+ * DIRECTKPMBP — FULL CUSTOM PORTAL METADATA OVERRIDE & EDITOR
+ * SYNCROZZ ENGINEERING STANDARD
+ * 
+ * Features:
+ * - Full manual override for all metadata fields (Name, Description, Image, Icon, URL, Audience, Category)
+ * - Strict Image Priority hierarchy:
+ *   1. Admin uploaded custom image / Admin custom image URL
+ *   2. Admin supplied custom icon / Admin custom icon URL
+ *   3. Automatically detected Open Graph image
+ *   4. Automatically detected PWA image/icon or Favicon
+ *   5. System default placeholder
+ * - Metadata Priority: Admin manual values always take precedence. Re-detection never clobbers custom edits.
+ * - Selective reset: Admin can reset individual fields to detected values.
+ * - Firebase Storage upload with offline Base64 fallback.
+ * - Broken image handling with graceful fallback.
  */
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -20,10 +33,14 @@ import {
   Upload,
   RefreshCw,
   Layers,
-  ChevronRight
+  ChevronRight,
+  RotateCcw,
+  Tag,
+  Sliders,
+  CheckCircle2
 } from 'lucide-react';
 import { PortalLink, PortalMetadata } from '../types';
-import { requestUrlMetadata } from '../services/portalService';
+import { requestUrlMetadata, uploadPortalAsset, resolvePortalVisual } from '../services/portalService';
 
 interface AddEditPortalModalProps {
   isOpen: boolean;
@@ -34,6 +51,15 @@ interface AddEditPortalModalProps {
   existingCount: number;
 }
 
+const CATEGORY_PRESETS = [
+  'Portal Rasmi',
+  'Akademik & Peperiksaan',
+  'Kewangan & Biasiswa',
+  'Perpustakaan & Rujukan',
+  'Aplikasi & Komunikasi',
+  'Hebahan & Integriti',
+];
+
 export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
   isOpen,
   onClose,
@@ -42,29 +68,44 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
   onDelete,
   existingCount,
 }) => {
+  // Core Form Fields (Manual Overrides)
   const [url, setUrl] = useState('');
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
   const [audience, setAudience] = useState<'Pelajar' | 'Staf' | 'Kedua-dua'>('Kedua-dua');
-  const [category, setCategory] = useState<'portal' | 'akademik' | 'hebahan'>('portal');
-  const [imageUrl, setImageUrl] = useState('');
-  const [faviconUrl, setFaviconUrl] = useState('');
+  const [category, setCategory] = useState('Portal Rasmi');
+  const [customCategory, setCustomCategory] = useState('');
+  const [imageUrl, setImageUrl] = useState(''); // Custom Image
+  const [iconUrl, setIconUrl] = useState(''); // Custom Icon
   const [sortOrder, setSortOrder] = useState(1);
   const [isActive, setIsActive] = useState(true);
 
-  // Metadata Detection State
+  // Auto-Detected Metadata (Preserved alongside manual overrides)
+  const [detectedMeta, setDetectedMeta] = useState<PortalMetadata | null>(null);
   const [isDetecting, setIsDetecting] = useState(false);
   const [detectStatus, setDetectStatus] = useState<string | null>(null);
-  const [detectedMeta, setDetectedMeta] = useState<PortalMetadata | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [isUploadingIcon, setIsUploadingIcon] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Track whether the user has manually edited fields to prevent overwriting
-  const [isTitleManual, setIsTitleManual] = useState(false);
-  const [isDescManual, setIsDescManual] = useState(false);
-  const [isImageManual, setIsImageManual] = useState(false);
+  // Tracking manual modifications to prevent detection clobbering
+  const [manuallyModified, setManuallyModified] = useState<{
+    title: boolean;
+    desc: boolean;
+    imageUrl: boolean;
+    iconUrl: boolean;
+  }>({
+    title: false,
+    desc: false,
+    imageUrl: false,
+    iconUrl: false,
+  });
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [previewImageFailed, setPreviewImageFailed] = useState(false);
+
+  const imageFileInputRef = useRef<HTMLInputElement>(null);
+  const iconFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -74,45 +115,108 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
       setTitle(portal.title || '');
       setDesc(portal.desc || '');
       setAudience(portal.audience || 'Kedua-dua');
-      setCategory(portal.category || 'portal');
+      
+      const cat = portal.category || 'Portal Rasmi';
+      if (CATEGORY_PRESETS.includes(cat)) {
+        setCategory(cat);
+        setCustomCategory('');
+      } else {
+        setCategory('Lain-lain');
+        setCustomCategory(cat);
+      }
+
       setImageUrl(portal.imageUrl || '');
-      setFaviconUrl(portal.faviconUrl || '');
+      setIconUrl(portal.iconUrl || '');
       setSortOrder(portal.sortOrder || existingCount + 1);
       setIsActive(portal.isActive !== false);
-      setIsTitleManual(true);
-      setIsDescManual(true);
-      setIsImageManual(Boolean(portal.imageUrl));
+
+      // Rehydrate any stored detected metadata if available
+      if (portal.detectedMeta) {
+        setDetectedMeta({
+          url: portal.url,
+          title: portal.detectedMeta.title,
+          description: portal.detectedMeta.description,
+          ogTitle: portal.detectedMeta.title,
+          ogDescription: portal.detectedMeta.description,
+          ogImage: portal.detectedMeta.ogImage,
+          favicon: portal.detectedMeta.favicon,
+          manifestIcons: portal.detectedMeta.pwaIcon ? [{ src: portal.detectedMeta.pwaIcon }] : undefined,
+        });
+      } else {
+        setDetectedMeta(null);
+      }
+
+      setManuallyModified({
+        title: true,
+        desc: true,
+        imageUrl: Boolean(portal.imageUrl),
+        iconUrl: Boolean(portal.iconUrl),
+      });
     } else {
       setUrl('');
       setTitle('');
       setDesc('');
       setAudience('Kedua-dua');
-      setCategory('portal');
+      setCategory('Portal Rasmi');
+      setCustomCategory('');
       setImageUrl('');
-      setFaviconUrl('');
+      setIconUrl('');
       setSortOrder(existingCount + 1);
       setIsActive(true);
-      setIsTitleManual(false);
-      setIsDescManual(false);
-      setIsImageManual(false);
+      setDetectedMeta(null);
+      setManuallyModified({
+        title: false,
+        desc: false,
+        imageUrl: false,
+        iconUrl: false,
+      });
     }
 
-    setDetectedMeta(null);
     setDetectStatus(null);
     setErrorMessage(null);
+    setPreviewImageFailed(false);
   }, [isOpen, portal, existingCount]);
 
   if (!isOpen) return null;
 
-  // Trigger Metadata Detection
+  // Compute Active Visual using strict Priority Hierarchy
+  const resolvedVisual = resolvePortalVisual({
+    imageUrl,
+    iconUrl,
+    faviconUrl: detectedMeta?.favicon,
+    detectedMeta: {
+      ogImage: detectedMeta?.ogImage,
+      favicon: detectedMeta?.favicon,
+      pwaIcon: detectedMeta?.manifestIcons?.[0]?.src,
+    },
+  });
+
+  // Source label for Admin transparency
+  const visualPriorityBadge = (() => {
+    switch (resolvedVisual.source) {
+      case 'custom_image':
+        return { label: 'Keutamaan 1: Imej Tersuai Admin', color: 'bg-indigo-100 text-indigo-800 border-indigo-200' };
+      case 'custom_icon':
+        return { label: 'Keutamaan 2: Ikon Tersuai Admin', color: 'bg-purple-100 text-purple-800 border-purple-200' };
+      case 'og_image':
+        return { label: 'Keutamaan 3: Imej Open Graph (Dikesan)', color: 'bg-emerald-100 text-emerald-800 border-emerald-200' };
+      case 'pwa_icon':
+        return { label: 'Keutamaan 4: Ikon PWA (Dikesan)', color: 'bg-blue-100 text-blue-800 border-blue-200' };
+      case 'favicon':
+        return { label: 'Keutamaan 4: Favicon Laman (Dikesan)', color: 'bg-sky-100 text-sky-800 border-sky-200' };
+      default:
+        return { label: 'Keutamaan 5: Placeholder Sistem Lalai', color: 'bg-slate-100 text-slate-700 border-slate-200' };
+    }
+  })();
+
+  // Smart URL Metadata Detection
   const handleDetectMetadata = async (targetUrl?: string) => {
     const toCheck = (targetUrl || url).trim();
     if (!toCheck) {
-      setErrorMessage('Sila masukkan URL laman web terlebih dahulu.');
+      setErrorMessage('Sila masukkan URL portal terlebih dahulu.');
       return;
     }
 
-    // Auto prepend https if protocol omitted
     let formattedUrl = toCheck;
     if (!/^https?:\/\//i.test(formattedUrl)) {
       formattedUrl = `https://${formattedUrl}`;
@@ -122,97 +226,125 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
     try {
       setIsDetecting(true);
       setErrorMessage(null);
-      setDetectStatus('Sedang mengesan metadata laman web & PWA...');
+      setDetectStatus('Sedang mengesan metadata laman web...');
 
       const meta = await requestUrlMetadata(formattedUrl);
       setDetectedMeta(meta);
 
-      // Populate Title if not manually edited or empty
-      if (!isTitleManual || !title.trim()) {
-        const bestTitle = meta.ogTitle || meta.title || meta.manifestName;
-        if (bestTitle) {
-          setTitle(bestTitle);
-        }
+      // Rule: METADATA PRIORITY — Do not overwrite manually customized values
+      if (!manuallyModified.title || !title.trim()) {
+        const detectedTitle = meta.ogTitle || meta.title || meta.manifestName;
+        if (detectedTitle) setTitle(detectedTitle);
       }
 
-      // Populate Description if not manually edited or empty
-      if (!isDescManual || !desc.trim()) {
-        const bestDesc = meta.ogDescription || meta.description;
-        if (bestDesc) {
-          setDesc(bestDesc);
-        }
+      if (!manuallyModified.desc || !desc.trim()) {
+        const detectedDesc = meta.ogDescription || meta.description;
+        if (detectedDesc) setDesc(detectedDesc);
       }
 
-      // Populate Image / Favicon if not manually edited
-      if (!isImageManual || !imageUrl.trim()) {
-        if (meta.ogImage) {
-          setImageUrl(meta.ogImage);
-        } else if (meta.manifestIcons && meta.manifestIcons.length > 0) {
-          setImageUrl(meta.manifestIcons[0].src);
+      // If Admin hasn't customized image or icon, adopt detected assets
+      if (!manuallyModified.imageUrl && !imageUrl.trim() && meta.ogImage) {
+        setImageUrl(meta.ogImage);
+      }
+
+      if (!manuallyModified.iconUrl && !iconUrl.trim()) {
+        const pwaIcon = meta.manifestIcons?.[0]?.src;
+        if (pwaIcon) {
+          setIconUrl(pwaIcon);
         } else if (meta.favicon) {
-          setImageUrl(meta.favicon);
+          setIconUrl(meta.favicon);
         }
       }
 
-      if (meta.favicon) {
-        setFaviconUrl(meta.favicon);
-      }
-
-      setDetectStatus('Metadata berjaya dikesan secara automatik!');
+      setDetectStatus('Metadata berjaya dikesan secara automatik.');
     } catch (err: any) {
       console.warn('Metadata detection notice:', err);
       setDetectStatus(null);
-      setErrorMessage(err?.message || 'Tidak dapat mengesan metadata secara automatik. Sila isi medan secara manual.');
+      setErrorMessage(
+        err?.message || 'Pengesanan metadata automatik tidak berjaya. Anda boleh mengisi semua maklumat secara manual di bawah.'
+      );
     } finally {
       setIsDetecting(false);
     }
   };
 
-  // Force overwrite with newly detected metadata
-  const handleApplyAllDetected = () => {
-    if (!detectedMeta) return;
-    if (detectedMeta.ogTitle || detectedMeta.title || detectedMeta.manifestName) {
-      setTitle(detectedMeta.ogTitle || detectedMeta.title || detectedMeta.manifestName || '');
-      setIsTitleManual(false);
-    }
-    if (detectedMeta.ogDescription || detectedMeta.description) {
-      setDesc(detectedMeta.ogDescription || detectedMeta.description || '');
-      setIsDescManual(false);
-    }
-    if (detectedMeta.ogImage) {
-      setImageUrl(detectedMeta.ogImage);
-      setIsImageManual(false);
-    } else if (detectedMeta.favicon) {
-      setImageUrl(detectedMeta.favicon);
-      setIsImageManual(false);
-    }
-  };
-
-  // Handle local image upload as fallback
-  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Upload Custom Image File to Firebase Storage
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 800 * 1024) {
-      setErrorMessage('Saiz imej melebihi had (Maksimum 800KB disyorkan). Sila pilih imej yang lebih kecil.');
-      return;
+    try {
+      setIsUploadingImage(true);
+      setErrorMessage(null);
+      const uploadedUrl = await uploadPortalAsset(file, 'image');
+      setImageUrl(uploadedUrl);
+      setManuallyModified((prev) => ({ ...prev, imageUrl: true }));
+      setPreviewImageFailed(false);
+    } catch (uploadErr: any) {
+      setErrorMessage(uploadErr?.message || 'Gagal memuat naik imej.');
+    } finally {
+      setIsUploadingImage(false);
+      if (imageFileInputRef.current) imageFileInputRef.current.value = '';
     }
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        setImageUrl(reader.result);
-        setIsImageManual(true);
-      }
-    };
-    reader.readAsDataURL(file);
   };
 
-  // Handle Save
+  // Upload Custom Icon File to Firebase Storage
+  const handleIconUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setIsUploadingIcon(true);
+      setErrorMessage(null);
+      const uploadedUrl = await uploadPortalAsset(file, 'icon');
+      setIconUrl(uploadedUrl);
+      setManuallyModified((prev) => ({ ...prev, iconUrl: true }));
+    } catch (uploadErr: any) {
+      setErrorMessage(uploadErr?.message || 'Gagal memuat naik ikon.');
+    } finally {
+      setIsUploadingIcon(false);
+      if (iconFileInputRef.current) iconFileInputRef.current.value = '';
+    }
+  };
+
+  // Selective Reset Handlers
+  const resetTitleToDetected = () => {
+    const val = detectedMeta?.ogTitle || detectedMeta?.title || detectedMeta?.manifestName;
+    if (val) {
+      setTitle(val);
+      setManuallyModified((prev) => ({ ...prev, title: false }));
+    }
+  };
+
+  const resetDescToDetected = () => {
+    const val = detectedMeta?.ogDescription || detectedMeta?.description;
+    if (val) {
+      setDesc(val);
+      setManuallyModified((prev) => ({ ...prev, desc: false }));
+    }
+  };
+
+  const resetImageToDetected = () => {
+    if (detectedMeta?.ogImage) {
+      setImageUrl(detectedMeta.ogImage);
+      setManuallyModified((prev) => ({ ...prev, imageUrl: false }));
+      setPreviewImageFailed(false);
+    }
+  };
+
+  const resetIconToDetected = () => {
+    const val = detectedMeta?.manifestIcons?.[0]?.src || detectedMeta?.favicon;
+    if (val) {
+      setIconUrl(val);
+      setManuallyModified((prev) => ({ ...prev, iconUrl: false }));
+    }
+  };
+
+  // Submit Handler
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) {
-      setErrorMessage('Sila masukkan tajuk portal.');
+      setErrorMessage('Sila masukkan nama / tajuk portal.');
       return;
     }
     if (!url.trim()) {
@@ -225,15 +357,28 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
       finalUrl = `https://${finalUrl}`;
     }
 
-    const newPortal: PortalLink = {
+    const finalCategory = category === 'Lain-lain' 
+      ? (customCategory.trim() || 'Portal Rasmi') 
+      : category;
+
+    const portalPayload: PortalLink = {
       id: portal?.id || `portal_${Date.now()}`,
       title: title.trim(),
       desc: desc.trim(),
       url: finalUrl,
       audience,
-      category,
+      category: finalCategory,
       imageUrl: imageUrl.trim() || undefined,
-      faviconUrl: faviconUrl.trim() || undefined,
+      iconUrl: iconUrl.trim() || undefined,
+      faviconUrl: detectedMeta?.favicon || undefined,
+      detectedMeta: detectedMeta ? {
+        title: detectedMeta.ogTitle || detectedMeta.title,
+        description: detectedMeta.ogDescription || detectedMeta.description,
+        ogImage: detectedMeta.ogImage,
+        favicon: detectedMeta.favicon,
+        pwaIcon: detectedMeta.manifestIcons?.[0]?.src,
+        manifestName: detectedMeta.manifestName,
+      } : portal?.detectedMeta,
       sortOrder: Number(sortOrder) || existingCount + 1,
       isActive,
       createdAt: portal?.createdAt,
@@ -242,10 +387,10 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
     try {
       setIsSaving(true);
       setErrorMessage(null);
-      await onSave(newPortal);
+      await onSave(portalPayload);
       onClose();
-    } catch (err: any) {
-      setErrorMessage(err?.message || 'Ralat semasa menyimpan maklumat portal.');
+    } catch (saveErr: any) {
+      setErrorMessage(saveErr?.message || 'Ralat semasa menyimpan portal ke Firestore.');
     } finally {
       setIsSaving(false);
     }
@@ -279,10 +424,10 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
             </div>
             <div>
               <h3 className="text-lg font-extrabold text-slate-900 tracking-tight">
-                {portal ? 'Kemaskini Portal Kolej' : 'Tambah Portal Baharu'}
+                {portal ? 'Kemaskini Portal & Override Penuh' : 'Tambah Portal Baharu & Tetapan Penuh'}
               </h3>
               <p className="text-xs text-slate-500 font-medium">
-                Koleksi Pautan Rasmi Hab Rujukan Kampus KPMBP
+                Kawalan Metadata Tersuai Penuh (Full Custom Metadata Override)
               </p>
             </div>
           </div>
@@ -303,59 +448,67 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
           </div>
         )}
 
-        {/* Live Preview Card */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-extrabold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+        {/* Live Card Preview with Image Priority Indicator */}
+        <div className="space-y-2 p-4 bg-slate-50/70 rounded-2xl border border-slate-200/70">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <span className="text-xs font-extrabold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
               <Layers className="w-3.5 h-3.5 text-indigo-600" />
               Pratonton Langsung Kad Portal
             </span>
-            <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${
-              isActive 
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
-                : 'bg-rose-50 text-rose-700 border-rose-200'
-            }`}>
-              {isActive ? 'Aktif' : 'Dinyahaktifkan'}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border ${visualPriorityBadge.color}`}>
+                {visualPriorityBadge.label}
+              </span>
+              <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${
+                isActive 
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                  : 'bg-rose-50 text-rose-700 border-rose-200'
+              }`}>
+                {isActive ? 'Aktif' : 'Dinyahaktifkan'}
+              </span>
+            </div>
           </div>
 
-          <div className={`p-5 glass-card rounded-[24px] border border-slate-200/80 shadow-xs flex flex-col justify-between transition-all ${
+          <div className={`p-5 glass-card rounded-[24px] border border-slate-200 shadow-sm flex flex-col justify-between transition-all ${
             !isActive ? 'opacity-65' : ''
           }`}>
             <div className="space-y-2.5">
               <div className="flex items-center justify-between">
-                <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-lg border ${
-                  audience === 'Pelajar' 
-                    ? 'bg-blue-50 text-blue-700 border-blue-100' 
-                    : audience === 'Staf' 
-                      ? 'bg-amber-50 text-amber-700 border-amber-100' 
-                      : 'bg-indigo-50 text-indigo-700 border-indigo-100'
-                }`}>
-                  Sesuai: {audience}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-lg border ${
+                    audience === 'Pelajar' 
+                      ? 'bg-blue-50 text-blue-700 border-blue-100' 
+                      : audience === 'Staf' 
+                        ? 'bg-amber-50 text-amber-700 border-amber-100' 
+                        : 'bg-indigo-50 text-indigo-700 border-indigo-100'
+                  }`}>
+                    Sesuai: {audience}
+                  </span>
+                  <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                    {category === 'Lain-lain' ? (customCategory || 'Lain-lain') : category}
+                  </span>
+                </div>
 
                 <div className="flex items-center gap-2">
-                  {imageUrl ? (
+                  {/* Visual Render according to Image Priority */}
+                  {resolvedVisual.url && !previewImageFailed ? (
                     <img 
-                      src={imageUrl} 
+                      src={resolvedVisual.url} 
                       alt="" 
-                      className="w-5 h-5 rounded object-contain bg-slate-50 border border-slate-100" 
-                      onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
+                      className="w-6 h-6 rounded-md object-contain bg-white border border-slate-200 p-0.5 shadow-2xs" 
+                      onError={() => setPreviewImageFailed(true)}
                     />
-                  ) : faviconUrl ? (
-                    <img 
-                      src={faviconUrl} 
-                      alt="" 
-                      className="w-4 h-4 rounded object-contain" 
-                      onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
-                    />
-                  ) : null}
+                  ) : (
+                    <div className="w-6 h-6 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-700 flex items-center justify-center text-[11px] font-black shadow-2xs">
+                      {title.trim() ? title.trim().charAt(0).toUpperCase() : 'P'}
+                    </div>
+                  )}
                   <ExternalLink className="w-4 h-4 text-slate-400" />
                 </div>
               </div>
 
               <h4 className="font-sans font-extrabold text-slate-900 text-sm">
-                {title.trim() || 'Tajuk Portal Kolej'}
+                {title.trim() || 'Nama / Tajuk Portal'}
               </h4>
               <p className="text-xs text-slate-500 font-medium leading-relaxed">
                 {desc.trim() || 'Penerangan ringkas portal serta perkhidmatan sistem digital kolej...'}
@@ -374,12 +527,12 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
         </div>
 
         {/* Main Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-5">
           
-          {/* Step 1: URL & Detection Control */}
-          <div className="space-y-1.5 p-3.5 bg-indigo-50/50 border border-indigo-100 rounded-2xl">
+          {/* 1. URL & Detection Bar */}
+          <div className="space-y-1.5 p-4 bg-indigo-50/50 border border-indigo-100 rounded-2xl">
             <label className="block text-xs font-extrabold text-indigo-950">
-              Alamat Laman Web / URL Portal <span className="text-rose-500">*</span>
+              1. Alamat Laman Web / Portal URL (Boleh Disunting) <span className="text-rose-500">*</span>
             </label>
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
               <div className="relative flex-1">
@@ -390,11 +543,6 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
                   onChange={(e) => {
                     setUrl(e.target.value);
                     setDetectStatus(null);
-                  }}
-                  onBlur={() => {
-                    if (url.trim() && !portal && !title.trim()) {
-                      handleDetectMetadata();
-                    }
                   }}
                   placeholder="https://bpenawar.kpm.edu.my/spmp/"
                   className="w-full pl-10 pr-3 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
@@ -415,28 +563,16 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
                 ) : (
                   <>
                     <Sparkles className="w-3.5 h-3.5" />
-                    <span>Kesan Metadata</span>
+                    <span>Kesan Metadata Laman</span>
                   </>
                 )}
               </button>
             </div>
 
-            {/* Detection Status feedback */}
             {detectStatus && (
-              <div className="flex items-center justify-between text-[11px] font-bold text-indigo-800 bg-white/80 p-2 rounded-lg border border-indigo-100 mt-1.5">
-                <div className="flex items-center gap-1.5">
-                  <Check className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>{detectStatus}</span>
-                </div>
-                {detectedMeta && (isTitleManual || isDescManual || isImageManual) && (
-                  <button
-                    type="button"
-                    onClick={handleApplyAllDetected}
-                    className="text-[10px] text-indigo-600 underline font-extrabold hover:text-indigo-800 cursor-pointer"
-                  >
-                    Gantikan dengan Metadata Dikesan
-                  </button>
-                )}
+              <div className="flex items-center gap-1.5 text-[11px] font-bold text-indigo-800 bg-white/90 p-2 rounded-lg border border-indigo-100 mt-1.5">
+                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                <span>{detectStatus}</span>
               </div>
             )}
           </div>
@@ -444,14 +580,28 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
           {/* Form Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             
-            {/* Title */}
+            {/* 2. Portal Name (Manual Override) */}
             <div className="space-y-1 md:col-span-2">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-slate-700">
-                  Tajuk Portal <span className="text-rose-500">*</span>
+                <label className="text-xs font-extrabold text-slate-700 flex items-center gap-1.5">
+                  <span>2. Nama / Tajuk Portal (Manual Override)</span>
+                  <span className="text-rose-500">*</span>
+                  {manuallyModified.title && (
+                    <span className="text-[10px] text-amber-600 font-bold bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                      Tersuai
+                    </span>
+                  )}
                 </label>
-                {isTitleManual && (
-                  <span className="text-[10px] text-slate-400 font-semibold">(Manual)</span>
+
+                {detectedMeta && (detectedMeta.ogTitle || detectedMeta.title) && title !== (detectedMeta.ogTitle || detectedMeta.title) && (
+                  <button
+                    type="button"
+                    onClick={resetTitleToDetected}
+                    className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 cursor-pointer"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Gunakan Nilai Dikesan ({detectedMeta.ogTitle || detectedMeta.title})</span>
+                  </button>
                 )}
               </div>
               <input
@@ -459,21 +609,34 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
                 value={title}
                 onChange={(e) => {
                   setTitle(e.target.value);
-                  setIsTitleManual(true);
+                  setManuallyModified((prev) => ({ ...prev, title: true }));
                 }}
                 placeholder="Contoh: Portal SPMP Pelajar"
-                className="w-full px-3.5 py-2.5 bg-slate-50/60 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                className="w-full px-3.5 py-2.5 bg-slate-50/60 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
               />
             </div>
 
-            {/* Description */}
+            {/* 3. Portal Description (Manual Override) */}
             <div className="space-y-1 md:col-span-2">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-slate-700">
-                  Penerangan Ringkas
+                <label className="text-xs font-extrabold text-slate-700 flex items-center gap-1.5">
+                  <span>3. Penerangan Ringkas Portal (Manual Override)</span>
+                  {manuallyModified.desc && (
+                    <span className="text-[10px] text-amber-600 font-bold bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                      Tersuai
+                    </span>
+                  )}
                 </label>
-                {isDescManual && (
-                  <span className="text-[10px] text-slate-400 font-semibold">(Manual)</span>
+
+                {detectedMeta && (detectedMeta.ogDescription || detectedMeta.description) && desc !== (detectedMeta.ogDescription || detectedMeta.description) && (
+                  <button
+                    type="button"
+                    onClick={resetDescToDetected}
+                    className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 cursor-pointer"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Gunakan Deskripsi Dikesan</span>
+                  </button>
                 )}
               </div>
               <textarea
@@ -481,17 +644,17 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
                 value={desc}
                 onChange={(e) => {
                   setDesc(e.target.value);
-                  setIsDescManual(true);
+                  setManuallyModified((prev) => ({ ...prev, desc: true }));
                 }}
-                placeholder="Penerangan ringkas mengenai kegunaan dan fungsi sistem..."
+                placeholder="Penerangan ringkas mengenai portal dan fungsi..."
                 className="w-full px-3.5 py-2.5 bg-slate-50/60 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
               />
             </div>
 
-            {/* Audience */}
+            {/* 4. Audience Selector */}
             <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-700">
-                Sasaran Pengguna
+              <label className="text-xs font-extrabold text-slate-700">
+                4. Sasaran Pengguna (Audience)
               </label>
               <div className="grid grid-cols-3 gap-2">
                 {(['Pelajar', 'Staf', 'Kedua-dua'] as const).map((aud) => (
@@ -511,10 +674,205 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
               </div>
             </div>
 
+            {/* 5. Category Selector */}
+            <div className="space-y-1">
+              <label className="text-xs font-extrabold text-slate-700">
+                5. Kategori Portal (Configurable)
+              </label>
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                className="w-full px-3.5 py-2.5 bg-slate-50/60 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              >
+                {CATEGORY_PRESETS.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
+                ))}
+                <option value="Lain-lain">Lain-lain (Tersuai)</option>
+              </select>
+
+              {category === 'Lain-lain' && (
+                <input
+                  type="text"
+                  value={customCategory}
+                  onChange={(e) => setCustomCategory(e.target.value)}
+                  placeholder="Masukkan nama kategori tersuai..."
+                  className="w-full mt-2 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800"
+                />
+              )}
+            </div>
+
+            {/* 6. Custom Portal Image (Keutamaan 1 & 2) */}
+            <div className="space-y-1.5 md:col-span-2 p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
+                  <ImageIcon className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>6. Gambar Portal (Upload / URL Tersuai — Keutamaan 1)</span>
+                </label>
+
+                {imageUrl && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setImageUrl('');
+                      setManuallyModified((prev) => ({ ...prev, imageUrl: false }));
+                      setPreviewImageFailed(false);
+                    }}
+                    className="text-[10px] text-rose-600 hover:text-rose-800 font-bold cursor-pointer"
+                  >
+                    Padam Gambar
+                  </button>
+                )}
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="text"
+                  value={imageUrl}
+                  onChange={(e) => {
+                    setImageUrl(e.target.value);
+                    setManuallyModified((prev) => ({ ...prev, imageUrl: true }));
+                    setPreviewImageFailed(false);
+                  }}
+                  placeholder="https://.../portal-image.png atau muat naik fail imej"
+                  className="flex-1 px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                />
+
+                <input
+                  type="file"
+                  ref={imageFileInputRef}
+                  accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif"
+                  className="hidden"
+                  onChange={handleImageUpload}
+                />
+
+                <button
+                  type="button"
+                  onClick={() => imageFileInputRef.current?.click()}
+                  disabled={isUploadingImage}
+                  className="px-4 py-2.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shrink-0 disabled:opacity-50"
+                >
+                  {isUploadingImage ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Upload className="w-3.5 h-3.5 text-indigo-600" />
+                  )}
+                  <span>{isUploadingImage ? 'Memuat Naik...' : 'Muat Naik Imej (Firebase)'}</span>
+                </button>
+              </div>
+
+              {/* Detected OG Image Option & Reset */}
+              {detectedMeta?.ogImage && (
+                <div className="flex items-center gap-2 pt-1 text-[11px] text-slate-500">
+                  <span>Open Graph Dikesan:</span>
+                  <button
+                    type="button"
+                    onClick={resetImageToDetected}
+                    className="text-indigo-600 hover:underline font-bold cursor-pointer flex items-center gap-1"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Guna OG Image Dikesan</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* 7. Custom Portal Icon (Keutamaan 2 & 4) */}
+            <div className="space-y-1.5 md:col-span-2 p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
+                  <Globe className="w-3.5 h-3.5 text-purple-600" />
+                  <span>7. Ikon Portal (Upload / URL Ikon Tersuai — Keutamaan 2)</span>
+                </label>
+
+                {iconUrl && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIconUrl('');
+                      setManuallyModified((prev) => ({ ...prev, iconUrl: false }));
+                    }}
+                    className="text-[10px] text-rose-600 hover:text-rose-800 font-bold cursor-pointer"
+                  >
+                    Padam Ikon
+                  </button>
+                )}
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  type="text"
+                  value={iconUrl}
+                  onChange={(e) => {
+                    setIconUrl(e.target.value);
+                    setManuallyModified((prev) => ({ ...prev, iconUrl: true }));
+                  }}
+                  placeholder="https://.../favicon.ico atau muat naik fail ikon"
+                  className="flex-1 px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                />
+
+                <input
+                  type="file"
+                  ref={iconFileInputRef}
+                  accept="image/png,image/x-icon,image/vnd.microsoft.icon,image/svg+xml"
+                  className="hidden"
+                  onChange={handleIconUpload}
+                />
+
+                <button
+                  type="button"
+                  onClick={() => iconFileInputRef.current?.click()}
+                  disabled={isUploadingIcon}
+                  className="px-4 py-2.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shrink-0 disabled:opacity-50"
+                >
+                  {isUploadingIcon ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Upload className="w-3.5 h-3.5 text-purple-600" />
+                  )}
+                  <span>{isUploadingIcon ? 'Memuat Naik...' : 'Muat Naik Ikon'}</span>
+                </button>
+              </div>
+
+              {/* Detected Icon / Favicon Options */}
+              {(detectedMeta?.favicon || detectedMeta?.manifestIcons?.[0]?.src) && (
+                <div className="flex items-center gap-3 pt-1 text-[11px] text-slate-500">
+                  <span>Ikon Dikesan:</span>
+                  {detectedMeta.favicon && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIconUrl(detectedMeta.favicon!);
+                        setManuallyModified((prev) => ({ ...prev, iconUrl: false }));
+                      }}
+                      className="text-purple-600 hover:underline font-bold cursor-pointer flex items-center gap-1"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>Guna Favicon Dikesan</span>
+                    </button>
+                  )}
+                  {detectedMeta.manifestIcons?.[0]?.src && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIconUrl(detectedMeta.manifestIcons![0].src);
+                        setManuallyModified((prev) => ({ ...prev, iconUrl: false }));
+                      }}
+                      className="text-purple-600 hover:underline font-bold cursor-pointer flex items-center gap-1"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>Guna Ikon PWA</span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* Sort Order */}
             <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-700">
-                Nombor Susunan Paparan
+              <label className="text-xs font-extrabold text-slate-700">
+                Susunan Paparan (Sort Order)
               </label>
               <input
                 type="number"
@@ -526,97 +884,12 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
               />
             </div>
 
-            {/* Image & Favicon Controls */}
-            <div className="space-y-1 md:col-span-2">
-              <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
-                <span>Pautan Gambar Pratonton / Ikon (OG Image / Favicon)</span>
-                {imageUrl && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setImageUrl('');
-                      setIsImageManual(true);
-                    }}
-                    className="text-[10px] text-rose-600 hover:text-rose-800 font-bold cursor-pointer"
-                  >
-                    Padam Imej
-                  </button>
-                )}
-              </label>
-
-              <div className="flex flex-col sm:flex-row gap-2">
-                <div className="relative flex-1">
-                  <ImageIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <input
-                    type="text"
-                    value={imageUrl}
-                    onChange={(e) => {
-                      setImageUrl(e.target.value);
-                      setIsImageManual(true);
-                    }}
-                    placeholder="https://.../preview.png atau muat naik fail"
-                    className="w-full pl-10 pr-3 py-2.5 bg-slate-50/60 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                  />
-                </div>
-
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  accept="image/png,image/jpeg,image/svg+xml,image/webp,image/x-icon"
-                  className="hidden"
-                  onChange={handleImageFileChange}
-                />
-
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="px-3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shrink-0"
-                >
-                  <Upload className="w-3.5 h-3.5" />
-                  <span>Muat Naik</span>
-                </button>
-              </div>
-
-              {/* Quick Preset Choice from Detected Meta */}
-              {detectedMeta && (detectedMeta.ogImage || detectedMeta.favicon) && (
-                <div className="flex items-center gap-2 pt-1 text-[11px] text-slate-500">
-                  <span>Pilihan Dikesan:</span>
-                  {detectedMeta.ogImage && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setImageUrl(detectedMeta.ogImage!);
-                        setIsImageManual(false);
-                      }}
-                      className="text-indigo-600 hover:underline font-bold cursor-pointer"
-                    >
-                      Guna OG Image
-                    </button>
-                  )}
-                  {detectedMeta.favicon && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setImageUrl(detectedMeta.favicon!);
-                        setIsImageManual(false);
-                      }}
-                      className="text-indigo-600 hover:underline font-bold cursor-pointer"
-                    >
-                      Guna Favicon
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Active Status Checkbox */}
-            <div className="md:col-span-2 pt-1 flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-200/60">
+            {/* Active Status */}
+            <div className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-200/70">
               <div>
-                <p className="text-xs font-bold text-slate-800">Status Portal</p>
+                <p className="text-xs font-bold text-slate-800">Status Aktif</p>
                 <p className="text-[11px] text-slate-500">
-                  {isActive 
-                    ? 'Portal ini dipaparkan kepada semua pengguna umum.' 
-                    : 'Portal dinyahaktifkan dan hanya kelihatan dalam Mod Pentadbir.'}
+                  {isActive ? 'Kelihatan kepada umum' : 'Disembunyikan daripada umum'}
                 </p>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
@@ -632,7 +905,7 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
 
           </div>
 
-          {/* Action Buttons */}
+          {/* Action Footer */}
           <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
             <div>
               {portal && onDelete && (
@@ -659,13 +932,13 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
               </button>
               <button
                 type="submit"
-                disabled={isSaving || isDetecting}
+                disabled={isSaving || isDetecting || isUploadingImage || isUploadingIcon}
                 className="flex-1 sm:flex-none px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-extrabold shadow-md shadow-indigo-200 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 {isSaving ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Menyimpan...</span>
+                    <span>Menyimpan ke Firestore...</span>
                   </>
                 ) : (
                   <>

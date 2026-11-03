@@ -19,7 +19,8 @@ import {
   serverTimestamp,
   onSnapshot
 } from 'firebase/firestore';
-import { db, auth } from '../config/firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db, auth, storage, getPlatformStoragePath } from '../config/firebase';
 import { PortalLink, PortalMetadata } from '../types';
 
 export enum OperationType {
@@ -365,3 +366,100 @@ export async function requestUrlMetadata(url: string): Promise<PortalMetadata> {
 
   return result.data as PortalMetadata;
 }
+
+/**
+ * Upload an image or icon file to Firebase Storage under platforms/directkpmbp/portals/
+ * Falls back gracefully to base64 Data URL if storage permissions or network fails.
+ */
+export async function uploadPortalAsset(file: File, type: 'image' | 'icon'): Promise<string> {
+  const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml', 'image/x-icon', 'image/vnd.microsoft.icon', 'image/gif'];
+  if (!allowed.includes(file.type) && !file.name.match(/\.(jpg|jpeg|png|webp|svg|ico|gif)$/i)) {
+    throw new Error('Format fail tidak sah. Sila pilih fail imej (PNG, JPG, WebP, SVG, atau ICO).');
+  }
+
+  if (file.size > 5 * 1024 * 1024) {
+    throw new Error('Saiz fail melebihi had 5MB. Sila pilih imej yang lebih kecil.');
+  }
+
+  const cleanName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+  const subPath = `portals/${type}_${Date.now()}_${cleanName}`;
+  const fullPath = getPlatformStoragePath(subPath);
+
+  try {
+    const storageRef = ref(storage, fullPath);
+    const metadata = {
+      contentType: file.type || 'image/png',
+      customMetadata: {
+        uploadedBy: auth.currentUser?.email || 'admin',
+        uploadedAt: new Date().toISOString(),
+      },
+    };
+    const snap = await uploadBytes(storageRef, file, metadata);
+    const downloadUrl = await getDownloadURL(snap.ref);
+    return downloadUrl;
+  } catch (storageErr) {
+    console.warn('Notice: Firebase Storage upload fallback to Data URL:', storageErr);
+    return new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === 'string') resolve(reader.result);
+        else reject(new Error('Gagal memproses fail imej.'));
+      };
+      reader.onerror = () => reject(new Error('Ralat semasa memproses fail imej.'));
+      reader.readAsDataURL(file);
+    });
+  }
+}
+
+export interface ResolvedPortalVisual {
+  url?: string;
+  source: 'custom_image' | 'custom_icon' | 'og_image' | 'pwa_icon' | 'favicon' | 'placeholder';
+}
+
+/**
+ * Image Priority Hierarchy:
+ * 1. Admin uploaded custom image or custom image URL.
+ * 2. Admin supplied custom icon or custom icon URL.
+ * 3. Automatically detected Open Graph image.
+ * 4. Automatically detected PWA image/icon or Favicon.
+ * 5. System default placeholder.
+ */
+export function resolvePortalVisual(portal: {
+  imageUrl?: string;
+  iconUrl?: string;
+  faviconUrl?: string;
+  detectedMeta?: {
+    ogImage?: string;
+    favicon?: string;
+    pwaIcon?: string;
+  };
+}): ResolvedPortalVisual {
+  // 1. Admin uploaded custom image or supplied custom image URL
+  if (portal.imageUrl && portal.imageUrl.trim()) {
+    return { url: portal.imageUrl.trim(), source: 'custom_image' };
+  }
+
+  // 2. Admin supplied custom icon or custom icon URL
+  if (portal.iconUrl && portal.iconUrl.trim()) {
+    return { url: portal.iconUrl.trim(), source: 'custom_icon' };
+  }
+
+  // 3. Automatically detected Open Graph image
+  if (portal.detectedMeta?.ogImage && portal.detectedMeta.ogImage.trim()) {
+    return { url: portal.detectedMeta.ogImage.trim(), source: 'og_image' };
+  }
+
+  // 4. Automatically detected PWA image/icon
+  if (portal.detectedMeta?.pwaIcon && portal.detectedMeta.pwaIcon.trim()) {
+    return { url: portal.detectedMeta.pwaIcon.trim(), source: 'pwa_icon' };
+  }
+
+  // 4b. Detected Favicon
+  if (portal.faviconUrl && portal.faviconUrl.trim()) {
+    return { url: portal.faviconUrl.trim(), source: 'favicon' };
+  }
+
+  // 5. System default placeholder
+  return { source: 'placeholder' };
+}
+
