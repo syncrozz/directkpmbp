@@ -361,6 +361,19 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
       ? (customCategory.trim() || 'Portal Rasmi') 
       : category;
 
+    const detectedData: Record<string, string> = {};
+    if (detectedMeta) {
+      const dt = detectedMeta.ogTitle || detectedMeta.title;
+      if (dt) detectedData.title = dt;
+      const dd = detectedMeta.ogDescription || detectedMeta.description;
+      if (dd) detectedData.description = dd;
+      if (detectedMeta.ogImage) detectedData.ogImage = detectedMeta.ogImage;
+      if (detectedMeta.favicon) detectedData.favicon = detectedMeta.favicon;
+      const pwa = detectedMeta.manifestIcons?.[0]?.src;
+      if (pwa) detectedData.pwaIcon = pwa;
+      if (detectedMeta.manifestName) detectedData.manifestName = detectedMeta.manifestName;
+    }
+
     const portalPayload: PortalLink = {
       id: portal?.id || `portal_${Date.now()}`,
       title: title.trim(),
@@ -368,20 +381,15 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
       url: finalUrl,
       audience,
       category: finalCategory,
-      imageUrl: imageUrl.trim() || undefined,
-      iconUrl: iconUrl.trim() || undefined,
-      faviconUrl: detectedMeta?.favicon || undefined,
-      detectedMeta: detectedMeta ? {
-        title: detectedMeta.ogTitle || detectedMeta.title,
-        description: detectedMeta.ogDescription || detectedMeta.description,
-        ogImage: detectedMeta.ogImage,
-        favicon: detectedMeta.favicon,
-        pwaIcon: detectedMeta.manifestIcons?.[0]?.src,
-        manifestName: detectedMeta.manifestName,
-      } : portal?.detectedMeta,
+      imageUrl: imageUrl.trim() || '',
+      iconUrl: iconUrl.trim() || '',
+      faviconUrl: detectedMeta?.favicon || '',
       sortOrder: Number(sortOrder) || existingCount + 1,
       isActive,
-      createdAt: portal?.createdAt,
+      createdAt: portal?.createdAt || new Date().toISOString(),
+      ...(Object.keys(detectedData).length > 0 
+        ? { detectedMeta: detectedData } 
+        : portal?.detectedMeta ? { detectedMeta: portal.detectedMeta } : {}),
     };
 
     try {

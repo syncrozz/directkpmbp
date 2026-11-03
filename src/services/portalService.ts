@@ -263,6 +263,35 @@ export function subscribeToPortalLinks(
 }
 
 /**
+ * Deeply removes all undefined properties from an object before saving to Firestore.
+ * Firestore throws a client exception if any field in an object or nested object is undefined.
+ */
+export function sanitizeFirestorePayload<T>(input: T): T {
+  if (input === undefined) {
+    return undefined as any;
+  }
+  if (input === null || typeof input !== 'object') {
+    return input;
+  }
+  if (input instanceof Date || (input as any)?.toMillis !== undefined) {
+    return input;
+  }
+  if (Array.isArray(input)) {
+    return input
+      .filter((item) => item !== undefined)
+      .map((item) => sanitizeFirestorePayload(item)) as any;
+  }
+
+  const sanitized: Record<string, any> = {};
+  for (const [key, value] of Object.entries(input as Record<string, any>)) {
+    if (value !== undefined) {
+      sanitized[key] = sanitizeFirestorePayload(value);
+    }
+  }
+  return sanitized as T;
+}
+
+/**
  * Save or update a portal record in Firestore.
  */
 export async function savePortalLink(portal: PortalLink): Promise<boolean> {
@@ -273,7 +302,7 @@ export async function savePortalLink(portal: PortalLink): Promise<boolean> {
 
   try {
     const docRef = doc(db, 'platforms', 'directkpmbp', 'portalLinks', docId);
-    const cleanPortal: PortalLink = {
+    const cleanPortal: Record<string, any> = {
       ...portal,
       id: docId,
       updatedAt: new Date().toISOString(),
@@ -284,7 +313,10 @@ export async function savePortalLink(portal: PortalLink): Promise<boolean> {
       cleanPortal.createdAt = new Date().toISOString();
     }
 
-    await setDoc(docRef, cleanPortal, { merge: true });
+    // Sanitize payload deeply to eliminate any undefined fields before writing
+    const safeData = sanitizeFirestorePayload(cleanPortal);
+
+    await setDoc(docRef, safeData, { merge: true });
     return true;
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, docPath);
@@ -386,16 +418,13 @@ export async function migrateDefaultPortals(): Promise<{
       // Do not overwrite existing customized portal records
       if (!existingIds.has(idKey) && !existingUrls.has(urlKey)) {
         const docRef = doc(db, 'platforms', 'directkpmbp', 'portalLinks', portal.id);
-        batch.set(
-          docRef,
-          {
-            ...portal,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            updatedBy: auth.currentUser?.email || 'admin-migration',
-          },
-          { merge: true }
-        );
+        const safePortalData = sanitizeFirestorePayload({
+          ...portal,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          updatedBy: auth.currentUser?.email || 'admin-migration',
+        });
+        batch.set(docRef, safePortalData, { merge: true });
         toMigrateCount++;
       }
     });

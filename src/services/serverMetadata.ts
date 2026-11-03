@@ -277,11 +277,11 @@ export async function detectUrlMetadata(inputUrl: string): Promise<ExtractedPort
   const rawOgImage = extractMeta(responseText, 'og:image') || extractMeta(responseText, 'og:image:url');
   const ogImage = rawOgImage ? resolveUrl(rawOgImage, finalUrl) : undefined;
 
-  // 3. Favicon & Apple Touch Icon
+  // 3. Favicon & Apple Touch Icon (only set if explicit icon link tag is found to avoid 404 network errors)
   const rawIcon =
     extractLinkHref(responseText, /apple-touch-icon(?:-precomposed)?/) ||
     extractLinkHref(responseText, /(?:shortcut )?icon/);
-  const favicon = rawIcon ? resolveUrl(rawIcon, finalUrl) : resolveUrl('/favicon.ico', finalUrl);
+  const favicon = rawIcon ? resolveUrl(rawIcon, finalUrl) : undefined;
 
   // 4. PWA Manifest Detection
   const rawManifest = extractLinkHref(responseText, /manifest/);

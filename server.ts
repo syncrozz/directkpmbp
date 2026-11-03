@@ -21,6 +21,11 @@ async function startServer() {
     res.json({ status: 'ok', service: 'Directory KPMBP' });
   });
 
+  // Local favicon fallback route to prevent 404s
+  app.get('/favicon.ico', (req, res) => {
+    res.sendFile(path.join(process.cwd(), 'public', 'favicon.svg'));
+  });
+
   // Smart URL metadata detection endpoint with SSRF guard
   app.post('/api/metadata/detect', async (req, res) => {
     const { url } = req.body || {};

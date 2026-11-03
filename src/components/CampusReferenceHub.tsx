@@ -60,6 +60,28 @@ interface CampusReferenceHubProps {
   onNavigateToTimetables?: () => void;
 }
 
+const PortalCardVisual: React.FC<{ link: PortalLink }> = ({ link }) => {
+  const visual = resolvePortalVisual(link);
+  const [hasError, setHasError] = useState(false);
+
+  if (visual.url && !hasError) {
+    return (
+      <img
+        src={visual.url}
+        alt=""
+        className="w-5 h-5 rounded object-contain bg-white/90 border border-slate-200/80 p-0.5 shadow-2xs"
+        onError={() => setHasError(true)}
+      />
+    );
+  }
+
+  return (
+    <div className="w-5 h-5 rounded bg-indigo-50 border border-indigo-200/80 text-indigo-700 flex items-center justify-center text-[10px] font-black shadow-2xs">
+      {(link.title || 'P').trim().charAt(0).toUpperCase()}
+    </div>
+  );
+};
+
 export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({ 
   isAdminMode = false, 
   onNavigateToTimetables 
@@ -418,12 +440,9 @@ export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({
 
             {/* Portals Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {filteredPortals.map((link) => {
-                const visual = resolvePortalVisual(link);
-
-                return (
-                  <div 
-                    key={link.id} 
+              {filteredPortals.map((link) => (
+                <div 
+                  key={link.id} 
                     className={`p-5.5 glass-card rounded-[24px] flex flex-col justify-between border border-white/55 shadow-sm hover:scale-[1.01] transition-transform duration-300 relative group ${
                       link.isActive === false ? 'opacity-65 bg-slate-100/60' : ''
                     }`}
@@ -473,16 +492,7 @@ export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({
                             </button>
                           )}
 
-                          {visual.url ? (
-                            <img 
-                              src={visual.url} 
-                              alt="" 
-                              className="w-5 h-5 rounded object-contain bg-white/80 border border-slate-100 p-0.5"
-                              onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
-                            />
-                          ) : (
-                            <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 transition-colors" />
-                          )}
+                          <PortalCardVisual link={link} />
                         </div>
                       </div>
 
@@ -504,8 +514,7 @@ export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({
                       </a>
                     </div>
                   </div>
-                );
-              })}
+                ))}
 
               {filteredPortals.length === 0 && (
                 <div className="col-span-full py-8 text-center glass-panel rounded-2xl border border-slate-200/60 p-6 space-y-2">

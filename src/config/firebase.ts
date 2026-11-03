@@ -108,6 +108,7 @@ export const db = (() => {
       app,
       {
         experimentalAutoDetectLongPolling: true,
+        ignoreUndefinedProperties: true,
       },
       dbId
     );
