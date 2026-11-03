@@ -74,3 +74,32 @@ export interface StudentTimetable {
   semester?: string;
 }
 
+export interface PortalLink {
+  id: string;
+  title: string;
+  desc: string;
+  url: string;
+  audience: 'Pelajar' | 'Staf' | 'Kedua-dua';
+  category: 'portal' | 'akademik' | 'hebahan';
+  imageUrl?: string;
+  faviconUrl?: string;
+  sortOrder: number;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+export interface PortalMetadata {
+  url: string;
+  title?: string;
+  description?: string;
+  ogTitle?: string;
+  ogDescription?: string;
+  ogImage?: string;
+  favicon?: string;
+  manifestUrl?: string;
+  manifestName?: string;
+  manifestIcons?: Array<{ src: string; sizes?: string; type?: string }>;
+}
+

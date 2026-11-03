@@ -21,6 +21,27 @@ async function startServer() {
     res.json({ status: 'ok', service: 'Directory KPMBP' });
   });
 
+  // Smart URL metadata detection endpoint with SSRF guard
+  app.post('/api/metadata/detect', async (req, res) => {
+    const { url } = req.body || {};
+    if (!url || typeof url !== 'string' || !url.trim()) {
+      return res.status(400).json({ success: false, error: 'Sila berikan parameter URL yang sah.' });
+    }
+
+    try {
+      const { detectUrlMetadata } = await import('./src/services/serverMetadata');
+      const metadata = await detectUrlMetadata(url.trim());
+      return res.json({ success: true, data: metadata });
+    } catch (err: any) {
+      console.warn('[MetadataDetect] Notice:', err?.message || err);
+      return res.status(200).json({
+        success: false,
+        error: err?.message || 'Gagal mengesan maklumat secara automatik.',
+        data: { url: url.trim() },
+      });
+    }
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({

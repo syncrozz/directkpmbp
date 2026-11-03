@@ -1007,6 +1007,7 @@ export default function App() {
         ) : activeHub === 'rujukan' ? (
           <div className="glass-panel rounded-3xl p-6 md:p-8 border border-white/55 shadow-sm">
             <CampusReferenceHub 
+              isAdminMode={isAdminMode}
               onNavigateToTimetables={() => {
                 setActiveHub('jadual');
                 if (typeof window !== 'undefined') {

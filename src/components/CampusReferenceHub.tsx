@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Calendar, 
   Link, 
@@ -20,18 +20,24 @@ import {
   Shield, 
   HelpCircle, 
   Clock3, 
-  Compass 
+  Compass,
+  Plus,
+  Pencil,
+  Database,
+  Check,
+  AlertCircle,
+  Loader2
 } from 'lucide-react';
 import { CampusLocationMap } from './CampusLocationMap';
-
-interface LinkItem {
-  id: string;
-  title: string;
-  desc: string;
-  url: string;
-  audience: 'Pelajar' | 'Staf' | 'Kedua-dua';
-  category: 'portal' | 'akademik' | 'hebahan';
-}
+import { PortalLink } from '../types';
+import { 
+  DEFAULT_PORTAL_LINKS, 
+  subscribeToPortalLinks, 
+  savePortalLink, 
+  deletePortalLink, 
+  migrateDefaultPortals 
+} from '../services/portalService';
+import { AddEditPortalModal } from './AddEditPortalModal';
 
 interface CalendarEvent {
   id: string;
@@ -49,64 +55,62 @@ interface RuleItem {
 }
 
 interface CampusReferenceHubProps {
+  isAdminMode?: boolean;
   onNavigateToTimetables?: () => void;
 }
 
-export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({ onNavigateToTimetables }) => {
+export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({ 
+  isAdminMode = false, 
+  onNavigateToTimetables 
+}) => {
   const [activeRefTab, setActiveRefTab] = useState<'portal' | 'peta' | 'takwim' | 'panduan'>('portal');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Sample data designed specifically for KPMBP
-  const quickLinks: LinkItem[] = [
-    {
-      id: 'l1',
-      title: 'Portal SPMP Pelajar',
-      desc: 'Sistem Pengurusan Maklumat Pelajar untuk pendaftaran subjek, semakan keputusan peperiksaan, gred GPA/CGPA, dan rekod kehadiran.',
-      url: 'https://bpenawar.kpm.edu.my/spmp/',
-      audience: 'Pelajar',
-      category: 'portal'
-    },
-    {
-      id: 'l2',
-      title: 'Sistem SISPEN (Staf)',
-      desc: 'Sistem Penilaian Pensyarah & Staf Kolej Profesional MARA Bandar Penawar.',
-      url: 'https://bpenawar.kpm.edu.my/sispen/',
-      audience: 'Staf',
-      category: 'portal'
-    },
-    {
-      id: 'l3',
-      title: 'Microsoft Teams & Office 365',
-      desc: 'Hab pembelajaran digital, kelas hibrid, kuiz dalam talian, kolaborasi kumpulan, dan mel rasmi @student.kpm.edu.my.',
-      url: 'https://teams.microsoft.com/',
-      audience: 'Kedua-dua',
-      category: 'portal'
-    },
-    {
-      id: 'l4',
-      title: 'Perpustakaan Al-Ghazali Portal',
-      desc: 'Semak katalog buku fizikal, pangkalan data jurnal e-Perpustakaan, waktu operasi, dan buat tempahan bilik belajar kumpulan.',
-      url: 'https://bpenawar.kpm.edu.my/library/',
-      audience: 'Kedua-dua',
-      category: 'portal'
-    },
-    {
-      id: 'l5',
-      title: 'Sistem e-Kehadiran MARA',
-      desc: 'Pintu gerbang kehadiran kerja harian untuk semua kakitangan pengurusan dan tenaga pengajar akademik MARA.',
-      url: 'https://ekehadiran.mara.gov.my/',
-      audience: 'Staf',
-      category: 'portal'
-    },
-    {
-      id: 'l6',
-      title: 'Portal Integriti MARA',
-      desc: 'Garis panduan etika, pelaporan integriti, dasar kebajikan MARA, dan pekeliling perkhidmatan awam semasa.',
-      url: 'https://www.mara.gov.my/',
-      audience: 'Staf',
-      category: 'portal'
+  // Dynamic Portals State
+  const [portalLinks, setPortalLinks] = useState<PortalLink[]>(DEFAULT_PORTAL_LINKS);
+  const [isPortalsMigrated, setIsPortalsMigrated] = useState(false);
+  const [isLoadingPortals, setIsLoadingPortals] = useState(true);
+  const [editingPortal, setEditingPortal] = useState<PortalLink | null>(null);
+  const [isAddEditPortalOpen, setIsAddEditPortalOpen] = useState(false);
+  const [isMigrating, setIsMigrating] = useState(false);
+  const [migrationNotice, setMigrationNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Subscribe to real-time portal records in Firestore
+  useEffect(() => {
+    const unsubscribe = subscribeToPortalLinks((result) => {
+      setPortalLinks(result.portals);
+      setIsPortalsMigrated(result.isMigrated);
+      setIsLoadingPortals(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleRunMigration = async () => {
+    try {
+      setIsMigrating(true);
+      setMigrationNotice(null);
+      const res = await migrateDefaultPortals();
+      if (res.success) {
+        setIsPortalsMigrated(true);
+        setMigrationNotice({
+          type: 'success',
+          text: `Migrasi berjaya! Sebanyak ${res.migratedCount} portal asal telah dipindahkan ke Firestore (Jumlah di Firestore: ${res.total}).`,
+        });
+      } else {
+        setMigrationNotice({
+          type: 'error',
+          text: res.error || 'Ralat semasa menjalankan migrasi ke Firestore.',
+        });
+      }
+    } catch (err: any) {
+      setMigrationNotice({
+        type: 'error',
+        text: err?.message || 'Ralat semasa menjalankan migrasi.',
+      });
+    } finally {
+      setIsMigrating(false);
     }
-  ];
+  };
 
   const calendarEvents: CalendarEvent[] = [
     {
@@ -186,12 +190,20 @@ export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({ onNaviga
     }
   ];
 
-  // Searching logic
-  const filteredLinks = quickLinks.filter(item => 
-    item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    item.desc.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    item.audience.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Searching logic for dynamic portals
+  const filteredPortals = portalLinks.filter((item) => {
+    // Ordinary users only see active portals; Admin sees both with status badge
+    if (!isAdminMode && item.isActive === false) return false;
+
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return true;
+    return (
+      item.title.toLowerCase().includes(q) ||
+      item.desc.toLowerCase().includes(q) ||
+      item.audience.toLowerCase().includes(q) ||
+      item.url.toLowerCase().includes(q)
+    );
+  });
 
   const filteredCalendar = calendarEvents.filter(item =>
     item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -265,52 +277,183 @@ export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({ onNaviga
         {/* SECTION: Quick Portals Links */}
         {activeRefTab === 'portal' && (
           <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-indigo-50/60 border border-indigo-100/40 flex items-center justify-center text-indigo-700 font-extrabold">
-                <Link className="w-4 h-4" />
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-indigo-50/60 border border-indigo-100/40 flex items-center justify-center text-indigo-700 font-extrabold">
+                  <Link className="w-4 h-4" />
+                </div>
+                <h3 className="text-xs font-extrabold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                  Portal Kolej ({filteredPortals.length})
+                </h3>
               </div>
-              <h3 className="text-xs font-extrabold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
-                Portal Kolej ({filteredLinks.length})
-              </h3>
+
+              {/* Admin-only Add Portal Button */}
+              {isAdminMode && (
+                <div className="flex items-center gap-2 self-start sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingPortal(null);
+                      setIsAddEditPortalOpen(true);
+                    }}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-extrabold transition-all shadow-xs cursor-pointer active:scale-95"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Tambah Portal</span>
+                  </button>
+                </div>
+              )}
             </div>
-            
+
+            {/* Controlled One-Time Migration Banner (Strictly Admin-only when not yet migrated) */}
+            {isAdminMode && !isPortalsMigrated && (
+              <div className="p-4 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/80 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-2xs">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 rounded-xl bg-amber-100 text-amber-800 shrink-0 mt-0.5">
+                    <Database className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-extrabold text-amber-950">
+                      Migrasi Terkawal: 6 Portal Asal ke Firestore
+                    </h4>
+                    <p className="text-[11px] text-amber-800 font-medium leading-relaxed mt-0.5">
+                      Pangkalan data Firestore belum mengandungi rekod portal. Laksanakan migrasi 1-kali untuk memindahkan 6 portal asal ke pangkalan data dinamik dengan perlindungan rekod duplikat.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRunMigration}
+                  disabled={isMigrating}
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-extrabold transition-all flex items-center gap-2 cursor-pointer shadow-xs shrink-0 disabled:opacity-50"
+                >
+                  {isMigrating ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Memindahkan...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Database className="w-3.5 h-3.5" />
+                      <span>Laksana Migrasi 6 Portal</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+
+            {/* Migration Feedback Banner */}
+            {migrationNotice && (
+              <div className={`p-3 rounded-2xl text-xs font-bold flex items-center gap-2 ${
+                migrationNotice.type === 'success' 
+                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' 
+                  : 'bg-rose-50 text-rose-800 border border-rose-200'
+              }`}>
+                {migrationNotice.type === 'success' ? (
+                  <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                )}
+                <span>{migrationNotice.text}</span>
+              </div>
+            )}
+
+            {/* Portals Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {filteredLinks.map((link) => (
+              {filteredPortals.map((link) => (
                 <div 
                   key={link.id} 
-                  className="p-5.5 glass-card rounded-[24px] flex flex-col justify-between border border-white/55 shadow-sm hover:scale-[1.01] transition-transform duration-300"
+                  className={`p-5.5 glass-card rounded-[24px] flex flex-col justify-between border border-white/55 shadow-sm hover:scale-[1.01] transition-transform duration-300 relative group ${
+                    link.isActive === false ? 'opacity-65 bg-slate-100/60' : ''
+                  }`}
                 >
                   <div className="space-y-2.5">
                     <div className="flex items-center justify-between">
-                      <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-lg border ${
-                        link.audience === 'Pelajar' 
-                          ? 'bg-blue-50 text-blue-700 border-blue-100' 
-                          : link.audience === 'Staf' 
-                            ? 'bg-amber-50 text-amber-700 border-amber-100' 
-                            : 'bg-indigo-50 text-indigo-700 border-indigo-100'
-                      }`}>
-                        Sesuai: {link.audience}
-                      </span>
-                      <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-indigo-600" />
+                      <div className="flex items-center gap-2">
+                        <span className={`text-[10px] font-extrabold px-2.5 py-1 rounded-lg border ${
+                          link.audience === 'Pelajar' 
+                            ? 'bg-blue-50 text-blue-700 border-blue-100' 
+                            : link.audience === 'Staf' 
+                              ? 'bg-amber-50 text-amber-700 border-amber-100' 
+                              : 'bg-indigo-50 text-indigo-700 border-indigo-100'
+                        }`}>
+                          Sesuai: {link.audience}
+                        </span>
+
+                        {link.isActive === false && (
+                          <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200">
+                            Tidak Aktif
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        {/* Admin-only Edit Button: Icon-only pencil */}
+                        {isAdminMode && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setEditingPortal(link);
+                              setIsAddEditPortalOpen(true);
+                            }}
+                            title="Kemaskini Portal"
+                            aria-label="Kemaskini Portal"
+                            className="p-1.5 rounded-lg bg-white/90 hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 border border-slate-200 shadow-2xs transition-all cursor-pointer"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+
+                        {link.imageUrl ? (
+                          <img 
+                            src={link.imageUrl} 
+                            alt="" 
+                            className="w-5 h-5 rounded object-contain bg-white/80 border border-slate-100 p-0.5"
+                            onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
+                          />
+                        ) : link.faviconUrl ? (
+                          <img 
+                            src={link.faviconUrl} 
+                            alt="" 
+                            className="w-4 h-4 rounded object-contain"
+                            onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
+                          />
+                        ) : (
+                          <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-indigo-600" />
+                        )}
+                      </div>
                     </div>
+
                     <h4 className="font-sans font-extrabold text-slate-900 text-sm">{link.title}</h4>
                     <p className="text-xs text-slate-500 font-medium leading-relaxed">{link.desc}</p>
                   </div>
-                  <div className="mt-5 pt-3.5 border-t border-slate-100 flex justify-end">
+
+                  <div className="mt-5 pt-3.5 border-t border-slate-100 flex items-center justify-between">
+                    <span className="text-[10px] font-mono text-slate-400 truncate max-w-[200px]">
+                      {link.url.replace(/^https?:\/\//i, '')}
+                    </span>
                     <a 
                       href={link.url} 
                       target="_blank" 
                       rel="noreferrer"
-                      className="text-xs font-extrabold text-indigo-700 hover:text-indigo-900 flex items-center gap-1"
+                      className="text-xs font-extrabold text-indigo-700 hover:text-indigo-900 flex items-center gap-1 shrink-0"
                     >
                       Buka Portal <ChevronRight className="w-3.5 h-3.5" />
                     </a>
                   </div>
                 </div>
               ))}
-              {filteredLinks.length === 0 && (
-                <p className="text-xs text-gray-500">Tiada pautan yang sepadan dengan carian.</p>
+
+              {filteredPortals.length === 0 && (
+                <div className="col-span-full py-8 text-center glass-panel rounded-2xl border border-slate-200/60 p-6 space-y-2">
+                  <Search className="w-6 h-6 text-slate-400 mx-auto" />
+                  <p className="text-xs text-slate-500 font-semibold">
+                    Tiada pautan portal yang sepadan dengan carian.
+                  </p>
+                </div>
               )}
             </div>
           </div>
@@ -425,6 +568,25 @@ export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({ onNaviga
         )}
 
       </div>
+
+      {/* Dynamic Portal Management Modal */}
+      {isAdminMode && (
+        <AddEditPortalModal
+          isOpen={isAddEditPortalOpen}
+          onClose={() => {
+            setIsAddEditPortalOpen(false);
+            setEditingPortal(null);
+          }}
+          portal={editingPortal}
+          existingCount={portalLinks.length}
+          onSave={async (savedPortal) => {
+            await savePortalLink(savedPortal);
+          }}
+          onDelete={async (portalId) => {
+            await deletePortalLink(portalId);
+          }}
+        />
+      )}
     </div>
   );
 };

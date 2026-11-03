@@ -64,6 +64,27 @@
         "verifiedAt": { "type": "string" }
       },
       "required": ["email", "role", "level"]
+    },
+    "portalLink": {
+      "title": "PortalLink",
+      "description": "Rekod pautan rasmi Portal Kolej KPMBP",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "desc": { "type": "string" },
+        "url": { "type": "string" },
+        "audience": { "type": "string", "enum": ["Pelajar", "Staf", "Kedua-dua"] },
+        "category": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "faviconUrl": { "type": "string" },
+        "sortOrder": { "type": "number" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "updatedBy": { "type": "string" }
+      },
+      "required": ["id", "title", "url", "audience"]
     }
   },
   "firestore": {
@@ -86,6 +107,10 @@
     "/platforms/directkpmbp/{documentId}": {
       "schema": "systemData",
       "description": "Ruang nama storan data terasing bagi DIRECTKPMBP di platform SYNCROZZ"
+    },
+    "/platforms/directkpmbp/portalLinks/{portalId}": {
+      "schema": "portalLink",
+      "description": "Koleksi pautan portal dinamik KPMBP di platform SYNCROZZ"
     }
   }
 }
