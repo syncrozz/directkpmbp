@@ -17,7 +17,6 @@ import {
   Lock,
   Pencil,
   FileSpreadsheet,
-  Upload,
   ChevronDown,
   GraduationCap,
   Layers,
@@ -42,7 +41,13 @@ import { LecturerTimetableHub } from './components/LecturerTimetableHub';
 import { DynamicNavigationBar } from './components/DynamicNavigationBar';
 import { NavigationManagerModal } from './components/NavigationManagerModal';
 import { DriveContentViewer } from './components/DriveContentViewer';
-import { DEFAULT_NAVIGATION_ITEMS, subscribeToNavigation, saveNavigationItems } from './services/navigationService';
+import { 
+  DEFAULT_NAVIGATION_ITEMS, 
+  subscribeToNavigation, 
+  saveNavigationItems,
+  slugify,
+  resolveNavigationFromUrl
+} from './services/navigationService';
 import { verifyGoogleAdmin, clearLegacyAdminState } from './utils/adminAuthService';
 import { 
   fetchStaffListFromFirestore, 
@@ -57,17 +62,10 @@ export default function App() {
   // Navigation State ('directory' | 'rujukan' | 'jadual' | 'jadual-pensyarah' | 'daftar' | custom item ID)
   const [activeHub, setActiveHub] = useState<string>(() => {
     if (typeof window !== 'undefined') {
-      const rawHash = window.location.hash.replace(/^#\/?/, '').trim();
-      const searchParams = new URLSearchParams(window.location.search);
-      const pageParam = (searchParams.get('page') || searchParams.get('tab') || '').toLowerCase();
-
-      if (rawHash) {
-        if (rawHash === 'daftar' || pageParam === 'daftar') return 'daftar';
-        if (rawHash === 'pensyarah' || rawHash === 'jadual-pensyarah' || pageParam === 'pensyarah') return 'jadual-pensyarah';
-        if (rawHash === 'jadual' || pageParam === 'jadual') return 'jadual';
-        if (rawHash === 'rujukan' || pageParam === 'rujukan') return 'rujukan';
-        return rawHash;
-      }
+      const res = resolveNavigationFromUrl(DEFAULT_NAVIGATION_ITEMS);
+      if (res.matchedItem) return res.matchedItem.id;
+      if (res.activeNavId) return res.activeNavId;
+      if (res.resolvedDestination) return res.resolvedDestination;
     }
     return 'directory';
   });
@@ -84,19 +82,25 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Compute active navigation item for current activeHub (prioritize ID match and child items)
+  // Compute active navigation item for current activeHub (prioritize ID match, slug match, and child items)
   const activeNavItem = useMemo(() => {
     // 1. Direct match by ID
     const byId = navigationItems.find((item) => item.id === activeHub);
     if (byId) return byId;
 
-    // 2. Child match by destination
+    // 2. Match by slug
+    const bySlug = navigationItems.find(
+      (item) => item.slug && item.slug.toLowerCase() === activeHub.toLowerCase()
+    );
+    if (bySlug) return bySlug;
+
+    // 3. Child match by destination
     const childMatch = navigationItems.find(
       (item) => item.type === 'child' && item.destination === activeHub
     );
     if (childMatch) return childMatch;
 
-    // 3. Parent match by destination
+    // 4. Parent match by destination
     return navigationItems.find((item) => item.destination === activeHub);
   }, [navigationItems, activeHub]);
 
@@ -108,10 +112,12 @@ export default function App() {
       return activeNavItem.destination;
     }
 
-    // 2. Direct lookup in navigationItems by item ID
-    const byId = navigationItems.find((item) => item.id === activeHub);
-    if (byId?.destination) {
-      return byId.destination;
+    // 2. Direct lookup in navigationItems by item ID or slug
+    const byIdOrSlug = navigationItems.find(
+      (item) => item.id === activeHub || (item.slug && item.slug.toLowerCase() === activeHub.toLowerCase())
+    );
+    if (byIdOrSlug?.destination) {
+      return byIdOrSlug.destination;
     }
 
     // 3. Fallback to activeHub directly
@@ -119,49 +125,41 @@ export default function App() {
   }, [activeNavItem, activeHub, navigationItems]);
 
   const handleSelectDestination = (destination: string) => {
-    // Check if target is a known navigation item (by ID or destination)
-    const matchedItem = navigationItems.find(
-      (n) => n.id === destination || n.destination === destination
-    );
-
-    // If it's a Drive viewer item, ALWAYS open internally in DriveContentViewer
-    if (matchedItem && (matchedItem.displayType === 'drive' || Boolean(matchedItem.driveUrl))) {
-      setActiveHub(matchedItem.id);
-      if (typeof window !== 'undefined') {
-        window.location.hash = `#${matchedItem.id}`;
-      }
-      return;
-    }
-
     // External Web Link
     if (destination.startsWith('http://') || destination.startsWith('https://')) {
       window.open(destination, '_blank', 'noopener,noreferrer');
       return;
     }
 
-    if (destination.startsWith('#')) {
-      const clean = destination.replace(/^#\/?/, '').trim();
-      if (clean) setActiveHub(clean);
+    // Check if target is a known navigation item (by ID, slug, or destination)
+    const res = resolveNavigationFromUrl(navigationItems, destination);
+    const matchedItem = res.matchedItem || navigationItems.find(
+      (n) => n.id === destination || (n.slug && n.slug.toLowerCase() === destination.toLowerCase()) || n.destination === destination
+    );
+
+    if (matchedItem) {
+      // Set unique item ID as internal active navigation identity (Section 2, 3)
+      setActiveHub(matchedItem.id);
+
       if (typeof window !== 'undefined') {
-        window.location.hash = destination;
+        const cleanSlug = matchedItem.slug || (matchedItem.destination === 'directory' ? '' : slugify(matchedItem.name));
+        const targetPath = cleanSlug && cleanSlug !== 'directory' ? `/${cleanSlug}` : '/';
+
+        if (window.location.pathname !== targetPath || window.location.hash) {
+          window.history.pushState({ navId: matchedItem.id }, '', targetPath);
+        }
       }
       return;
     }
 
-    setActiveHub(destination);
+    // Non-item module route (e.g. 'directory', 'daftar', custom)
+    const fallbackDest = res.activeNavId || res.resolvedDestination || destination;
+    setActiveHub(fallbackDest);
     if (typeof window !== 'undefined') {
-      if (destination === 'directory' || matchedItem?.destination === 'directory') {
-        window.location.hash = '';
-      } else if (destination === 'rujukan' || (matchedItem?.destination === 'rujukan' && matchedItem.id === destination)) {
-        window.location.hash = destination.startsWith('nav_') ? `#${destination}` : '#rujukan';
-      } else if (destination === 'jadual') {
-        window.location.hash = '#jadual';
-      } else if (destination === 'jadual-pensyarah') {
-        window.location.hash = '#pensyarah';
-      } else if (destination === 'daftar') {
-        window.location.hash = '#daftar';
-      } else {
-        window.location.hash = `#${destination}`;
+      const clean = fallbackDest === 'directory' ? '' : fallbackDest.replace(/^#\/?/, '');
+      const targetPath = clean ? `/${clean}` : '/';
+      if (window.location.pathname !== targetPath || window.location.hash) {
+        window.history.pushState({ navId: fallbackDest }, '', targetPath);
       }
     }
   };
@@ -329,67 +327,13 @@ export default function App() {
   // Listen to URL hash and history state for direct slug navigation (e.g. #/daftar, ?invite=, #nav_c_...)
   useEffect(() => {
     const handleUrlChange = () => {
-      const rawHash = window.location.hash;
-      const cleanHash = rawHash.replace(/^#\/?/, '').trim();
-      const searchParams = new URLSearchParams(window.location.search);
-      const pageParam = (searchParams.get('page') || searchParams.get('tab') || '').toLowerCase();
-
-      if (cleanHash) {
-        // 1. Direct match with navigation items by unique item ID
-        const byId = navigationItems.find((n) => n.id === cleanHash);
-        if (byId) {
-          setActiveHub(byId.id);
-          return;
-        }
-
-        // 2. Standard module aliases & query params
-        if (cleanHash === 'daftar' || pageParam === 'daftar') {
-          setActiveHub('daftar');
-          return;
-        }
-        if (cleanHash === 'pensyarah' || cleanHash === 'jadual-pensyarah' || pageParam === 'pensyarah') {
-          const pensyarahItem = navigationItems.find(
-            (n) => n.type === 'child' && n.destination === 'jadual-pensyarah'
-          );
-          setActiveHub(pensyarahItem ? pensyarahItem.id : 'jadual-pensyarah');
-          return;
-        }
-        if (cleanHash === 'jadual' || cleanHash === 'jadual-pelajar' || pageParam === 'jadual') {
-          const pelajarItem = navigationItems.find(
-            (n) => n.type === 'child' && n.destination === 'jadual'
-          );
-          setActiveHub(pelajarItem ? pelajarItem.id : 'jadual');
-          return;
-        }
-        if (cleanHash === 'rujukan' || pageParam === 'rujukan') {
-          const rujukanItem = navigationItems.find(
-            (n) => n.destination === 'rujukan'
-          );
-          setActiveHub(rujukanItem ? rujukanItem.id : 'rujukan');
-          return;
-        }
-
-        // 3. Fallback: match by destination (prioritizing child items over parent items)
-        const childMatch = navigationItems.find(
-          (n) => n.type === 'child' && n.destination === cleanHash
-        );
-        if (childMatch) {
-          setActiveHub(childMatch.id);
-          return;
-        }
-
-        const parentMatch = navigationItems.find(
-          (n) => n.destination === cleanHash
-        );
-        if (parentMatch) {
-          setActiveHub(parentMatch.id);
-          return;
-        }
-
-        setActiveHub(cleanHash);
+      const res = resolveNavigationFromUrl(navigationItems);
+      if (res.matchedItem) {
+        setActiveHub(res.matchedItem.id);
+      } else if (res.activeNavId) {
+        setActiveHub(res.activeNavId);
       } else {
-        // Only set directory when hash is actually empty
-        setActiveHub('directory');
+        setActiveHub(res.resolvedDestination || 'directory');
       }
     };
 
@@ -429,9 +373,11 @@ export default function App() {
 
   // Home Trigger: Reset navigation, close modals/drawers/overlays, and reset filters to default
   const handleGoHome = () => {
-    setActiveHub('directory');
-    if (typeof window !== 'undefined' && window.location.hash) {
-      window.location.hash = '';
+    setActiveHub('nav_directory');
+    if (typeof window !== 'undefined') {
+      if (window.location.pathname !== '/' || window.location.hash) {
+        window.history.pushState({ navId: 'nav_directory' }, '', '/');
+      }
     }
     setSelectedStaff(null);
     setCommitteeStaff(null);
@@ -1093,56 +1039,16 @@ export default function App() {
 
             </div>
 
-            {/* Active Admin Mode Notification Banner */}
-            {isAdminMode && (
-              <div className="p-4 bg-amber-50/90 border border-amber-200/80 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-amber-950 shadow-xs">
-                <div className="flex items-center gap-2.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping shrink-0" />
-                  <div>
-                    <h4 className="text-xs font-extrabold text-amber-950">Mod Suntingan Admin Aktif</h4>
-                    <p className="text-[11px] text-amber-800 font-medium">
-                      Pendaftaran staf baharu dilakukan melalui import CSV. Klik ikon pensel pada kad staf untuk kemaskini profil.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setIsSettingsOpen(true)}
-                    className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-extrabold shadow-2xs transition-all cursor-pointer flex items-center gap-1.5"
-                  >
-                    <FileSpreadsheet className="w-3.5 h-3.5" />
-                    <span>Urus / Import CSV</span>
-                  </button>
-                  <button
-                    onClick={() => setIsSettingsOpen(true)}
-                    className="px-3 py-1.5 bg-white border border-amber-200 text-amber-900 hover:bg-amber-100/60 rounded-xl text-xs font-extrabold transition-all cursor-pointer"
-                  >
-                    Tetapan Admin
-                  </button>
-                </div>
-              </div>
-            )}
-
             {/* Staff Results Section */}
             <div className="space-y-4">
               {/* Staff Grid Header */}
-              <div className="flex items-center justify-between px-2 pt-2 text-left">
+              <div className="flex items-center justify-between px-2 pt-1 text-left">
                 <div>
                   <h2 className="text-[11px] font-extrabold text-slate-400 uppercase tracking-widest flex items-center gap-2">
                     <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
                     Senarai Kakitangan & Pensyarah ({filteredStaff.length})
                   </h2>
                 </div>
-                {isAdminMode && (
-                  <button
-                    onClick={() => setIsSettingsOpen(true)}
-                    title="Pendaftaran kakitangan baharu dilaksanakan melalui import fail CSV"
-                    className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-extrabold transition-all shadow-md shadow-indigo-200 cursor-pointer active:scale-95"
-                  >
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>Import CSV Staf Baharu</span>
-                  </button>
-                )}
               </div>
 
               {/* Staff Cards Grid */}

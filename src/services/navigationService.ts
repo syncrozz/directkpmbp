@@ -59,6 +59,7 @@ export const DEFAULT_NAVIGATION_ITEMS: NavigationItem[] = [
     icon: 'UserCheck',
     type: 'parent',
     destination: 'directory',
+    slug: 'directory',
     order: 0,
     isActive: true,
     createdAt: '2026-01-01T00:00:00.000Z',
@@ -70,6 +71,7 @@ export const DEFAULT_NAVIGATION_ITEMS: NavigationItem[] = [
     icon: 'BookOpen',
     type: 'parent',
     destination: 'rujukan',
+    slug: 'rujukan',
     order: 1,
     isActive: true,
     createdAt: '2026-01-01T00:00:00.000Z',
@@ -81,6 +83,7 @@ export const DEFAULT_NAVIGATION_ITEMS: NavigationItem[] = [
     icon: 'Calendar',
     type: 'parent',
     destination: 'jadual',
+    slug: 'jadual',
     order: 2,
     isActive: true,
     createdAt: '2026-01-01T00:00:00.000Z',
@@ -93,6 +96,7 @@ export const DEFAULT_NAVIGATION_ITEMS: NavigationItem[] = [
     type: 'child',
     parentId: 'nav_jadual',
     destination: 'jadual',
+    slug: 'jadual_pelajar',
     order: 0,
     isActive: true,
     createdAt: '2026-01-01T00:00:00.000Z',
@@ -105,6 +109,7 @@ export const DEFAULT_NAVIGATION_ITEMS: NavigationItem[] = [
     type: 'child',
     parentId: 'nav_jadual',
     destination: 'jadual-pensyarah',
+    slug: 'jadual_pensyarah',
     order: 1,
     isActive: true,
     createdAt: '2026-01-01T00:00:00.000Z',
@@ -306,15 +311,218 @@ export function generateNavId(name: string, type: NavigationType): string {
 }
 
 /**
+ * Converts a navigation title into a clean, human-readable SEO URL slug
+ * Example: "Jadual Exam" -> "jadual_exam"
+ */
+export function slugify(text: string): string {
+  if (!text) return '';
+  return text
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, '') // remove special punctuation
+    .replace(/[\s-]+/g, '_')   // replace spaces & hyphens with underscore
+    .replace(/_+/g, '_')       // collapse consecutive underscores
+    .replace(/^_+|_+$/g, '');  // trim leading/trailing underscores
+}
+
+/**
+ * Validates a navigation URL slug (SES v4.4 Clean URL Architecture)
+ */
+export function validateNavigationSlug(
+  slug: string,
+  currentItemId?: string,
+  allItems: NavigationItem[] = []
+): { valid: boolean; error?: string } {
+  const trimmed = (slug || '').trim().toLowerCase();
+  if (!trimmed) {
+    return { valid: false, error: 'URL Slug tidak boleh dibiarkan kosong.' };
+  }
+
+  // Check valid characters: lowercase letters, digits, underscores, hyphens
+  const validPattern = /^[a-z0-9][a-z0-9_-]*[a-z0-9]$|^[a-z0-9]$/;
+  if (!validPattern.test(trimmed)) {
+    if (/\s/.test(trimmed)) {
+      return { valid: false, error: 'Slug tidak boleh mengandungi ruang (space). Gunakan huruf kecil, angka, atau garis bawah (_).' };
+    }
+    if (/[A-Z]/.test(slug)) {
+      return { valid: false, error: 'Slug mestilah menggunakan huruf kecil sahaja.' };
+    }
+    return {
+      valid: false,
+      error: 'Slug hanya boleh mengandungi huruf kecil (a-z), angka (0-9), garis bawah (_), atau sempang (-), dan tidak boleh bermula/berakhir dengan simbol.',
+    };
+  }
+
+  if (trimmed.length < 2 || trimmed.length > 60) {
+    return { valid: false, error: 'Panjang slug mestilah antara 2 hingga 60 aksara.' };
+  }
+
+  // Reserved keywords
+  const reservedSlugs = [
+    'api',
+    'favicon',
+    'favicon.ico',
+    'assets',
+    'public',
+    'static',
+    'admin',
+    'index.html',
+    'index',
+  ];
+  if (reservedSlugs.includes(trimmed)) {
+    return { valid: false, error: `Slug "${trimmed}" adalah laluan terpelihara sistem. Sila pilih slug yang lain.` };
+  }
+
+  // Uniqueness validation against all other navigation items
+  const duplicate = allItems.find(
+    (item) => item.id !== currentItemId && item.slug && item.slug.toLowerCase() === trimmed
+  );
+  if (duplicate) {
+    return {
+      valid: false,
+      error: `Slug "${trimmed}" telah digunakan oleh navigasi "${duplicate.name}". Sila gunakan slug yang unik.`,
+    };
+  }
+
+  return { valid: true };
+}
+
+/**
+ * Centralized Navigation Destination Resolver (SES v4.4 Specification)
+ * 
+ * Resolution Priority:
+ * 1. Match navigation by unique ID (Internal identity).
+ * 2. Match navigation by configured slug (Public URL identity).
+ * 3. Match existing module destination.
+ * 4. Apply existing legacy route handling.
+ */
+export function resolveNavigationFromUrl(
+  items: NavigationItem[],
+  customToken?: string
+): { activeNavId?: string; resolvedDestination: string; matchedItem?: NavigationItem } {
+  let token = (customToken || '').trim();
+
+  // If no custom token provided, parse from window.location
+  if (!token && typeof window !== 'undefined') {
+    const rawPath = window.location.pathname.replace(/^\/+|\/+$/g, '').trim();
+    const rawHash = window.location.hash.replace(/^#\/?/, '').trim();
+    const searchParams = new URLSearchParams(window.location.search);
+    const pageParam = (searchParams.get('page') || searchParams.get('tab') || '').trim();
+
+    // Priority of location sources: Hash (for explicit legacy links) -> Pathname -> Query param
+    if (rawHash) {
+      token = rawHash;
+    } else if (rawPath && rawPath !== 'index.html') {
+      token = rawPath;
+    } else if (pageParam) {
+      token = pageParam;
+    }
+  }
+
+  const cleanToken = token.toLowerCase();
+
+  // If root or empty
+  if (!cleanToken || cleanToken === 'directory') {
+    const dirItem = items.find((i) => i.destination === 'directory' || i.id === 'nav_directory');
+    return {
+      activeNavId: dirItem?.id || 'nav_directory',
+      resolvedDestination: 'directory',
+      matchedItem: dirItem,
+    };
+  }
+
+  // Priority 1: Match navigation by unique ID
+  const matchById = items.find((i) => i.id === token || i.id.toLowerCase() === cleanToken);
+  if (matchById) {
+    return {
+      activeNavId: matchById.id,
+      resolvedDestination: matchById.destination || matchById.id,
+      matchedItem: matchById,
+    };
+  }
+
+  // Priority 2: Match navigation by configured slug (or auto-suggested slug from name)
+  const matchBySlug = items.find(
+    (i) => (i.slug && i.slug.toLowerCase() === cleanToken) || (!i.slug && slugify(i.name) === cleanToken)
+  );
+  if (matchBySlug) {
+    return {
+      activeNavId: matchBySlug.id,
+      resolvedDestination: matchBySlug.destination || matchBySlug.id,
+      matchedItem: matchBySlug,
+    };
+  }
+
+  // Priority 3: Match existing module destination
+  const matchByDest = items.find((i) => i.destination.toLowerCase() === cleanToken);
+  if (matchByDest) {
+    return {
+      activeNavId: matchByDest.id,
+      resolvedDestination: matchByDest.destination,
+      matchedItem: matchByDest,
+    };
+  }
+
+  // Priority 4: Apply existing legacy route handling
+  if (cleanToken === 'pensyarah' || cleanToken === 'jadual-pensyarah' || cleanToken === 'jadual_pensyarah') {
+    const pensyarahItem = items.find((i) => i.destination === 'jadual-pensyarah');
+    return {
+      activeNavId: pensyarahItem?.id || 'nav_jadual_pensyarah',
+      resolvedDestination: 'jadual-pensyarah',
+      matchedItem: pensyarahItem,
+    };
+  }
+
+  if (cleanToken === 'jadual' || cleanToken === 'jadual_pelajar' || cleanToken === 'pelajar') {
+    const jadualItem = items.find((i) => i.destination === 'jadual' && i.type === 'child') || items.find((i) => i.destination === 'jadual');
+    return {
+      activeNavId: jadualItem?.id || 'nav_jadual_pelajar',
+      resolvedDestination: 'jadual',
+      matchedItem: jadualItem,
+    };
+  }
+
+  if (cleanToken === 'rujukan') {
+    const rujukanItem = items.find((i) => i.destination === 'rujukan');
+    return {
+      activeNavId: rujukanItem?.id || 'nav_rujukan',
+      resolvedDestination: 'rujukan',
+      matchedItem: rujukanItem,
+    };
+  }
+
+  if (cleanToken === 'daftar') {
+    const daftarItem = items.find((i) => i.destination === 'daftar');
+    return {
+      activeNavId: daftarItem?.id || 'daftar',
+      resolvedDestination: 'daftar',
+      matchedItem: daftarItem,
+    };
+  }
+
+  // Default fallback: return token directly as destination
+  return {
+    activeNavId: token,
+    resolvedDestination: token,
+  };
+}
+
+/**
  * Normalizes navigation ordering
  */
 export function normalizeNavigationList(items: NavigationItem[]): NavigationItem[] {
+  const sanitizeItem = (i: NavigationItem): NavigationItem => {
+    const slugVal = i.slug?.trim() ? slugify(i.slug) : undefined;
+    return {
+      ...i,
+      slug: slugVal,
+    };
+  };
+
   const parents = items
     .filter((i) => i.type === 'parent')
     .sort((a, b) => a.order - b.order)
-    .map((p, idx) => ({ ...p, order: idx }));
-
-  const parentIds = new Set(parents.map((p) => p.id));
+    .map((p, idx) => ({ ...sanitizeItem(p), order: idx }));
 
   const children = items
     .filter((i) => i.type === 'child')
@@ -338,7 +546,7 @@ export function normalizeNavigationList(items: NavigationItem[]): NavigationItem
 
   parentGroups.forEach((group) => {
     group.forEach((item, index) => {
-      groupedChildren.push({ ...item, order: index });
+      groupedChildren.push({ ...sanitizeItem(item), order: index });
     });
   });
 

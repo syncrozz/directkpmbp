@@ -152,6 +152,7 @@ export interface NavigationItem {
   displayType?: NavigationDisplayType; // 'module' | 'drive'
   driveUrl?: string; // Google Drive PDF or Folder URL
   displayTitle?: string; // Custom title for content viewer
+  slug?: string; // SEO-friendly human-readable unique slug e.g. 'jadual_exam'
 }
 
 

@@ -42,7 +42,9 @@ import {
   canDeleteParent,
   generateNavId,
   saveNavigationItems,
-  resetNavigationToDefault
+  resetNavigationToDefault,
+  slugify,
+  validateNavigationSlug
 } from '../services/navigationService';
 import { parseTakwimLink } from '../services/takwimService';
 
@@ -56,6 +58,8 @@ interface NavigationManagerModalProps {
 interface FormState {
   id?: string;
   name: string;
+  slug: string;
+  isSlugCustomized: boolean;
   icon: string;
   type: NavigationType;
   parentId: string;
@@ -83,6 +87,8 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
   const [editingItem, setEditingItem] = useState<NavigationItem | null>(null);
   const [formState, setFormState] = useState<FormState>({
     name: '',
+    slug: '',
+    isSlugCustomized: false,
     icon: 'Layers',
     type: 'parent',
     parentId: '',
@@ -143,6 +149,8 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
     const firstParentId = defaultParentId || (parents[0]?.id || '');
     setFormState({
       name: '',
+      slug: '',
+      isSlugCustomized: false,
       icon: type === 'parent' ? 'Layers' : 'FileText',
       type,
       parentId: firstParentId,
@@ -167,6 +175,8 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
     setFormState({
       id: item.id,
       name: item.name,
+      slug: item.slug || slugify(item.name),
+      isSlugCustomized: true,
       icon: item.icon,
       type: item.type,
       parentId: item.parentId || (parents[0]?.id || ''),
@@ -193,6 +203,14 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
 
     if (formState.type === 'child' && !formState.parentId) {
       setNotice({ type: 'error', text: 'Navigasi anak wajib dikaitkan dengan satu Navigasi Induk.' });
+      return;
+    }
+
+    // Validate Slug (SES v4.4 Clean URL Architecture)
+    const targetSlug = (formState.slug.trim() || slugify(formState.name)).toLowerCase();
+    const slugCheck = validateNavigationSlug(targetSlug, editingItem?.id, items);
+    if (!slugCheck.valid) {
+      setNotice({ type: 'error', text: slugCheck.error || 'URL Slug tidak sah.' });
       return;
     }
 
@@ -234,6 +252,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
             return {
               ...item,
               name: formState.name.trim(),
+              slug: targetSlug,
               icon: formState.icon,
               type: formState.type,
               parentId: formState.type === 'child' ? formState.parentId : undefined,
@@ -258,6 +277,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
         const newItem: NavigationItem = {
           id: newId,
           name: formState.name.trim(),
+          slug: targetSlug,
           icon: formState.icon,
           type: formState.type,
           parentId: formState.type === 'child' ? formState.parentId : undefined,
@@ -589,9 +609,12 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                               </span>
                             )}
                           </div>
-                          <p className="text-[11px] text-slate-500 font-mono mt-0.5">
-                            Destinasi: <span className="font-semibold text-slate-700">{p.destination}</span>
-                          </p>
+                          <div className="text-[11px] text-slate-500 font-mono mt-0.5 flex items-center gap-2 flex-wrap">
+                            <span>Destinasi: <span className="font-semibold text-slate-700">{p.destination}</span></span>
+                            <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
+                              /{p.slug || slugify(p.name)}
+                            </span>
+                          </div>
                         </div>
                       </div>
 
@@ -737,13 +760,16 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                                     </span>
                                   )}
                                 </div>
-                                <p className="text-[10px] text-slate-500 font-mono mt-0.5 truncate max-w-xs sm:max-w-md">
+                                <div className="text-[10px] text-slate-500 font-mono mt-0.5 truncate max-w-xs sm:max-w-md flex items-center gap-2 flex-wrap">
                                   {c.displayType === 'drive' || c.driveUrl ? (
                                     <>Drive URL: <span className="font-semibold text-violet-700">{c.driveUrl || 'Belum diisi'}</span></>
                                   ) : (
                                     <>Destinasi: <span className="font-semibold text-slate-700">{c.destination}</span></>
                                   )}
-                                </p>
+                                  <span className="text-[9.5px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.2 rounded-md border border-indigo-200">
+                                    /{c.slug || slugify(c.name)}
+                                  </span>
+                                </div>
                               </div>
                             </div>
 
@@ -890,11 +916,72 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                     <input
                       type="text"
                       value={formState.name}
-                      onChange={(e) => setFormState({ ...formState, name: e.target.value })}
+                      onChange={(e) => {
+                        const newName = e.target.value;
+                        setFormState((prev) => ({
+                          ...prev,
+                          name: newName,
+                          slug: !prev.isSlugCustomized ? slugify(newName) : prev.slug,
+                        }));
+                      }}
                       placeholder="Contoh: Directory Staff, Portal Pelajar, Jadual..."
                       required
                       className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white outline-none focus:ring-2 focus:ring-indigo-200 font-medium"
                     />
+                  </div>
+
+                  {/* URL Slug (Laluan Bersih / Clean URL Architecture SES v4.4) */}
+                  <div className="space-y-1.5 p-3 rounded-2xl bg-indigo-50/60 border border-indigo-100">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-extrabold text-indigo-950 flex items-center gap-1.5">
+                        <span>URL Slug (Laluan Bersih / Clean URL)</span>
+                        <span className="text-[9px] font-extrabold px-1.5 py-0.2 rounded-md bg-indigo-100 text-indigo-800 border border-indigo-200">
+                          SES v4.4
+                        </span>
+                      </label>
+                      {formState.name.trim() && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFormState((prev) => ({
+                              ...prev,
+                              slug: slugify(prev.name),
+                              isSlugCustomized: false,
+                            }));
+                          }}
+                          className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer underline"
+                        >
+                          Jana Semula dari Nama
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex items-center rounded-xl border border-indigo-200 bg-white overflow-hidden shadow-2xs focus-within:ring-2 focus-within:ring-indigo-200">
+                      <span className="pl-3 pr-1 text-xs font-mono font-bold text-slate-400 select-none">/</span>
+                      <input
+                        type="text"
+                        value={formState.slug}
+                        onChange={(e) => {
+                          const cleaned = e.target.value.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_-]/g, '');
+                          setFormState((prev) => ({
+                            ...prev,
+                            slug: cleaned,
+                            isSlugCustomized: true,
+                          }));
+                        }}
+                        placeholder={slugify(formState.name) || 'jadual_exam'}
+                        required
+                        className="w-full py-2 pr-3 text-xs font-mono text-indigo-950 bg-transparent outline-none font-bold"
+                      />
+                    </div>
+
+                    {/* Live URL Preview */}
+                    <div className="text-[10.5px] text-slate-500 font-medium flex items-center gap-1.5 flex-wrap">
+                      <span className="font-bold text-slate-600">Pratonton URL:</span>
+                      <code className="text-indigo-700 bg-white px-2 py-0.5 rounded-md border border-indigo-100 font-bold font-mono">
+                        https://directkpmbp.syncrozz.com/{formState.slug || slugify(formState.name) || 'slug'}
+                      </code>
+                    </div>
                   </div>
 
                   {/* Icon Selector with Preview */}

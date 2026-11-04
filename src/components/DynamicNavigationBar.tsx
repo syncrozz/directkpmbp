@@ -60,18 +60,18 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
 
   // 4. Determine currently selected Parent based on activeHub
   // A parent is active if:
-  // a) Parent's destination or id equals activeHub
-  // b) Or any of its active children has destination === activeHub or id === activeHub
+  // a) Parent's destination, id, or slug equals activeHub
+  // b) Or any of its active children has destination === activeHub, id === activeHub, or slug === activeHub
   const activeParent = useMemo(() => {
-    // Exact match on parent destination or id
+    // Exact match on parent destination, id, or slug
     const directMatch = activeParents.find(
-      (p) => p.destination === activeHub || p.id === activeHub
+      (p) => p.destination === activeHub || p.id === activeHub || (p.slug && p.slug.toLowerCase() === activeHub.toLowerCase())
     );
     if (directMatch) return directMatch;
 
-    // Match via child destination or id
+    // Match via child destination, id, or slug
     const childMatch = activeChildren.find(
-      (c) => c.destination === activeHub || c.id === activeHub
+      (c) => c.destination === activeHub || c.id === activeHub || (c.slug && c.slug.toLowerCase() === activeHub.toLowerCase())
     );
     if (childMatch && childMatch.parentId) {
       const parent = activeParents.find((p) => p.id === childMatch.parentId);
@@ -80,7 +80,7 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
 
     // Match via any item in hierarchy
     const anyChild = items.find(
-      (i) => (i.id === activeHub || i.destination === activeHub) && i.parentId
+      (i) => (i.id === activeHub || i.destination === activeHub || (i.slug && i.slug.toLowerCase() === activeHub.toLowerCase())) && i.parentId
     );
     if (anyChild && anyChild.parentId) {
       const parent = activeParents.find((p) => p.id === anyChild.parentId);
@@ -142,7 +142,7 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
     if (pChildren.length > 0) {
       // If currently activeHub is already one of the children, keep it
       const currentChildIsActive = pChildren.some(
-        (c) => c.destination === activeHub || c.id === activeHub
+        (c) => c.destination === activeHub || c.id === activeHub || (c.slug && c.slug.toLowerCase() === activeHub.toLowerCase())
       );
       if (!currentChildIsActive) {
         // Activate first active child - prefer child id for uniqueness
@@ -238,7 +238,8 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
                 const isChildActive = 
                   activeHub === child.destination || 
                   activeHub === child.id || 
-                  ((activeParent?.id === activeHub || activeParent?.destination === activeHub) && currentParentChildren[0]?.id === child.id);
+                  (child.slug && activeHub.toLowerCase() === child.slug.toLowerCase()) ||
+                  ((activeParent?.id === activeHub || activeParent?.destination === activeHub || (activeParent?.slug && activeParent.slug.toLowerCase() === activeHub.toLowerCase())) && currentParentChildren[0]?.id === child.id);
 
                 return (
                   <button
