@@ -298,7 +298,23 @@ export function canDeleteParent(
 }
 
 /**
- * Generates a stable unique ID for a navigation item
+ * Checks whether a Child Navigation item can be safely deleted (SES v4.4 Section 6B & 3-Level Architecture)
+ * A Child with Grandchildren cannot be deleted until its grandchildren are deleted or reassigned.
+ */
+export function canDeleteChild(
+  childId: string,
+  allItems: NavigationItem[]
+): { canDelete: boolean; grandchildrenCount: number; grandchildrenNames: string[] } {
+  const grandchildren = allItems.filter((item) => item.type === 'grandchild' && item.parentId === childId);
+  return {
+    canDelete: grandchildren.length === 0,
+    grandchildrenCount: grandchildren.length,
+    grandchildrenNames: grandchildren.map((g) => g.name),
+  };
+}
+
+/**
+ * Generates a stable unique ID for a navigation item (Parent, Child, or Grandchild)
  */
 export function generateNavId(name: string, type: NavigationType): string {
   const clean = name
@@ -307,7 +323,8 @@ export function generateNavId(name: string, type: NavigationType): string {
     .replace(/_+/g, '_')
     .slice(0, 16);
   const rand = Math.random().toString(36).substring(2, 6);
-  return `nav_${type === 'parent' ? 'p' : 'c'}_${clean || 'item'}_${rand}`;
+  const prefix = type === 'parent' ? 'nav_p_' : type === 'grandchild' ? 'nav_gc_' : 'nav_c_';
+  return `${prefix}${clean || 'item'}_${rand}`;
 }
 
 /**
@@ -387,6 +404,14 @@ export function validateNavigationSlug(
   return { valid: true };
 }
 
+export interface ResolvedNavigationResult {
+  activeNavId?: string;
+  resolvedDestination: string;
+  matchedItem?: NavigationItem;
+  parentItem?: NavigationItem;
+  grandParentItem?: NavigationItem;
+}
+
 /**
  * Centralized Navigation Destination Resolver (SES v4.4 Specification)
  * 
@@ -399,7 +424,7 @@ export function validateNavigationSlug(
 export function resolveNavigationFromUrl(
   items: NavigationItem[],
   customToken?: string
-): { activeNavId?: string; resolvedDestination: string; matchedItem?: NavigationItem } {
+): ResolvedNavigationResult {
   let token = (customToken || '').trim();
 
   // If no custom token provided, parse from window.location
@@ -421,23 +446,41 @@ export function resolveNavigationFromUrl(
 
   const cleanToken = token.toLowerCase();
 
+  const buildHierarchy = (item?: NavigationItem): { parentItem?: NavigationItem; grandParentItem?: NavigationItem } => {
+    if (!item) return {};
+    if (item.type === 'grandchild') {
+      const parent = items.find((i) => i.id === item.parentId);
+      const grandParent = items.find((i) => i.id === parent?.parentId);
+      return { parentItem: parent, grandParentItem: grandParent };
+    }
+    if (item.type === 'child') {
+      const parent = items.find((i) => i.id === item.parentId);
+      return { parentItem: parent };
+    }
+    return {};
+  };
+
   // If root or empty
   if (!cleanToken || cleanToken === 'directory') {
     const dirItem = items.find((i) => i.destination === 'directory' || i.id === 'nav_directory');
+    const hierarchy = buildHierarchy(dirItem);
     return {
       activeNavId: dirItem?.id || 'nav_directory',
       resolvedDestination: 'directory',
       matchedItem: dirItem,
+      ...hierarchy,
     };
   }
 
   // Priority 1: Match navigation by unique ID
   const matchById = items.find((i) => i.id === token || i.id.toLowerCase() === cleanToken);
   if (matchById) {
+    const hierarchy = buildHierarchy(matchById);
     return {
       activeNavId: matchById.id,
       resolvedDestination: matchById.destination || matchById.id,
       matchedItem: matchById,
+      ...hierarchy,
     };
   }
 
@@ -446,57 +489,69 @@ export function resolveNavigationFromUrl(
     (i) => (i.slug && i.slug.toLowerCase() === cleanToken) || (!i.slug && slugify(i.name) === cleanToken)
   );
   if (matchBySlug) {
+    const hierarchy = buildHierarchy(matchBySlug);
     return {
       activeNavId: matchBySlug.id,
       resolvedDestination: matchBySlug.destination || matchBySlug.id,
       matchedItem: matchBySlug,
+      ...hierarchy,
     };
   }
 
   // Priority 3: Match existing module destination
   const matchByDest = items.find((i) => i.destination.toLowerCase() === cleanToken);
   if (matchByDest) {
+    const hierarchy = buildHierarchy(matchByDest);
     return {
       activeNavId: matchByDest.id,
       resolvedDestination: matchByDest.destination,
       matchedItem: matchByDest,
+      ...hierarchy,
     };
   }
 
   // Priority 4: Apply existing legacy route handling
   if (cleanToken === 'pensyarah' || cleanToken === 'jadual-pensyarah' || cleanToken === 'jadual_pensyarah') {
     const pensyarahItem = items.find((i) => i.destination === 'jadual-pensyarah');
+    const hierarchy = buildHierarchy(pensyarahItem);
     return {
       activeNavId: pensyarahItem?.id || 'nav_jadual_pensyarah',
       resolvedDestination: 'jadual-pensyarah',
       matchedItem: pensyarahItem,
+      ...hierarchy,
     };
   }
 
   if (cleanToken === 'jadual' || cleanToken === 'jadual_pelajar' || cleanToken === 'pelajar') {
     const jadualItem = items.find((i) => i.destination === 'jadual' && i.type === 'child') || items.find((i) => i.destination === 'jadual');
+    const hierarchy = buildHierarchy(jadualItem);
     return {
       activeNavId: jadualItem?.id || 'nav_jadual_pelajar',
       resolvedDestination: 'jadual',
       matchedItem: jadualItem,
+      ...hierarchy,
     };
   }
 
   if (cleanToken === 'rujukan') {
     const rujukanItem = items.find((i) => i.destination === 'rujukan');
+    const hierarchy = buildHierarchy(rujukanItem);
     return {
       activeNavId: rujukanItem?.id || 'nav_rujukan',
       resolvedDestination: 'rujukan',
       matchedItem: rujukanItem,
+      ...hierarchy,
     };
   }
 
   if (cleanToken === 'daftar') {
     const daftarItem = items.find((i) => i.destination === 'daftar');
+    const hierarchy = buildHierarchy(daftarItem);
     return {
       activeNavId: daftarItem?.id || 'daftar',
       resolvedDestination: 'daftar',
       matchedItem: daftarItem,
+      ...hierarchy,
     };
   }
 
@@ -508,7 +563,7 @@ export function resolveNavigationFromUrl(
 }
 
 /**
- * Normalizes navigation ordering
+ * Normalizes 3-Level navigation ordering (Parent -> Child -> Grandchild)
  */
 export function normalizeNavigationList(items: NavigationItem[]): NavigationItem[] {
   const sanitizeItem = (i: NavigationItem): NavigationItem => {
@@ -519,20 +574,20 @@ export function normalizeNavigationList(items: NavigationItem[]): NavigationItem
     };
   };
 
+  // Level 1: Parents
   const parents = items
     .filter((i) => i.type === 'parent')
     .sort((a, b) => a.order - b.order)
     .map((p, idx) => ({ ...sanitizeItem(p), order: idx }));
 
+  // Level 2: Children grouped by Parent
   const children = items
     .filter((i) => i.type === 'child')
-    // Keep children even if parent was deleted temporarily, but normalize ordering per parent
     .sort((a, b) => {
       if (a.parentId === b.parentId) return a.order - b.order;
       return (a.parentId || '').localeCompare(b.parentId || '');
     });
 
-  // Re-index children orders per parent group
   const groupedChildren: NavigationItem[] = [];
   const parentGroups = new Map<string, NavigationItem[]>();
 
@@ -550,7 +605,92 @@ export function normalizeNavigationList(items: NavigationItem[]): NavigationItem
     });
   });
 
-  return [...parents, ...groupedChildren];
+  // Level 3: Grandchildren grouped by Child
+  const grandchildren = items
+    .filter((i) => i.type === 'grandchild')
+    .sort((a, b) => {
+      if (a.parentId === b.parentId) return a.order - b.order;
+      return (a.parentId || '').localeCompare(b.parentId || '');
+    });
+
+  const groupedGrandchildren: NavigationItem[] = [];
+  const childGroups = new Map<string, NavigationItem[]>();
+
+  grandchildren.forEach((gc) => {
+    const cId = gc.parentId || 'orphan';
+    if (!childGroups.has(cId)) {
+      childGroups.set(cId, []);
+    }
+    childGroups.get(cId)!.push(gc);
+  });
+
+  childGroups.forEach((group) => {
+    group.forEach((item, index) => {
+      groupedGrandchildren.push({ ...sanitizeItem(item), order: index });
+    });
+  });
+
+  return [...parents, ...groupedChildren, ...groupedGrandchildren];
+}
+
+/**
+ * Idempotent automatic migration of UPPK into container mode with Grading grandchild
+ * SES v4.4 Specification
+ */
+export function migrateUppkGradingIfNeeded(items: NavigationItem[]): { items: NavigationItem[]; migrated: boolean } {
+  const uppk = items.find(
+    (i) =>
+      (i.type === 'child' || i.id === 'nav_c_grading_04dq') &&
+      (i.name.trim().toUpperCase() === 'UPPK' ||
+        i.slug === 'uppk' ||
+        i.id === 'nav_c_grading_04dq')
+  );
+
+  if (!uppk) {
+    return { items, migrated: false };
+  }
+
+  // Check if a grandchild named 'Grading' or with slug 'grading' already exists under UPPK
+  const hasGradingGrandchild = items.some(
+    (i) =>
+      i.type === 'grandchild' &&
+      i.parentId === uppk.id &&
+      (i.name.trim().toLowerCase() === 'grading' ||
+        i.slug === 'grading' ||
+        i.id === 'nav_gc_grading_uppk')
+  );
+
+  if (hasGradingGrandchild) {
+    return { items, migrated: false };
+  }
+
+  const defaultGradingUrl =
+    uppk.driveUrl ||
+    'https://drive.google.com/file/d/1HPXUuHyZWijstFDTIZPW-MCwe42kXCYp/view?usp=sharing';
+
+  const gradingGrandchild: NavigationItem = {
+    id: 'nav_gc_grading_uppk',
+    name: 'Grading',
+    slug: 'grading',
+    icon: 'FileText',
+    type: 'grandchild',
+    parentId: uppk.id,
+    destination: 'nav_gc_grading_uppk',
+    displayType: 'drive',
+    driveUrl: defaultGradingUrl,
+    displayTitle: uppk.displayTitle || 'Grading',
+    order: 0,
+    isActive: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  const updatedList = items.map((itm) =>
+    itm.id === uppk.id ? { ...itm, type: 'child' as NavigationType } : itm
+  );
+  updatedList.push(gradingGrandchild);
+
+  return { items: updatedList, migrated: true };
 }
 
 /**
@@ -572,7 +712,8 @@ export function subscribeToNavigation(callback: (items: NavigationItem[]) => voi
       if (cached) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          initialItems = normalizeNavigationList(parsed);
+          const migration = migrateUppkGradingIfNeeded(parsed);
+          initialItems = normalizeNavigationList(migration.items);
         }
       }
     } catch (_e) {
@@ -586,30 +727,40 @@ export function subscribeToNavigation(callback: (items: NavigationItem[]) => voi
     navigationDocRef(),
     (snapshot) => {
       if (!snapshot.exists()) {
-        // Document does not exist yet: provide defaults and save to localStorage
+        const migration = migrateUppkGradingIfNeeded(DEFAULT_NAVIGATION_ITEMS);
+        const defaults = normalizeNavigationList(migration.items);
         if (typeof window !== 'undefined') {
-          localStorage.setItem(LOCAL_STORAGE_NAV_KEY, JSON.stringify(DEFAULT_NAVIGATION_ITEMS));
+          localStorage.setItem(LOCAL_STORAGE_NAV_KEY, JSON.stringify(defaults));
         }
-        callback(DEFAULT_NAVIGATION_ITEMS);
+        callback(defaults);
         return;
       }
 
       const data = snapshot.data();
       const rawItems = Array.isArray(data?.items) ? data.items : [];
 
-      // If document is configured, use its exact array (even if empty, honoring admin choice)
       const isConfigured = Boolean(data?.isConfigured);
-      const itemsToUse = isConfigured
-        ? normalizeNavigationList(rawItems)
+      const baseItems = isConfigured
+        ? rawItems
         : rawItems.length > 0
-        ? normalizeNavigationList(rawItems)
+        ? rawItems
         : DEFAULT_NAVIGATION_ITEMS;
 
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(LOCAL_STORAGE_NAV_KEY, JSON.stringify(itemsToUse));
+      const migration = migrateUppkGradingIfNeeded(baseItems);
+      const normalizedItems = normalizeNavigationList(migration.items);
+
+      if (migration.migrated) {
+        // Persist migrated UPPK container structure to Firestore in background
+        saveNavigationItems(normalizedItems).catch((err) => {
+          console.warn('[NavigationService] Background auto-migration persist notice:', err?.message || err);
+        });
       }
 
-      callback(itemsToUse);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(LOCAL_STORAGE_NAV_KEY, JSON.stringify(normalizedItems));
+      }
+
+      callback(normalizedItems);
     },
     (err) => {
       console.warn('[NavigationService] Firestore notice:', err?.message || err);

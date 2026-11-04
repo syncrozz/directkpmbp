@@ -3,11 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
  * 
  * DIRECTKPMBP — DYNAMIC NAVIGATION MANAGEMENT MODAL
- * SES v4.4 Specification
+ * SES v4.4 Specification (3-Level Architecture: Parent → Child → Grandchild)
  * 
- * Provides Admin with hierarchical CRUD (Parent & Child),
- * safe deletion barriers, destination route validation,
- * visual icon pickers, and reordering capabilities.
+ * Provides Admin with hierarchical CRUD for:
+ * - Level 1: Parent Navigation
+ * - Level 2: Child Navigation (Direct content or Container)
+ * - Level 3: Grandchild Navigation
+ * Safe deletion barriers, destination route validation,
+ * visual icon pickers, clean slug editing, and reordering capabilities.
  */
 
 import React, { useState, useMemo } from 'react';
@@ -26,11 +29,10 @@ import {
   Eye,
   EyeOff,
   FolderTree,
-  ExternalLink,
   ShieldAlert,
   Loader2,
-  CornerDownRight,
-  FileText
+  FileText,
+  CornerDownRight
 } from 'lucide-react';
 import { NavigationItem, NavigationType, NavigationDisplayType } from '../types';
 import {
@@ -40,6 +42,7 @@ import {
   validateNavigationDestination,
   validateDriveUrl,
   canDeleteParent,
+  canDeleteChild,
   generateNavId,
   saveNavigationItems,
   resetNavigationToDefault,
@@ -62,7 +65,8 @@ interface FormState {
   isSlugCustomized: boolean;
   icon: string;
   type: NavigationType;
-  parentId: string;
+  parentId: string; // for child: parent id; for grandchild: child container id
+  parentFilterId?: string; // helper for grandchild parent selection
   displayType: NavigationDisplayType;
   driveUrl: string;
   displayTitle: string;
@@ -78,7 +82,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
   items,
   onItemsChange
 }) => {
-  const [activeTab, setActiveTab] = useState<'parents' | 'children'>('parents');
+  const [activeTab, setActiveTab] = useState<'parents' | 'children' | 'grandchildren'>('parents');
   const [isSaving, setIsSaving] = useState(false);
   const [notice, setNotice] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
 
@@ -92,6 +96,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
     icon: 'Layers',
     type: 'parent',
     parentId: '',
+    parentFilterId: '',
     displayType: 'module',
     driveUrl: '',
     displayTitle: '',
@@ -108,7 +113,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
   // Reset confirmation state
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
-  // Segregate Parents and Children
+  // Segregate Parents, Children, and Grandchildren
   const parents = useMemo(
     () => items.filter((i) => i.type === 'parent').sort((a, b) => a.order - b.order),
     [items]
@@ -116,6 +121,11 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
 
   const children = useMemo(
     () => items.filter((i) => i.type === 'child').sort((a, b) => a.order - b.order),
+    [items]
+  );
+
+  const grandchildren = useMemo(
+    () => items.filter((i) => i.type === 'grandchild').sort((a, b) => a.order - b.order),
     [items]
   );
 
@@ -136,25 +146,64 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
     return map;
   }, [parents, children]);
 
+  // Group grandchildren by child
+  const grandchildrenByChild = useMemo(() => {
+    const map = new Map<string, NavigationItem[]>();
+    children.forEach((c) => map.set(c.id, []));
+    map.set('orphans', []);
+
+    grandchildren.forEach((gc) => {
+      if (gc.parentId && map.has(gc.parentId)) {
+        map.get(gc.parentId)!.push(gc);
+      } else {
+        map.get('orphans')!.push(gc);
+      }
+    });
+
+    return map;
+  }, [children, grandchildren]);
+
   const liveDriveParsed = useMemo(
     () => parseTakwimLink(formState.driveUrl),
     [formState.driveUrl]
   );
 
-  if (!isOpen) return null;
+  // Available children filtered by parent filter (used in Grandchild Form)
+  const childrenForGrandchildForm = useMemo(() => {
+    if (!formState.parentFilterId) return children;
+    return children.filter((c) => c.parentId === formState.parentFilterId);
+  }, [children, formState.parentFilterId]);
 
   // Open Form for Adding New Item
   const handleAddNew = (type: NavigationType, defaultParentId?: string) => {
     setEditingItem(null);
-    const firstParentId = defaultParentId || (parents[0]?.id || '');
+    let initialParentId = defaultParentId || '';
+    let initialParentFilterId = '';
+
+    if (type === 'child') {
+      initialParentId = defaultParentId || (parents[0]?.id || '');
+    } else if (type === 'grandchild') {
+      // For grandchild, parentId must be a child container
+      if (defaultParentId) {
+        initialParentId = defaultParentId;
+        const matchingChild = children.find((c) => c.id === defaultParentId);
+        initialParentFilterId = matchingChild?.parentId || parents[0]?.id || '';
+      } else {
+        const firstChild = children[0];
+        initialParentId = firstChild?.id || '';
+        initialParentFilterId = firstChild?.parentId || parents[0]?.id || '';
+      }
+    }
+
     setFormState({
       name: '',
       slug: '',
       isSlugCustomized: false,
-      icon: type === 'parent' ? 'Layers' : 'FileText',
+      icon: type === 'parent' ? 'Layers' : type === 'grandchild' ? 'FileText' : 'Folder',
       type,
-      parentId: firstParentId,
-      displayType: 'module',
+      parentId: initialParentId,
+      parentFilterId: initialParentFilterId,
+      displayType: type === 'grandchild' ? 'drive' : 'module',
       driveUrl: '',
       displayTitle: '',
       destination: 'directory',
@@ -172,6 +221,12 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
     const isStandardModule = KNOWN_MODULE_DESTINATIONS.some((m) => m.id === item.destination);
     const itemDisplayType: NavigationDisplayType = item.displayType || (item.driveUrl ? 'drive' : 'module');
 
+    let initialParentFilterId = '';
+    if (item.type === 'grandchild') {
+      const immediateChild = children.find((c) => c.id === item.parentId);
+      initialParentFilterId = immediateChild?.parentId || parents[0]?.id || '';
+    }
+
     setFormState({
       id: item.id,
       name: item.name,
@@ -179,7 +234,8 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
       isSlugCustomized: true,
       icon: item.icon,
       type: item.type,
-      parentId: item.parentId || (parents[0]?.id || ''),
+      parentId: item.parentId || '',
+      parentFilterId: initialParentFilterId,
       displayType: itemDisplayType,
       driveUrl: item.driveUrl || '',
       displayTitle: item.displayTitle || '',
@@ -206,6 +262,11 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
       return;
     }
 
+    if (formState.type === 'grandchild' && !formState.parentId) {
+      setNotice({ type: 'error', text: 'Navigasi cucu wajib dikaitkan dengan satu Navigasi Anak (Bekas / Container).' });
+      return;
+    }
+
     // Validate Slug (SES v4.4 Clean URL Architecture)
     const targetSlug = (formState.slug.trim() || slugify(formState.name)).toLowerCase();
     const slugCheck = validateNavigationSlug(targetSlug, editingItem?.id, items);
@@ -214,7 +275,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
       return;
     }
 
-    const isDriveDisplay = formState.type === 'child' && formState.displayType === 'drive';
+    const isDriveDisplay = (formState.type === 'child' || formState.type === 'grandchild') && formState.displayType === 'drive';
 
     let finalDest = '';
     if (isDriveDisplay) {
@@ -226,7 +287,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
         });
         return;
       }
-      finalDest = editingItem?.id || generateNavId(formState.name, 'child');
+      finalDest = editingItem?.id || generateNavId(formState.name, formState.type);
     } else {
       finalDest = formState.useCustomDestination
         ? formState.customDestination.trim()
@@ -255,9 +316,9 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
               slug: targetSlug,
               icon: formState.icon,
               type: formState.type,
-              parentId: formState.type === 'child' ? formState.parentId : undefined,
+              parentId: formState.type === 'parent' ? undefined : formState.parentId,
               destination: finalDest,
-              displayType: formState.type === 'child' ? formState.displayType : undefined,
+              displayType: formState.type === 'parent' ? undefined : formState.displayType,
               driveUrl: isDriveDisplay ? formState.driveUrl.trim() : undefined,
               displayTitle: isDriveDisplay ? (formState.displayTitle.trim() || formState.name.trim()) : undefined,
               isActive: formState.isActive,
@@ -271,7 +332,9 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
         const newId = isDriveDisplay && finalDest ? finalDest : generateNavId(formState.name, formState.type);
         const siblings = formState.type === 'parent'
           ? parents
-          : children.filter((c) => c.parentId === formState.parentId);
+          : formState.type === 'child'
+          ? children.filter((c) => c.parentId === formState.parentId)
+          : grandchildren.filter((gc) => gc.parentId === formState.parentId);
         const nextOrder = siblings.length;
 
         const newItem: NavigationItem = {
@@ -280,9 +343,9 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
           slug: targetSlug,
           icon: formState.icon,
           type: formState.type,
-          parentId: formState.type === 'child' ? formState.parentId : undefined,
+          parentId: formState.type === 'parent' ? undefined : formState.parentId,
           destination: isDriveDisplay ? newId : finalDest,
-          displayType: formState.type === 'child' ? formState.displayType : undefined,
+          displayType: formState.type === 'parent' ? undefined : formState.displayType,
           driveUrl: isDriveDisplay ? formState.driveUrl.trim() : undefined,
           displayTitle: isDriveDisplay ? (formState.displayTitle.trim() || formState.name.trim()) : undefined,
           order: nextOrder,
@@ -320,8 +383,10 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
       let group: NavigationItem[];
       if (item.type === 'parent') {
         group = [...parents];
-      } else {
+      } else if (item.type === 'child') {
         group = children.filter((c) => c.parentId === item.parentId);
+      } else {
+        group = grandchildren.filter((gc) => gc.parentId === item.parentId);
       }
 
       const currentIndex = group.findIndex((i) => i.id === item.id);
@@ -378,7 +443,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
     }
   };
 
-  // Safe Deletion Trigger (SES v4.4 Section 6B & 6C)
+  // Safe Deletion Trigger (SES v4.4 Section 6B & 6C + 3-Level Guards)
   const handleDeletePrompt = (item: NavigationItem) => {
     setDeleteWarning(null);
 
@@ -387,6 +452,13 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
       if (!check.canDelete) {
         setDeleteWarning(
           `Navigasi Induk ini mempunyai ${check.childrenCount} navigasi anak (${check.childrenNames.join(', ')}). Sila padam atau pindahkan navigasi anak tersebut terlebih dahulu sebelum memadam navigasi induk ini.`
+        );
+      }
+    } else if (item.type === 'child') {
+      const checkChild = canDeleteChild(item.id, items);
+      if (!checkChild.canDelete) {
+        setDeleteWarning(
+          `Navigasi Anak ini mengandungi ${checkChild.grandchildrenCount} navigasi cucu (${checkChild.grandchildrenNames.join(', ')}). Sila padam atau pindahkan navigasi cucu terlebih dahulu sebelum memadam navigasi anak ini.`
         );
       }
     }
@@ -404,6 +476,16 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
         setNotice({
           type: 'error',
           text: 'Pemadaman disekat kerana masih terdapat navigasi anak di bawah induk ini.'
+        });
+        setItemToDelete(null);
+        return;
+      }
+    } else if (itemToDelete.type === 'child') {
+      const checkChild = canDeleteChild(itemToDelete.id, items);
+      if (!checkChild.canDelete) {
+        setNotice({
+          type: 'error',
+          text: 'Pemadaman disekat kerana masih terdapat navigasi cucu di bawah anak ini.'
         });
         setItemToDelete(null);
         return;
@@ -446,7 +528,8 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-md overflow-y-auto">
+      {isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-md overflow-y-auto">
         <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 15 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -463,11 +546,11 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                 <h3 className="font-sans font-extrabold text-slate-900 text-base sm:text-lg leading-tight flex items-center gap-2">
                   <span>Pengurusan Navigasi Dinamik</span>
                   <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
-                    SES v4.4
+                    SES v4.4 (3 Peringkat)
                   </span>
                 </h3>
                 <p className="text-xs text-slate-500 font-medium">
-                  Urus hierarki Navigasi Utama dan Navigasi Anak secara dinamik dengan storan Firestore
+                  Urus hierarki Induk → Anak → Cucu secara dinamik dengan storan masa nyata Firestore
                 </p>
               </div>
             </div>
@@ -510,13 +593,13 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
             </div>
           )}
 
-          {/* Tab Navigation: Parents vs Children */}
-          <div className="flex items-center justify-between gap-3 mt-4 border-b border-slate-100 pb-3 shrink-0">
-            <div className="flex items-center gap-2">
+          {/* Tab Navigation: Parents vs Children vs Grandchildren */}
+          <div className="flex items-center justify-between gap-3 mt-4 border-b border-slate-100 pb-3 shrink-0 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap">
               <button
                 type="button"
                 onClick={() => setActiveTab('parents')}
-                className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 ${
+                className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 ${
                   activeTab === 'parents'
                     ? 'bg-indigo-600 text-white shadow-xs'
                     : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
@@ -525,10 +608,11 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                 <Layers className="w-3.5 h-3.5" />
                 <span>Navigasi Utama ({parents.length})</span>
               </button>
+
               <button
                 type="button"
                 onClick={() => setActiveTab('children')}
-                className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 ${
+                className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 ${
                   activeTab === 'children'
                     ? 'bg-indigo-600 text-white shadow-xs'
                     : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
@@ -537,15 +621,38 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                 <FolderTree className="w-3.5 h-3.5" />
                 <span>Navigasi Anak ({children.length})</span>
               </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('grandchildren')}
+                className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 ${
+                  activeTab === 'grandchildren'
+                    ? 'bg-violet-600 text-white shadow-xs'
+                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Navigasi Cucu ({grandchildren.length})</span>
+              </button>
             </div>
 
             <button
               type="button"
-              onClick={() => handleAddNew(activeTab === 'parents' ? 'parent' : 'child')}
+              onClick={() =>
+                handleAddNew(
+                  activeTab === 'parents' ? 'parent' : activeTab === 'children' ? 'child' : 'grandchild'
+                )
+              }
               className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-extrabold shadow-xs transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 shrink-0"
             >
               <Plus className="w-4 h-4" />
-              <span>{activeTab === 'parents' ? 'Tambah Induk' : 'Tambah Anak'}</span>
+              <span>
+                {activeTab === 'parents'
+                  ? 'Tambah Induk'
+                  : activeTab === 'children'
+                  ? 'Tambah Anak'
+                  : 'Tambah Cucu'}
+              </span>
             </button>
           </div>
 
@@ -707,19 +814,187 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                       </div>
 
                       <div className="space-y-2">
-                        {pChildren.map((c, cIdx) => (
+                        {pChildren.map((c, cIdx) => {
+                          const gcs = grandchildrenByChild.get(c.id) || [];
+                          return (
+                            <div
+                              key={c.id}
+                              className={`p-3 rounded-xl border bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 ${
+                                c.isActive ? 'border-slate-200 shadow-2xs' : 'border-slate-200/50 opacity-60'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5">
+                                <div className="flex items-center gap-1 shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleMoveOrder(c, 'up')}
+                                    disabled={cIdx === 0 || isSaving}
+                                    title="Pindah ke atas"
+                                    className="p-1 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer"
+                                  >
+                                    <ArrowUp className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleMoveOrder(c, 'down')}
+                                    disabled={cIdx === pChildren.length - 1 || isSaving}
+                                    title="Pindah ke bawah"
+                                    className="p-1 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer"
+                                  >
+                                    <ArrowDown className="w-3 h-3" />
+                                  </button>
+                                </div>
+
+                                <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-100 flex items-center justify-center shrink-0">
+                                  {renderNavIcon(c.icon, 'w-3.5 h-3.5')}
+                                </div>
+
+                                <div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <h5 className="font-sans font-extrabold text-slate-900 text-xs">
+                                      {c.name}
+                                    </h5>
+                                    <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-slate-100 text-slate-600">
+                                      #{c.order + 1}
+                                    </span>
+                                    {gcs.length > 0 ? (
+                                      <span className="text-[9.5px] font-extrabold px-2 py-0.2 rounded-full bg-violet-100 text-violet-800 border border-violet-200 flex items-center gap-1">
+                                        <FolderTree className="w-2.5 h-2.5" />
+                                        <span>Bekas ({gcs.length} Cucu)</span>
+                                      </span>
+                                    ) : c.displayType === 'drive' || c.driveUrl ? (
+                                      <span className="text-[9.5px] font-extrabold px-2 py-0.2 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
+                                        <FileText className="w-2.5 h-2.5" />
+                                        <span>Google Drive</span>
+                                      </span>
+                                    ) : (
+                                      <span className="text-[9.5px] font-extrabold px-2 py-0.2 rounded-full bg-slate-100 text-slate-700 border border-slate-200 flex items-center gap-1">
+                                        <Layers className="w-2.5 h-2.5" />
+                                        <span>Modul</span>
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-[10px] text-slate-500 font-mono mt-0.5 truncate max-w-xs sm:max-w-md flex items-center gap-2 flex-wrap">
+                                    {c.displayType === 'drive' || c.driveUrl ? (
+                                      <>Drive URL: <span className="font-semibold text-violet-700">{c.driveUrl || 'Belum diisi'}</span></>
+                                    ) : (
+                                      <>Destinasi: <span className="font-semibold text-slate-700">{c.destination}</span></>
+                                    )}
+                                    <span className="text-[9.5px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.2 rounded-md border border-indigo-200">
+                                      /{c.slug || slugify(c.name)}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-1.5 self-end sm:self-center">
+                                <button
+                                  type="button"
+                                  onClick={() => handleAddNew('grandchild', c.id)}
+                                  title="Tambah Navigasi Cucu di bawah bekas ini"
+                                  className="px-2 py-1 rounded-lg text-[11px] font-extrabold bg-violet-50 hover:bg-violet-100 text-violet-700 border border-violet-200 flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Plus className="w-3 h-3" />
+                                  <span>+ Cucu</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleActive(c)}
+                                  disabled={isSaving}
+                                  className={`px-2 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 ${
+                                    c.isActive
+                                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                      : 'bg-slate-100 text-slate-500'
+                                  }`}
+                                >
+                                  {c.isActive ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                                  <span>{c.isActive ? 'Aktif' : 'Tutup'}</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleEdit(c)}
+                                  disabled={isSaving}
+                                  className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 rounded-lg"
+                                >
+                                  <Pencil className="w-3 h-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeletePrompt(c)}
+                                  disabled={isSaving}
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 rounded-lg"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        {pChildren.length === 0 && (
+                          <p className="text-[11px] text-slate-400 italic py-2 pl-2">
+                            Tiada navigasi anak di bawah induk ini. (Induk bertindak sebagai akses terus).
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* SECTION C: GRANDCHILD NAVIGATION LIST (Grouped by Child container) */}
+            {activeTab === 'grandchildren' && (
+              <div className="space-y-5">
+                {children.map((c) => {
+                  const parentOfChild = parents.find((p) => p.id === c.parentId);
+                  const cGrandchildren = (grandchildrenByChild.get(c.id) || []).sort((a, b) => a.order - b.order);
+
+                  return (
+                    <div
+                      key={c.id}
+                      className="p-4 bg-violet-50/50 rounded-2xl border border-violet-100 space-y-3"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-lg bg-violet-100 text-violet-700 flex items-center justify-center">
+                            {renderNavIcon(c.icon, 'w-3 h-3')}
+                          </div>
+                          <span className="text-xs font-extrabold text-slate-900">
+                            Bekas Anak: <span className="text-violet-700">{c.name}</span>
+                            {parentOfChild && (
+                              <span className="text-slate-400 font-normal ml-1">({parentOfChild.name})</span>
+                            )}
+                          </span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white text-violet-700 border border-violet-200">
+                            {cGrandchildren.length} Cucu
+                          </span>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleAddNew('grandchild', c.id)}
+                          className="px-2.5 py-1 bg-white hover:bg-violet-100 border border-violet-200 text-violet-700 rounded-xl text-[11px] font-extrabold transition-all cursor-pointer flex items-center gap-1"
+                        >
+                          <Plus className="w-3 h-3" />
+                          <span>Tambah Cucu</span>
+                        </button>
+                      </div>
+
+                      <div className="space-y-2">
+                        {cGrandchildren.map((gc, gcIdx) => (
                           <div
-                            key={c.id}
+                            key={gc.id}
                             className={`p-3 rounded-xl border bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 ${
-                              c.isActive ? 'border-slate-200 shadow-2xs' : 'border-slate-200/50 opacity-60'
+                              gc.isActive ? 'border-slate-200 shadow-2xs' : 'border-slate-200/50 opacity-60'
                             }`}
                           >
                             <div className="flex items-center gap-2.5">
                               <div className="flex items-center gap-1 shrink-0">
                                 <button
                                   type="button"
-                                  onClick={() => handleMoveOrder(c, 'up')}
-                                  disabled={cIdx === 0 || isSaving}
+                                  onClick={() => handleMoveOrder(gc, 'up')}
+                                  disabled={gcIdx === 0 || isSaving}
                                   title="Pindah ke atas"
                                   className="p-1 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer"
                                 >
@@ -727,8 +1002,8 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => handleMoveOrder(c, 'down')}
-                                  disabled={cIdx === pChildren.length - 1 || isSaving}
+                                  onClick={() => handleMoveOrder(gc, 'down')}
+                                  disabled={gcIdx === cGrandchildren.length - 1 || isSaving}
                                   title="Pindah ke bawah"
                                   className="p-1 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer"
                                 >
@@ -736,19 +1011,19 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                                 </button>
                               </div>
 
-                              <div className="w-7 h-7 rounded-lg bg-violet-50 text-violet-700 border border-violet-100 flex items-center justify-center shrink-0">
-                                {renderNavIcon(c.icon, 'w-3.5 h-3.5')}
+                              <div className="w-7 h-7 rounded-lg bg-violet-100 text-violet-800 border border-violet-200 flex items-center justify-center shrink-0">
+                                {renderNavIcon(gc.icon, 'w-3.5 h-3.5')}
                               </div>
 
                               <div>
                                 <div className="flex items-center gap-2 flex-wrap">
                                   <h5 className="font-sans font-extrabold text-slate-900 text-xs">
-                                    {c.name}
+                                    {gc.name}
                                   </h5>
                                   <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-slate-100 text-slate-600">
-                                    #{c.order + 1}
+                                    #{gc.order + 1}
                                   </span>
-                                  {c.displayType === 'drive' || c.driveUrl ? (
+                                  {gc.displayType === 'drive' || gc.driveUrl ? (
                                     <span className="text-[9.5px] font-extrabold px-2 py-0.2 rounded-full bg-violet-100 text-violet-800 border border-violet-200 flex items-center gap-1">
                                       <FileText className="w-2.5 h-2.5" />
                                       <span>Google Drive</span>
@@ -761,13 +1036,13 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                                   )}
                                 </div>
                                 <div className="text-[10px] text-slate-500 font-mono mt-0.5 truncate max-w-xs sm:max-w-md flex items-center gap-2 flex-wrap">
-                                  {c.displayType === 'drive' || c.driveUrl ? (
-                                    <>Drive URL: <span className="font-semibold text-violet-700">{c.driveUrl || 'Belum diisi'}</span></>
+                                  {gc.displayType === 'drive' || gc.driveUrl ? (
+                                    <>Drive URL: <span className="font-semibold text-violet-700">{gc.driveUrl || 'Belum diisi'}</span></>
                                   ) : (
-                                    <>Destinasi: <span className="font-semibold text-slate-700">{c.destination}</span></>
+                                    <>Destinasi: <span className="font-semibold text-slate-700">{gc.destination}</span></>
                                   )}
-                                  <span className="text-[9.5px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.2 rounded-md border border-indigo-200">
-                                    /{c.slug || slugify(c.name)}
+                                  <span className="text-[9.5px] font-bold text-violet-700 bg-violet-50 px-1.5 py-0.2 rounded-md border border-violet-200">
+                                    /{gc.slug || slugify(gc.name)}
                                   </span>
                                 </div>
                               </div>
@@ -776,20 +1051,20 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                             <div className="flex items-center gap-1.5 self-end sm:self-center">
                               <button
                                 type="button"
-                                onClick={() => handleToggleActive(c)}
+                                onClick={() => handleToggleActive(gc)}
                                 disabled={isSaving}
                                 className={`px-2 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 ${
-                                  c.isActive
+                                  gc.isActive
                                     ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                                     : 'bg-slate-100 text-slate-500'
                                 }`}
                               >
-                                {c.isActive ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
-                                <span>{c.isActive ? 'Aktif' : 'Tutup'}</span>
+                                {gc.isActive ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                                <span>{gc.isActive ? 'Aktif' : 'Tutup'}</span>
                               </button>
                               <button
                                 type="button"
-                                onClick={() => handleEdit(c)}
+                                onClick={() => handleEdit(gc)}
                                 disabled={isSaving}
                                 className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 rounded-lg"
                               >
@@ -797,7 +1072,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                               </button>
                               <button
                                 type="button"
-                                onClick={() => handleDeletePrompt(c)}
+                                onClick={() => handleDeletePrompt(gc)}
                                 disabled={isSaving}
                                 className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 rounded-lg"
                               >
@@ -807,15 +1082,22 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                           </div>
                         ))}
 
-                        {pChildren.length === 0 && (
+                        {cGrandchildren.length === 0 && (
                           <p className="text-[11px] text-slate-400 italic py-2 pl-2">
-                            Tiada navigasi anak di bawah induk ini. (Induk bertindak sebagai akses terus).
+                            Tiada navigasi cucu di bawah anak ini. Klik "+ Cucu" untuk menambah dokumen fail Drive atau pautan di bawah anak ini.
                           </p>
                         )}
                       </div>
                     </div>
                   );
                 })}
+
+                {children.length === 0 && (
+                  <div className="text-center py-10 border border-dashed border-slate-200 rounded-2xl p-6">
+                    <FolderTree className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                    <p className="text-xs font-bold text-slate-500">Tiada Navigasi Anak untuk dijadikan bekas cucu.</p>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -860,33 +1142,68 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                 </div>
 
                 <form onSubmit={handleFormSubmit} className="space-y-3.5">
-                  {/* Type Selector (Parent vs Child) */}
+                  {/* Type Selector (Parent vs Child vs Grandchild) */}
                   <div className="space-y-1">
-                    <label className="text-[11px] font-extrabold text-slate-700">Jenis Navigasi</label>
-                    <div className="grid grid-cols-2 gap-2">
+                    <label className="text-[11px] font-extrabold text-slate-700">Peringkat Hierarki Navigasi</label>
+                    <div className="grid grid-cols-3 gap-2">
                       <button
                         type="button"
-                        onClick={() => setFormState({ ...formState, type: 'parent' })}
-                        className={`py-2 px-3 rounded-xl text-xs font-extrabold border transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                        onClick={() =>
+                          setFormState((prev) => ({
+                            ...prev,
+                            type: 'parent',
+                            parentId: '',
+                            displayType: 'module',
+                          }))
+                        }
+                        className={`py-2 px-2.5 rounded-xl text-xs font-extrabold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                           formState.type === 'parent'
                             ? 'bg-indigo-50 border-indigo-500 text-indigo-900 ring-2 ring-indigo-200'
                             : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
                         }`}
                       >
                         <Layers className="w-3.5 h-3.5 text-indigo-600" />
-                        <span>Induk</span>
+                        <span>1. Induk</span>
                       </button>
+
                       <button
                         type="button"
-                        onClick={() => setFormState({ ...formState, type: 'child' })}
-                        className={`py-2 px-3 rounded-xl text-xs font-extrabold border transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                        onClick={() =>
+                          setFormState((prev) => ({
+                            ...prev,
+                            type: 'child',
+                            parentId: parents[0]?.id || '',
+                          }))
+                        }
+                        className={`py-2 px-2.5 rounded-xl text-xs font-extrabold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                           formState.type === 'child'
                             ? 'bg-indigo-50 border-indigo-500 text-indigo-900 ring-2 ring-indigo-200'
                             : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
                         }`}
                       >
                         <FolderTree className="w-3.5 h-3.5 text-indigo-600" />
-                        <span>Anak</span>
+                        <span>2. Anak</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setFormState((prev) => ({
+                            ...prev,
+                            type: 'grandchild',
+                            parentId: children[0]?.id || '',
+                            parentFilterId: children[0]?.parentId || parents[0]?.id || '',
+                            displayType: 'drive',
+                          }))
+                        }
+                        className={`py-2 px-2.5 rounded-xl text-xs font-extrabold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                          formState.type === 'grandchild'
+                            ? 'bg-violet-50 border-violet-500 text-violet-900 ring-2 ring-violet-200'
+                            : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        <FileText className="w-3.5 h-3.5 text-violet-600" />
+                        <span>3. Cucu</span>
                       </button>
                     </div>
                   </div>
@@ -894,7 +1211,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                   {/* Parent Association Dropdown (Only for Child) */}
                   {formState.type === 'child' && (
                     <div className="space-y-1">
-                      <label className="text-[11px] font-extrabold text-slate-700">Pilih Navigasi Induk</label>
+                      <label className="text-[11px] font-extrabold text-slate-700">Pilih Navigasi Induk (Parent)</label>
                       <select
                         value={formState.parentId}
                         onChange={(e) => setFormState({ ...formState, parentId: e.target.value })}
@@ -907,6 +1224,59 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                           </option>
                         ))}
                       </select>
+                    </div>
+                  )}
+
+                  {/* Grandchild Association: Select Child Container (Only for Grandchild) */}
+                  {formState.type === 'grandchild' && (
+                    <div className="space-y-2 p-3 bg-violet-50/60 rounded-2xl border border-violet-100">
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-extrabold text-violet-950">
+                          Tapis mengikut Induk (Pilihan):
+                        </label>
+                        <select
+                          value={formState.parentFilterId}
+                          onChange={(e) => {
+                            const newParentFilter = e.target.value;
+                            const availableCh = children.filter((c) => !newParentFilter || c.parentId === newParentFilter);
+                            setFormState({
+                              ...formState,
+                              parentFilterId: newParentFilter,
+                              parentId: availableCh[0]?.id || formState.parentId,
+                            });
+                          }}
+                          className="w-full px-3 py-1.5 rounded-xl border border-violet-200 text-xs bg-white outline-none focus:ring-2 focus:ring-violet-300"
+                        >
+                          <option value="">Semua Induk</option>
+                          {parents.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[11px] font-extrabold text-violet-950 flex items-center gap-1">
+                          <CornerDownRight className="w-3 h-3 text-violet-600" />
+                          <span>Pilih Navigasi Anak (Bekas / Container) *</span>
+                        </label>
+                        <select
+                          value={formState.parentId}
+                          onChange={(e) => setFormState({ ...formState, parentId: e.target.value })}
+                          required
+                          className="w-full px-3 py-2 rounded-xl border border-violet-300 text-xs bg-white font-bold text-violet-900 outline-none focus:ring-2 focus:ring-violet-300 shadow-2xs"
+                        >
+                          {childrenForGrandchildForm.map((c) => {
+                            const pName = parents.find((p) => p.id === c.parentId)?.name;
+                            return (
+                              <option key={c.id} value={c.id}>
+                                {c.name} {pName ? `(di bawah ${pName})` : ''}
+                              </option>
+                            );
+                          })}
+                        </select>
+                      </div>
                     </div>
                   )}
 
@@ -924,7 +1294,11 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                           slug: !prev.isSlugCustomized ? slugify(newName) : prev.slug,
                         }));
                       }}
-                      placeholder="Contoh: Directory Staff, Portal Pelajar, Jadual..."
+                      placeholder={
+                        formState.type === 'grandchild'
+                          ? 'Contoh: Grading, Garis Masa, Panduan Peperiksaan...'
+                          : 'Contoh: Directory Staff, Portal Pelajar, Jadual...'
+                      }
                       required
                       className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white outline-none focus:ring-2 focus:ring-indigo-200 font-medium"
                     />
@@ -1015,8 +1389,8 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                     </div>
                   </div>
 
-                  {/* SECTION B: DISPLAY TYPE & DESTINATION CONFIGURATION */}
-                  {formState.type === 'child' ? (
+                  {/* SECTION B: DISPLAY TYPE & DESTINATION CONFIGURATION (Child & Grandchild) */}
+                  {formState.type === 'child' || formState.type === 'grandchild' ? (
                     <div className="space-y-3 p-3.5 bg-slate-50 border border-slate-200 rounded-2xl">
                       <div className="flex items-center justify-between">
                         <label className="text-[11px] font-extrabold text-slate-800">
@@ -1332,6 +1706,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
 
         </motion.div>
       </div>
+      )}
     </AnimatePresence>
   );
 };

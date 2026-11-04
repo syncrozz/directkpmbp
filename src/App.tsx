@@ -82,25 +82,51 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Compute active navigation item for current activeHub (prioritize ID match, slug match, and child items)
+  // Compute active navigation item for current activeHub (prioritize ID match, slug match, grandchild, child, and parent items)
   const activeNavItem = useMemo(() => {
     // 1. Direct match by ID
     const byId = navigationItems.find((item) => item.id === activeHub);
-    if (byId) return byId;
+    if (byId) {
+      if (byId.type === 'child') {
+        const childGrandchildren = navigationItems.filter(
+          (item) => item.type === 'grandchild' && item.parentId === byId.id && item.isActive
+        );
+        if (childGrandchildren.length > 0 && !byId.driveUrl && byId.destination === byId.id) {
+          return childGrandchildren[0];
+        }
+      }
+      return byId;
+    }
 
     // 2. Match by slug
     const bySlug = navigationItems.find(
       (item) => item.slug && item.slug.toLowerCase() === activeHub.toLowerCase()
     );
-    if (bySlug) return bySlug;
+    if (bySlug) {
+      if (bySlug.type === 'child') {
+        const childGrandchildren = navigationItems.filter(
+          (item) => item.type === 'grandchild' && item.parentId === bySlug.id && item.isActive
+        );
+        if (childGrandchildren.length > 0 && !bySlug.driveUrl && bySlug.destination === bySlug.id) {
+          return childGrandchildren[0];
+        }
+      }
+      return bySlug;
+    }
 
-    // 3. Child match by destination
+    // 3. Grandchild match by destination
+    const grandchildMatch = navigationItems.find(
+      (item) => item.type === 'grandchild' && item.destination === activeHub
+    );
+    if (grandchildMatch) return grandchildMatch;
+
+    // 4. Child match by destination
     const childMatch = navigationItems.find(
       (item) => item.type === 'child' && item.destination === activeHub
     );
     if (childMatch) return childMatch;
 
-    // 4. Parent match by destination
+    // 5. Parent match by destination
     return navigationItems.find((item) => item.destination === activeHub);
   }, [navigationItems, activeHub]);
 
@@ -138,15 +164,26 @@ export default function App() {
     );
 
     if (matchedItem) {
+      let targetItem = matchedItem;
+      // If child in container mode, navigate to first grandchild
+      if (matchedItem.type === 'child') {
+        const gcs = navigationItems.filter(
+          (i) => i.type === 'grandchild' && i.parentId === matchedItem.id && i.isActive
+        );
+        if (gcs.length > 0) {
+          targetItem = gcs[0];
+        }
+      }
+
       // Set unique item ID as internal active navigation identity (Section 2, 3)
-      setActiveHub(matchedItem.id);
+      setActiveHub(targetItem.id);
 
       if (typeof window !== 'undefined') {
-        const cleanSlug = matchedItem.slug || (matchedItem.destination === 'directory' ? '' : slugify(matchedItem.name));
+        const cleanSlug = targetItem.slug || (targetItem.destination === 'directory' ? '' : slugify(targetItem.name));
         const targetPath = cleanSlug && cleanSlug !== 'directory' ? `/${cleanSlug}` : '/';
 
         if (window.location.pathname !== targetPath || window.location.hash) {
-          window.history.pushState({ navId: matchedItem.id }, '', targetPath);
+          window.history.pushState({ navId: targetItem.id }, '', targetPath);
         }
       }
       return;
@@ -329,7 +366,16 @@ export default function App() {
     const handleUrlChange = () => {
       const res = resolveNavigationFromUrl(navigationItems);
       if (res.matchedItem) {
-        setActiveHub(res.matchedItem.id);
+        let itemToActivate = res.matchedItem;
+        if (itemToActivate.type === 'child') {
+          const gcs = navigationItems.filter(
+            (i) => i.type === 'grandchild' && i.parentId === itemToActivate.id && i.isActive
+          );
+          if (gcs.length > 0) {
+            itemToActivate = gcs[0];
+          }
+        }
+        setActiveHub(itemToActivate.id);
       } else if (res.activeNavId) {
         setActiveHub(res.activeNavId);
       } else {

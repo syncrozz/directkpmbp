@@ -3,17 +3,17 @@
  * SPDX-License-Identifier: Apache-2.0
  * 
  * DIRECTKPMBP — DYNAMIC HIERARCHICAL NAVIGATION BAR
- * SES v4.4 Specification
+ * SES v4.4 Specification (3-Level Navigation: Parent → Child → Grandchild)
  * 
- * Renders data-driven Primary (Parent) and Secondary (Child) navigation rows,
- * maintains active state synchronization, responsive horizontal scrolling,
- * and seamless Admin CRUD integration.
+ * Renders data-driven Primary (Parent), Secondary (Child), and Tertiary (Grandchild)
+ * navigation rows, maintains active state synchronization, responsive horizontal
+ * scrolling, and seamless Admin CRUD integration.
  */
 
 import React, { useMemo } from 'react';
 import { NavigationItem } from '../types';
 import { renderNavIcon } from '../services/navigationService';
-import { Layers, Settings, ChevronRight } from 'lucide-react';
+import { Layers, ChevronRight } from 'lucide-react';
 
 interface DynamicNavigationBarProps {
   items: NavigationItem[];
@@ -44,7 +44,14 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
       .sort((a, b) => a.order - b.order);
   }, [items]);
 
-  // 3. Map active children by their parentId
+  // 3. Filter only active Grandchildren, sorted by order
+  const activeGrandchildren = useMemo(() => {
+    return items
+      .filter((i) => i.type === 'grandchild' && i.isActive)
+      .sort((a, b) => a.order - b.order);
+  }, [items]);
+
+  // 4. Map active children by their parentId (Parent ID)
   const childrenMap = useMemo(() => {
     const map = new Map<string, NavigationItem[]>();
     activeChildren.forEach((child) => {
@@ -58,44 +65,137 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
     return map;
   }, [activeChildren]);
 
-  // 4. Determine currently selected Parent based on activeHub
-  // A parent is active if:
-  // a) Parent's destination, id, or slug equals activeHub
-  // b) Or any of its active children has destination === activeHub, id === activeHub, or slug === activeHub
+  // 5. Map active grandchildren by their parentId (Child ID)
+  const grandchildrenMap = useMemo(() => {
+    const map = new Map<string, NavigationItem[]>();
+    activeGrandchildren.forEach((gc) => {
+      if (gc.parentId) {
+        if (!map.has(gc.parentId)) {
+          map.set(gc.parentId, []);
+        }
+        map.get(gc.parentId)!.push(gc);
+      }
+    });
+    return map;
+  }, [activeGrandchildren]);
+
+  // 6. Determine active hierarchy (Parent -> Child -> Grandchild) based on activeHub
   const activeParent = useMemo(() => {
-    // Exact match on parent destination, id, or slug
+    // Check direct match on parent
     const directMatch = activeParents.find(
-      (p) => p.destination === activeHub || p.id === activeHub || (p.slug && p.slug.toLowerCase() === activeHub.toLowerCase())
+      (p) =>
+        p.destination === activeHub ||
+        p.id === activeHub ||
+        (p.slug && p.slug.toLowerCase() === activeHub.toLowerCase())
     );
     if (directMatch) return directMatch;
 
-    // Match via child destination, id, or slug
+    // Check match on grandchild
+    const gcMatch = activeGrandchildren.find(
+      (gc) =>
+        gc.destination === activeHub ||
+        gc.id === activeHub ||
+        (gc.slug && gc.slug.toLowerCase() === activeHub.toLowerCase())
+    );
+    if (gcMatch && gcMatch.parentId) {
+      const child = activeChildren.find((c) => c.id === gcMatch.parentId);
+      if (child && child.parentId) {
+        const parent = activeParents.find((p) => p.id === child.parentId);
+        if (parent) return parent;
+      }
+    }
+
+    // Check match on child
     const childMatch = activeChildren.find(
-      (c) => c.destination === activeHub || c.id === activeHub || (c.slug && c.slug.toLowerCase() === activeHub.toLowerCase())
+      (c) =>
+        c.destination === activeHub ||
+        c.id === activeHub ||
+        (c.slug && c.slug.toLowerCase() === activeHub.toLowerCase())
     );
     if (childMatch && childMatch.parentId) {
       const parent = activeParents.find((p) => p.id === childMatch.parentId);
       if (parent) return parent;
     }
 
-    // Match via any item in hierarchy
-    const anyChild = items.find(
-      (i) => (i.id === activeHub || i.destination === activeHub || (i.slug && i.slug.toLowerCase() === activeHub.toLowerCase())) && i.parentId
+    // Fallback via any item in hierarchy
+    const anyItem = items.find(
+      (i) =>
+        i.id === activeHub ||
+        i.destination === activeHub ||
+        (i.slug && i.slug.toLowerCase() === activeHub.toLowerCase())
     );
-    if (anyChild && anyChild.parentId) {
-      const parent = activeParents.find((p) => p.id === anyChild.parentId);
-      if (parent) return parent;
+    if (anyItem) {
+      if (anyItem.type === 'grandchild' && anyItem.parentId) {
+        const child = items.find((c) => c.id === anyItem.parentId);
+        if (child && child.parentId) {
+          const parent = activeParents.find((p) => p.id === child.parentId);
+          if (parent) return parent;
+        }
+      }
+      if (anyItem.type === 'child' && anyItem.parentId) {
+        const parent = activeParents.find((p) => p.id === anyItem.parentId);
+        if (parent) return parent;
+      }
     }
 
-    // Fallback: first active parent if any
     return activeParents[0] || null;
-  }, [activeParents, activeChildren, activeHub, items]);
+  }, [activeParents, activeChildren, activeGrandchildren, activeHub, items]);
 
-  // 5. Children of currently selected Parent
+  // Children of currently selected Parent
   const currentParentChildren = useMemo(() => {
     if (!activeParent) return [];
     return childrenMap.get(activeParent.id) || [];
   }, [activeParent, childrenMap]);
+
+  // Determine currently active Child
+  const activeChild = useMemo(() => {
+    if (!activeParent || currentParentChildren.length === 0) return null;
+
+    // Check if activeHub matches a grandchild under one of currentParentChildren
+    const gcMatch = activeGrandchildren.find(
+      (gc) =>
+        gc.id === activeHub ||
+        gc.destination === activeHub ||
+        (gc.slug && gc.slug.toLowerCase() === activeHub.toLowerCase())
+    );
+    if (gcMatch && gcMatch.parentId) {
+      const child = currentParentChildren.find((c) => c.id === gcMatch.parentId);
+      if (child) return child;
+    }
+
+    // Check if activeHub matches a child directly
+    const directChild = currentParentChildren.find(
+      (c) =>
+        c.id === activeHub ||
+        c.destination === activeHub ||
+        (c.slug && c.slug.toLowerCase() === activeHub.toLowerCase())
+    );
+    if (directChild) return directChild;
+
+    // Fallback: first child of activeParent
+    return currentParentChildren[0] || null;
+  }, [activeParent, currentParentChildren, activeGrandchildren, activeHub]);
+
+  // Grandchildren of currently selected Child
+  const currentChildGrandchildren = useMemo(() => {
+    if (!activeChild) return [];
+    return grandchildrenMap.get(activeChild.id) || [];
+  }, [activeChild, grandchildrenMap]);
+
+  // Determine currently active Grandchild
+  const activeGrandchild = useMemo(() => {
+    if (currentChildGrandchildren.length === 0) return null;
+
+    const matched = currentChildGrandchildren.find(
+      (gc) =>
+        gc.id === activeHub ||
+        gc.destination === activeHub ||
+        (gc.slug && gc.slug.toLowerCase() === activeHub.toLowerCase())
+    );
+    if (matched) return matched;
+
+    return currentChildGrandchildren[0] || null;
+  }, [currentChildGrandchildren, activeHub]);
 
   // Color theme generator for active parent
   const getParentThemeClasses = (destination: string, isSelected: boolean) => {
@@ -140,14 +240,24 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
   const handleParentClick = (parent: NavigationItem) => {
     const pChildren = childrenMap.get(parent.id) || [];
     if (pChildren.length > 0) {
-      // If currently activeHub is already one of the children, keep it
+      // Check if current active child is already one of parent's children
       const currentChildIsActive = pChildren.some(
-        (c) => c.destination === activeHub || c.id === activeHub || (c.slug && c.slug.toLowerCase() === activeHub.toLowerCase())
+        (c) =>
+          c.destination === activeHub ||
+          c.id === activeHub ||
+          (c.slug && c.slug.toLowerCase() === activeHub.toLowerCase()) ||
+          (activeChild && activeChild.id === c.id)
       );
       if (!currentChildIsActive) {
-        // Activate first active child - prefer child id for uniqueness
         const firstChild = pChildren[0];
-        onSelectDestination(firstChild.id || firstChild.destination);
+        const gcs = grandchildrenMap.get(firstChild.id) || [];
+        if (gcs.length > 0) {
+          // If first child is in container mode, select its first grandchild
+          const firstGc = gcs[0];
+          onSelectDestination(firstGc.id || firstGc.destination);
+        } else {
+          onSelectDestination(firstChild.id || firstChild.destination);
+        }
       }
     } else {
       // Direct access parent
@@ -157,8 +267,20 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
 
   // Click on Child Navigation item
   const handleChildClick = (child: NavigationItem) => {
-    // Prefer unique child.id so routes and views are never ambiguously hijacked
-    onSelectDestination(child.id || child.destination);
+    const gcs = grandchildrenMap.get(child.id) || [];
+    if (gcs.length > 0) {
+      // Container mode: auto-select first grandchild
+      const firstGc = gcs[0];
+      onSelectDestination(firstGc.id || firstGc.destination);
+    } else {
+      // Direct content mode
+      onSelectDestination(child.id || child.destination);
+    }
+  };
+
+  // Click on Grandchild Navigation item
+  const handleGrandchildClick = (grandchild: NavigationItem) => {
+    onSelectDestination(grandchild.id || grandchild.destination);
   };
 
   return (
@@ -235,11 +357,8 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
 
             <div className="flex items-center gap-1.5 shrink-0 py-0.5">
               {currentParentChildren.map((child) => {
-                const isChildActive = 
-                  activeHub === child.destination || 
-                  activeHub === child.id || 
-                  (child.slug && activeHub.toLowerCase() === child.slug.toLowerCase()) ||
-                  ((activeParent?.id === activeHub || activeParent?.destination === activeHub || (activeParent?.slug && activeParent.slug.toLowerCase() === activeHub.toLowerCase())) && currentParentChildren[0]?.id === child.id);
+                const childGcs = grandchildrenMap.get(child.id) || [];
+                const isChildActive = activeChild?.id === child.id;
 
                 return (
                   <button
@@ -256,7 +375,62 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
                       {renderNavIcon(child.icon, `w-3.5 h-3.5 ${isChildActive ? 'text-white' : 'text-indigo-600'}`)}
                     </span>
                     <span>{child.name}</span>
+
+                    {childGcs.length > 0 && (
+                      <span
+                        className={`text-[9.5px] px-1.5 py-0.2 rounded-full font-bold ml-0.5 ${
+                          isChildActive
+                            ? 'bg-white/25 text-white'
+                            : 'bg-indigo-100 text-indigo-700'
+                        }`}
+                      >
+                        {childGcs.length}
+                      </span>
+                    )}
+
                     {isChildActive && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse shrink-0" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ROW 3: TERTIARY (GRANDCHILD) NAVIGATION */}
+        {/* Dipaparkan HANYA apabila Child terpilih mempunyai navigasi cucu yang aktif */}
+        {currentChildGrandchildren.length > 0 && (
+          <div className="pt-1.5 border-t border-violet-200/60 flex items-center gap-2 overflow-x-auto scrollbar-none animate-fadeIn bg-violet-50/40 rounded-xl px-2 py-1">
+            <div className="flex items-center gap-1 text-[10.5px] font-extrabold text-violet-600 uppercase tracking-wider pl-1 shrink-0">
+              <span>{activeChild?.name}</span>
+              <ChevronRight className="w-3 h-3 text-violet-400" />
+            </div>
+
+            <div className="flex items-center gap-1.5 shrink-0 py-0.5">
+              {currentChildGrandchildren.map((gc) => {
+                const isGcActive =
+                  activeGrandchild?.id === gc.id ||
+                  activeHub === gc.id ||
+                  (gc.slug && activeHub.toLowerCase() === gc.slug.toLowerCase()) ||
+                  activeHub === gc.destination;
+
+                return (
+                  <button
+                    key={gc.id}
+                    type="button"
+                    onClick={() => handleGrandchildClick(gc)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition-all cursor-pointer border shrink-0 ${
+                      isGcActive
+                        ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white border-violet-600 shadow-xs ring-2 ring-violet-300/40'
+                        : 'bg-white/95 text-slate-700 hover:text-violet-700 hover:bg-violet-50/80 border-slate-200/90 shadow-2xs'
+                    }`}
+                  >
+                    <span className="shrink-0">
+                      {renderNavIcon(gc.icon, `w-3.5 h-3.5 ${isGcActive ? 'text-white' : 'text-violet-600'}`)}
+                    </span>
+                    <span>{gc.name}</span>
+                    {isGcActive && (
                       <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse shrink-0" />
                     )}
                   </button>
