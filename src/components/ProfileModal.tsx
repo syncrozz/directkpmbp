@@ -525,7 +525,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ staff, committees = 
                     <div>
                       <div className="flex items-center gap-1.5">
                         <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Daerah Asal & Tahun Lahir</h4>
-                        <span className="px-1.5 py-0.2 bg-indigo-100 text-indigo-700 text-[9px] font-black rounded-md uppercase">Akses Admin (Level 1 & 2)</span>
+                        <span className="px-1.5 py-0.2 bg-indigo-100 text-indigo-700 text-[9px] font-black rounded-md uppercase">Akses Admin</span>
                       </div>
                       <p className="text-xs text-slate-800 font-bold mt-0.5">
                         {staff.DaerahAsal || 'Tiada rekod'}
@@ -554,9 +554,9 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ staff, committees = 
                       <div className="flex items-center justify-between">
                         <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
                           <Car className="w-3.5 h-3.5 text-slate-600" />
-                          <span>Nombor Pendaftaran Kenderaan (PlatNo)</span>
+                          <span>Nombor Pendaftaran Kenderaan</span>
                         </h4>
-                        <span className="px-1.5 py-0.2 bg-indigo-100 text-indigo-700 text-[9px] font-black rounded-md uppercase">Akses Admin (Level 1 & 2)</span>
+                        <span className="px-1.5 py-0.2 bg-indigo-100 text-indigo-700 text-[9px] font-black rounded-md uppercase">Akses Admin</span>
                       </div>
                       <div className="flex flex-wrap gap-2 pt-1">
                         {allPlates.map((plate, idx) => (
@@ -580,7 +580,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ staff, committees = 
                     </div>
                     <div>
                       <h4 className="text-[11px] font-extrabold text-slate-700">Maklumat Peribadi & Kenderaan Dihadkan</h4>
-                      <p className="text-[10px] text-slate-500 font-medium">No. Kad Pengenalan (IC), daerah asal, tahun lahir & no. plat hanya untuk Admin yang disahkan (Master & Level 2).</p>
+                      <p className="text-[10px] text-slate-500 font-medium">No. Kad Pengenalan, daerah asal, tahun lahir dan nombor plat hanya untuk Admin yang disahkan.</p>
                     </div>
                   </div>
                   {onOpenAdminPin && (
@@ -596,13 +596,13 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ staff, committees = 
                 </div>
               )}
 
-              {/* Kelulusan Akademik (Kelayakan) */}
+              {/* Kelulusan Akademik */}
               <div className="flex gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-100">
                 <div className="mt-0.5 p-2 bg-emerald-100 text-emerald-700 rounded-xl h-9 w-9 flex items-center justify-center shrink-0">
                   <GraduationCap className="w-4 h-4" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1">Kelulusan Akademik (Kelayakan)</h4>
+                  <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1">Kelulusan Akademik</h4>
                   {staff.Kelulusan ? (
                     <div className="space-y-1.5">
                       {parseQualificationLines(staff.Kelulusan).map((line, idx) => (

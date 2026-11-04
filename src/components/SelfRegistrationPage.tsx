@@ -418,7 +418,7 @@ export const SelfRegistrationPage: React.FC<SelfRegistrationPageProps> = ({
                 <div className="sm:col-span-2 space-y-1.5">
                   <label className="text-xs font-extrabold text-slate-800 flex items-center justify-between">
                     <span>Nama Penuh Kakitangan *</span>
-                    <span className="text-[10px] text-slate-400 font-semibold">(Disimpan dalam huruf besar rasmi)</span>
+                    <span className="text-[10px] text-slate-400 font-semibold">Huruf besar rasmi</span>
                   </label>
                   <input
                     type="text"
@@ -440,7 +440,7 @@ export const SelfRegistrationPage: React.FC<SelfRegistrationPageProps> = ({
                           ? 'bg-amber-100 text-amber-800' 
                           : 'bg-emerald-100 text-emerald-700'
                       }`}>
-                        {isIdTaken ? 'Wujud (Akan Dikemaskini)' : 'Tersedia'}
+                        {isIdTaken ? 'Sudah Berdaftar' : 'Tersedia'}
                       </span>
                     )}
                   </label>
@@ -604,7 +604,7 @@ export const SelfRegistrationPage: React.FC<SelfRegistrationPageProps> = ({
                 {/* Extension */}
                 <div className="space-y-1.5">
                   <label className="text-xs font-extrabold text-slate-800">
-                    Sambungan Pejabat (Ext)
+                    Sambungan Pejabat
                   </label>
                   <input
                     type="text"
@@ -652,7 +652,7 @@ export const SelfRegistrationPage: React.FC<SelfRegistrationPageProps> = ({
                 {/* Kelulusan Akademik */}
                 <div className="space-y-1.5">
                   <label className="text-xs font-extrabold text-slate-800">
-                    Kelulusan Akademik (Kelayakan)
+                    Kelulusan Akademik
                   </label>
                   <textarea
                     rows={3}
@@ -717,11 +717,11 @@ export const SelfRegistrationPage: React.FC<SelfRegistrationPageProps> = ({
               <div className="space-y-4">
                 {/* Row 1: IC & Tahun Lahir */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pb-3 border-b border-slate-100">
-                  {/* No. Kad Pengenalan (IC) */}
+                  {/* No. Kad Pengenalan */}
                   <div className="space-y-1.5">
                     <div className="flex items-center justify-between">
                       <label className="text-xs font-extrabold text-slate-800">
-                        No. Kad Pengenalan (IC)
+                        No. Kad Pengenalan
                       </label>
                       <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md">
                         Akses Admin Sahaja
@@ -759,7 +759,7 @@ export const SelfRegistrationPage: React.FC<SelfRegistrationPageProps> = ({
                   {/* Plat No 1 */}
                   <div className="space-y-1.5">
                     <label className="text-xs font-extrabold text-slate-800">
-                      No. Plat Kenderaan 1 (Utama)
+                      No. Plat Kenderaan 1
                     </label>
                     <input
                       type="text"

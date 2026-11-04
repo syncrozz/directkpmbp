@@ -666,7 +666,7 @@ export default function App() {
             <button
               type="button"
               onClick={handleGoHome}
-              title="Kembali ke Halaman Utama (Home)"
+              title="Kembali ke Halaman Utama"
               aria-label="Kembali ke Halaman Utama DIRECTORY KPMBP"
               className="flex items-center gap-2.5 sm:gap-3 cursor-pointer group focus:outline-hidden transition-opacity hover:opacity-90 active:scale-[0.99] shrink-0"
             >
@@ -741,7 +741,7 @@ export default function App() {
                         </span>
                         <span className="text-[9px] text-emerald-600 font-bold mt-0.5 flex items-center gap-1">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
-                          Disahkan (Google Auth)
+                          Disahkan
                         </span>
                       </div>
                     </div>
@@ -781,7 +781,7 @@ export default function App() {
                         className="w-full px-2.5 py-2 text-xs font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-all flex items-center gap-2 cursor-pointer"
                       >
                         <LogOut className="w-3.5 h-3.5 text-rose-500" />
-                        <span>Matikan Mod Admin (Log Keluar)</span>
+                        <span>Log Keluar Pentadbir</span>
                       </button>
                     </div>
                   </div>
@@ -798,7 +798,7 @@ export default function App() {
                   handleToggleAdminMode();
                 }
               }}
-              title={isAdminMode ? 'Keluar Mod Admin' : 'Aktifkan Admin Mode (Google Auth / Emel MARA / Master PIN)'}
+              title={isAdminMode ? 'Keluar Mod Admin' : 'Log Masuk Pentadbir'}
               aria-label={isAdminMode ? 'Keluar Mod Admin' : 'Aktifkan Admin Mode'}
               className={`p-2 sm:p-2.5 rounded-xl sm:rounded-2xl transition-all border cursor-pointer flex items-center justify-center shrink-0 ${
                 isAdminMode
@@ -833,7 +833,7 @@ export default function App() {
             {isAdminMode && (
               <button
                 onClick={() => setIsNavManagerOpen(true)}
-                title="Pengurusan Navigasi Dinamik (SES v4.4)"
+                title="Pengurusan Navigasi Dinamik"
                 aria-label="Pengurusan Navigasi Dinamik"
                 className={`relative p-2 sm:p-2.5 rounded-xl sm:rounded-2xl transition-all border cursor-pointer flex items-center justify-center shrink-0 ${
                   isNavManagerOpen 

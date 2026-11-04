@@ -158,7 +158,7 @@ export const AddEditStaffModal: React.FC<AddEditStaffModalProps> = ({
                 Kemas Kini Maklumat Staf
               </h3>
               <p className="text-xs text-gray-500">
-                17 lajur standard rekod rasmi KPMBP (Import/Eksport CSV Standard)
+                17 lajur standard rekod rasmi KPMBP
               </p>
             </div>
             <button
@@ -352,7 +352,7 @@ export const AddEditStaffModal: React.FC<AddEditStaffModalProps> = ({
             {/* PlatNo1, PlatNo2, PlatNo3 */}
             <div className="space-y-1 bg-slate-50/70 p-3.5 rounded-2xl border border-slate-100">
               <label className="text-[10px] font-bold text-gray-600 uppercase tracking-wider flex items-center gap-1.5 mb-2">
-                <Car className="w-3.5 h-3.5 text-indigo-600" /> Plat Kenderaan (PlatNo1, PlatNo2, PlatNo3)
+                <Car className="w-3.5 h-3.5 text-indigo-600" /> Nombor Plat Kenderaan
               </label>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                 <div>

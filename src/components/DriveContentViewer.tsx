@@ -199,7 +199,7 @@ export const DriveContentViewer: React.FC<DriveContentViewerProps> = ({
 
           <div className="space-y-1">
             <label className="text-[11px] font-extrabold text-indigo-950">
-              Pautan Google Drive (fail PDF atau folder)
+              Pautan Google Drive
             </label>
             <input
               type="url"
@@ -224,12 +224,12 @@ export const DriveContentViewer: React.FC<DriveContentViewerProps> = ({
               ) : (
                 <span>Tampal pautan perkongsian fail PDF atau folder Google Drive.</span>
               )}{' '}
-              Pastikan tetapan perkongsian ditetapkan kepada <b>"Sesiapa sahaja yang mempunyai pautan"</b> (Viewer).
+              Pastikan tetapan perkongsian ditetapkan kepada <b>"Sesiapa sahaja yang mempunyai pautan"</b> sebagai Viewer.
             </p>
           </div>
 
           <div className="space-y-1">
-            <label className="text-[11px] font-extrabold text-indigo-950">Tajuk Paparan (Pilihan)</label>
+            <label className="text-[11px] font-extrabold text-indigo-950">Tajuk Paparan</label>
             <input
               type="text"
               value={draftTitle}

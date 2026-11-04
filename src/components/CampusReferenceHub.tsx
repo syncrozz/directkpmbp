@@ -417,7 +417,7 @@ export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({
                   <div>
                     <div className="flex items-center gap-2">
                       <h4 className="text-xs font-extrabold text-amber-950">
-                        Status Firestore: Akses Terhad (Missing or insufficient permissions)
+                        Status Firestore: Akses Terhad
                       </h4>
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-200/90 text-amber-900">
                         Fallback Aktif
@@ -436,7 +436,7 @@ export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({
               <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl flex items-center gap-2.5 shadow-2xs">
                 <AlertCircle className="w-4 h-4 text-slate-500 shrink-0" />
                 <p className="text-[11px] text-slate-600 font-medium">
-                  {syncErrorMessage || 'Gagal menghubungi pelayan Firestore (Ralat Rangkaian). Portal dipaparkan dalam mod luar talian (Fallback).'}
+                  {syncErrorMessage || 'Gagal menghubungi pelayan Firestore kerana ralat rangkaian. Portal dipaparkan dalam mod luar talian.'}
                 </p>
               </div>
             )}

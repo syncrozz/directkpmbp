@@ -697,7 +697,7 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
                   type="button"
                   onClick={onInstallPWA}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-extrabold shadow-xs transition-all cursor-pointer border border-emerald-500/30"
-                  title="Pasang / Install Aplikasi Directory KPMBP (PWA)"
+                  title="Pasang Aplikasi Direktori"
                 >
                   <Smartphone className="w-3.5 h-3.5" />
                   <span>Pasang App</span>
@@ -727,7 +727,7 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-extrabold">Mod Admin (Kemaskini Rekod)</span>
+                  <span className="text-xs font-extrabold">Mod Pentadbir</span>
                   <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md ${
                     isAdminMode ? 'bg-amber-200 text-amber-900' : 'bg-slate-200 text-slate-700'
                   }`}>
@@ -759,7 +759,7 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
               <div>
                 <h4 className="text-xs md:text-sm font-extrabold text-indigo-950 flex items-center gap-2">
                   <ShieldCheck className="w-4 h-4 text-indigo-600" />
-                  <span>Status Pentadbir Utama (Master Administrator)</span>
+                  <span>Status Pentadbir Utama</span>
                 </h4>
                 <p className="text-[11px] text-slate-500 font-medium mt-0.5">
                   Sistem beroperasi di bawah piawaian satu Master Admin tunggal dengan Google Authentication.
@@ -779,11 +779,11 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="text-slate-500 font-medium">Kaedah Pengesahan:</span>
-                <span className="font-semibold text-slate-700">Firebase Google Auth (Identity Verified)</span>
+                <span className="font-semibold text-slate-700">Firebase Google Auth</span>
               </div>
               <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-500 font-medium">Laluan Alternatif / PIN:</span>
-                <span className="font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">Dinyahaktifkan Sepenuhnya (Zero Bypass)</span>
+                <span className="text-slate-500 font-medium">Laluan Alternatif:</span>
+                <span className="font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">Dinyahaktifkan Sepenuhnya</span>
               </div>
             </div>
           </div>
@@ -796,7 +796,7 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
               <div>
                 <h4 className="text-xs md:text-sm font-extrabold text-indigo-950 flex items-center gap-2">
                   <UserPlus className="w-4 h-4 text-indigo-600" />
-                  <span>Pautan Pendaftaran Kendiri Staf Baharu (Slug)</span>
+                  <span>Pautan Pendaftaran Kendiri Staf Baharu</span>
                 </h4>
                 <p className="text-[11px] text-slate-500 font-medium mt-0.5">
                   Admin boleh menyalin dan menghantar pautan slug ini kepada staf atau pensyarah baharu untuk memasukkan butiran peribadi & perjawatan secara terus.
@@ -858,7 +858,7 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
                     className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-[11px] font-extrabold flex items-center gap-1.5 transition-all cursor-pointer"
                   >
                     <ExternalLink className="w-3.5 h-3.5 text-slate-600" />
-                    <span>Buka Halaman Pendaftaran (Uji Borang)</span>
+                    <span>Buka Halaman Pendaftaran</span>
                   </button>
                 )}
 
@@ -879,7 +879,7 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
               <div className="pt-2.5 border-t border-indigo-100/60">
                 <div className="text-[10.5px] font-extrabold text-slate-600 mb-1.5 flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                  <span>Pratonton Kad Perkongsian Rasmi (Open Graph Image):</span>
+                  <span>Pratonton Kad Perkongsian Rasmi:</span>
                 </div>
                 <div className="rounded-xl overflow-hidden border border-slate-200 bg-white shadow-2xs max-w-sm">
                   <img
@@ -907,7 +907,7 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
                   <h4 className="text-xs font-extrabold text-indigo-950">
-                    Pengurusan Navigasi Dinamik (Parent & Child)
+                    Pengurusan Navigasi Dinamik
                   </h4>
                   <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200">
                     SES v4.4
@@ -992,7 +992,7 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
                         : 'text-slate-700 hover:bg-indigo-50'
                     }`}
                   >
-                    <span>👤 Kakitangan (Staff CSV)</span>
+                    <span>👤 Kakitangan</span>
                     <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-white/20 font-mono">
                       {totalStaffCount || staffList.length}
                     </span>
@@ -1010,7 +1010,7 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
                         : 'text-slate-700 hover:bg-amber-50'
                     }`}
                   >
-                    <span>🏅 Jawatankuasa (Committee CSV)</span>
+                    <span>🏅 Jawatankuasa</span>
                     <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-white/20 font-mono">
                       {totalCommitteeCount || committeeList.length}
                     </span>
@@ -1236,10 +1236,10 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
               <div>
                 <h4 className="text-xs font-extrabold text-amber-950 flex items-center gap-1.5">
                   <ShieldCheck className="w-4 h-4 text-amber-600" />
-                  <span>Penyelenggaraan Integriti: Pembersihan Duplikat Lama (Unit JTM)</span>
+                  <span>Penyelenggaraan Integriti: Pembersihan Duplikat Lama</span>
                 </h4>
                 <p className="text-[11px] text-slate-600 font-medium mt-0.5">
-                  Padam 13 rekod staf lama (Unit "JTM") dari Firestore dan selaraskan platform ke 77 rekod staf rasmi semasa.
+                  Padam 13 rekod staf lama dari Firestore dan selaraskan platform ke 77 rekod staf rasmi semasa.
                 </p>
               </div>
 
@@ -1272,7 +1272,7 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
                 type="button"
                 onClick={handleCleanupDuplicates}
                 disabled={isCleaningDuplicates}
-                title="Padam 13 rekod duplikat lama (Unit JTM) daripada Firestore"
+                title="Padam 13 rekod duplikat lama daripada Firestore"
                 className="text-[11px] text-amber-800 hover:text-amber-950 bg-amber-100/80 hover:bg-amber-200 border border-amber-300 px-3 py-1.5 rounded-xl font-extrabold flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 disabled:opacity-50"
               >
                 <Trash2 className="w-3.5 h-3.5 text-amber-700" />

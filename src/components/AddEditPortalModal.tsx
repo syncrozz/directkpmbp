@@ -258,17 +258,17 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
   const visualPriorityBadge = (() => {
     switch (resolvedVisual.source) {
       case 'custom_image':
-        return { label: 'Keutamaan 1: Imej Tersuai Admin', color: 'bg-indigo-100 text-indigo-800 border-indigo-200' };
+        return { label: 'Imej Tersuai Admin', color: 'bg-indigo-100 text-indigo-800 border-indigo-200' };
       case 'custom_icon':
-        return { label: 'Keutamaan 2: Ikon Tersuai Admin', color: 'bg-purple-100 text-purple-800 border-purple-200' };
+        return { label: 'Ikon Tersuai Admin', color: 'bg-purple-100 text-purple-800 border-purple-200' };
       case 'og_image':
-        return { label: 'Keutamaan 3: Imej Open Graph (Dikesan)', color: 'bg-emerald-100 text-emerald-800 border-emerald-200' };
+        return { label: 'Imej Open Graph Dikesan', color: 'bg-emerald-100 text-emerald-800 border-emerald-200' };
       case 'pwa_icon':
-        return { label: 'Keutamaan 4: Ikon PWA (Dikesan)', color: 'bg-blue-100 text-blue-800 border-blue-200' };
+        return { label: 'Ikon PWA Dikesan', color: 'bg-blue-100 text-blue-800 border-blue-200' };
       case 'favicon':
-        return { label: 'Keutamaan 4: Favicon Laman (Dikesan)', color: 'bg-sky-100 text-sky-800 border-sky-200' };
+        return { label: 'Favicon Laman Dikesan', color: 'bg-sky-100 text-sky-800 border-sky-200' };
       default:
-        return { label: 'Keutamaan 5: Placeholder Sistem Lalai', color: 'bg-slate-100 text-slate-700 border-slate-200' };
+        return { label: 'Placeholder Sistem', color: 'bg-slate-100 text-slate-700 border-slate-200' };
     }
   })();
 
@@ -344,9 +344,39 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
     }
   };
 
+  /**
+   * Sanitizes pasted URL and prevents accidental double-paste (e.g. "https://uppkpmbp.ik-one.biz/https://uppkpmbp.ik-one.biz/")
+   */
+  const cleanPastedUrl = (raw: string): string => {
+    if (!raw) return '';
+    let trimmed = raw.trim();
+
+    // 1. Exact string duplication check (e.g. str + str)
+    if (trimmed.length > 8 && trimmed.length % 2 === 0) {
+      const half = trimmed.length / 2;
+      if (trimmed.slice(0, half) === trimmed.slice(half)) {
+        trimmed = trimmed.slice(0, half);
+      }
+    }
+
+    // 2. Double http(s):// scheme check
+    const matches = trimmed.match(/https?:\/\/[^\s]+/gi);
+    if (matches && matches.length > 1) {
+      trimmed = matches[0];
+    } else {
+      const doubleSchemeMatch = trimmed.match(/^(https?:\/\/[^/]+.*?)(https?:\/\/.*)$/i);
+      if (doubleSchemeMatch) {
+        trimmed = doubleSchemeMatch[1];
+      }
+    }
+
+    return trimmed;
+  };
+
   // Debounced URL Change Handler
   const handleUrlChange = (newVal: string) => {
-    setUrl(newVal);
+    const cleaned = cleanPastedUrl(newVal);
+    setUrl(cleaned);
     setDetectState('idle');
     setDetectStatus(null);
     setDetectError(null);
@@ -356,7 +386,7 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
       debounceTimerRef.current = null;
     }
 
-    const trimmed = newVal.trim();
+    const trimmed = cleaned.trim();
     // Auto-trigger if URL has valid prefix or dot pattern
     if (
       trimmed.length > 7 &&
@@ -370,7 +400,10 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
 
   // Immediate URL Paste Handler
   const handleUrlPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
-    const pastedText = e.clipboardData.getData('text').trim();
+    // Prevent default browser paste that causes double insertion alongside state update
+    e.preventDefault();
+    const rawPasted = e.clipboardData.getData('text');
+    const pastedText = cleanPastedUrl(rawPasted);
     if (pastedText) {
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
@@ -388,7 +421,7 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
       // Trigger detection immediately without debounce
       setTimeout(() => {
         handleDetectMetadata(target);
-      }, 20);
+      }, 50);
     }
   };
 
@@ -476,7 +509,7 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
       return;
     }
 
-    let finalUrl = url.trim();
+    let finalUrl = cleanPastedUrl(url.trim());
     if (!/^https?:\/\//i.test(finalUrl)) {
       finalUrl = `https://${finalUrl}`;
     }
@@ -771,10 +804,10 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
           <div className="space-y-1.5 p-4 bg-indigo-50/50 border border-indigo-100 rounded-2xl">
             <div className="flex items-center justify-between">
               <label className="block text-xs font-extrabold text-indigo-950">
-                1. Alamat Laman Web / Portal URL (Kesan Automatik & Tampal) <span className="text-rose-500">*</span>
+                1. Alamat Portal <span className="text-rose-500">*</span>
               </label>
               <span className="text-[10px] text-indigo-600 font-semibold">
-                Auto-detect aktif (Tampal atau taip URL)
+                Kesan maklumat automatik
               </span>
             </div>
 
@@ -808,24 +841,24 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
                 ) : (
                   <>
                     <Sparkles className="w-3.5 h-3.5" />
-                    <span>Semak Semula / Retry</span>
+                    <span>Kesan Semula</span>
                   </>
                 )}
               </button>
             </div>
 
-            {/* 5-State Feedback Banner (idle, loading, success, partial, error) */}
+            {/* 5-State Feedback Banner */}
             {detectState === 'loading' && (
               <div className="flex items-center gap-2 text-[11px] font-semibold text-indigo-800 bg-indigo-50/90 p-2.5 rounded-xl border border-indigo-200 mt-2 animate-pulse">
                 <Loader2 className="w-4 h-4 text-indigo-600 animate-spin shrink-0" />
-                <span>Sedang mengesan metadata web (Open Graph, favicon, tajuk)...</span>
+                <span>Sedang mengesan maklumat portal...</span>
               </div>
             )}
 
             {detectState === 'success' && (
               <div className="flex items-center gap-2 text-[11px] font-bold text-emerald-800 bg-emerald-50/90 p-2.5 rounded-xl border border-emerald-200 mt-2">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>{detectStatus || 'Metadata lengkap (OG Image, Tajuk & Deskripsi) berjaya dikesan secara automatik.'}</span>
+                <span>{detectStatus || 'Maklumat portal berjaya dikesan secara automatik.'}</span>
               </div>
             )}
 
@@ -852,11 +885,11 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
           {/* Form Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             
-            {/* 2. Portal Name (Manual Override) */}
+            {/* 2. Portal Name */}
             <div className="space-y-1 md:col-span-2">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-extrabold text-slate-700 flex items-center gap-1.5">
-                  <span>2. Nama / Tajuk Portal (Manual Override)</span>
+                  <span>2. Nama Portal</span>
                   <span className="text-rose-500">*</span>
                   {manuallyModified.title && (
                     <span className="text-[10px] text-amber-600 font-bold bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
@@ -872,7 +905,7 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
                     className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 cursor-pointer"
                   >
                     <RotateCcw className="w-3 h-3" />
-                    <span>Gunakan Nilai Dikesan ({detectedMeta.ogTitle || detectedMeta.title})</span>
+                    <span>Gunakan Nilai Dikesan</span>
                   </button>
                 )}
               </div>
@@ -888,11 +921,11 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
               />
             </div>
 
-            {/* 3. Portal Description (Manual Override) */}
+            {/* 3. Portal Description */}
             <div className="space-y-1 md:col-span-2">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-extrabold text-slate-700 flex items-center gap-1.5">
-                  <span>3. Penerangan Ringkas Portal (Manual Override)</span>
+                  <span>3. Penerangan Portal</span>
                   {manuallyModified.desc && (
                     <span className="text-[10px] text-amber-600 font-bold bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
                       Tersuai
@@ -926,7 +959,7 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
             {/* 4. Audience Selector */}
             <div className="space-y-1">
               <label className="text-xs font-extrabold text-slate-700">
-                4. Sasaran Pengguna (Audience)
+                4. Sasaran Pengguna
               </label>
               <div className="grid grid-cols-3 gap-2">
                 {(['Pelajar', 'Staf', 'Kedua-dua'] as const).map((aud) => (
@@ -949,7 +982,7 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
             {/* 5. Category Selector */}
             <div className="space-y-1">
               <label className="text-xs font-extrabold text-slate-700">
-                5. Kategori Portal (Configurable)
+                5. Kategori Portal
               </label>
               <select
                 value={category}
@@ -961,7 +994,7 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
                     {cat}
                   </option>
                 ))}
-                <option value="Lain-lain">Lain-lain (Tersuai)</option>
+                <option value="Lain-lain">Lain-lain</option>
               </select>
 
               {category === 'Lain-lain' && (
@@ -969,18 +1002,18 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
                   type="text"
                   value={customCategory}
                   onChange={(e) => setCustomCategory(e.target.value)}
-                  placeholder="Masukkan nama kategori tersuai..."
+                  placeholder="Masukkan nama kategori..."
                   className="w-full mt-2 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800"
                 />
               )}
             </div>
 
-            {/* 6. Custom Portal Image (Keutamaan 1 & 2) */}
+            {/* 6. Custom Portal Image */}
             <div className="space-y-1.5 md:col-span-2 p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
                   <ImageIcon className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>6. Gambar Portal (Upload / URL Tersuai — Keutamaan 1)</span>
+                  <span>6. Gambar Portal</span>
                 </label>
 
                 {imageUrl && (
@@ -1023,14 +1056,15 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
                   type="button"
                   onClick={() => imageFileInputRef.current?.click()}
                   disabled={isUploadingImage}
-                  className="px-4 py-2.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shrink-0 disabled:opacity-50"
+                  title="Pilih fail imej dari komputer/peranti (Dimampatkan secara automatik)"
+                  className="px-4 py-2.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all cursor-pointer shrink-0 disabled:opacity-50 active:scale-95 shadow-2xs hover:border-indigo-300"
                 >
                   {isUploadingImage ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600" />
                   ) : (
                     <Upload className="w-3.5 h-3.5 text-indigo-600" />
                   )}
-                  <span>{isUploadingImage ? 'Memuat Naik...' : 'Muat Naik Imej (Firebase)'}</span>
+                  <span>{isUploadingImage ? 'Mengoptimumkan...' : 'Muat Naik Imej'}</span>
                 </button>
               </div>
 
@@ -1050,12 +1084,12 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
               )}
             </div>
 
-            {/* 7. Custom Portal Icon (Keutamaan 2 & 4) */}
+            {/* 7. Custom Portal Icon */}
             <div className="space-y-1.5 md:col-span-2 p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
                   <Globe className="w-3.5 h-3.5 text-purple-600" />
-                  <span>7. Ikon Portal (Upload / URL Ikon Tersuai — Keutamaan 2)</span>
+                  <span>7. Ikon Portal</span>
                 </label>
 
                 {iconUrl && (
@@ -1096,14 +1130,15 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
                   type="button"
                   onClick={() => iconFileInputRef.current?.click()}
                   disabled={isUploadingIcon}
-                  className="px-4 py-2.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shrink-0 disabled:opacity-50"
+                  title="Pilih fail ikon dari komputer/peranti (Dimampatkan secara automatik)"
+                  className="px-4 py-2.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all cursor-pointer shrink-0 disabled:opacity-50 active:scale-95 shadow-2xs hover:border-purple-300"
                 >
                   {isUploadingIcon ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-600" />
                   ) : (
                     <Upload className="w-3.5 h-3.5 text-purple-600" />
                   )}
-                  <span>{isUploadingIcon ? 'Memuat Naik...' : 'Muat Naik Ikon'}</span>
+                  <span>{isUploadingIcon ? 'Mengoptimumkan...' : 'Muat Naik Ikon'}</span>
                 </button>
               </div>
 

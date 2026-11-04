@@ -467,7 +467,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                   </span>
                 </h3>
                 <p className="text-xs text-slate-500 font-medium">
-                  Urus hierarki Navigasi Utama (Parent) & Navigasi Anak (Child) secara dinamik dengan storan Firestore
+                  Urus hierarki Navigasi Utama dan Navigasi Anak secara dinamik dengan storan Firestore
                 </p>
               </div>
             </div>
@@ -523,7 +523,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                 }`}
               >
                 <Layers className="w-3.5 h-3.5" />
-                <span>Navigasi Utama (Parent) ({parents.length})</span>
+                <span>Navigasi Utama ({parents.length})</span>
               </button>
               <button
                 type="button"
@@ -535,7 +535,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                 }`}
               >
                 <FolderTree className="w-3.5 h-3.5" />
-                <span>Navigasi Anak (Child) ({children.length})</span>
+                <span>Navigasi Anak ({children.length})</span>
               </button>
             </div>
 
@@ -545,7 +545,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
               className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-extrabold shadow-xs transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 shrink-0"
             >
               <Plus className="w-4 h-4" />
-              <span>{activeTab === 'parents' ? 'Tambah Parent' : 'Tambah Child'}</span>
+              <span>{activeTab === 'parents' ? 'Tambah Induk' : 'Tambah Anak'}</span>
             </button>
           </div>
 
@@ -829,7 +829,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
               className="text-[11px] font-extrabold text-slate-500 hover:text-amber-800 bg-slate-100 hover:bg-amber-50 px-3 py-1.5 rounded-xl border border-slate-200 hover:border-amber-200 flex items-center gap-1.5 cursor-pointer transition-colors"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span>Reset Struktur Lalai (SES v4.4)</span>
+              <span>Reset Struktur Lalai</span>
             </button>
 
             <button
@@ -874,7 +874,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                         }`}
                       >
                         <Layers className="w-3.5 h-3.5 text-indigo-600" />
-                        <span>Induk (Parent)</span>
+                        <span>Induk</span>
                       </button>
                       <button
                         type="button"
@@ -886,7 +886,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                         }`}
                       >
                         <FolderTree className="w-3.5 h-3.5 text-indigo-600" />
-                        <span>Anak (Child)</span>
+                        <span>Anak</span>
                       </button>
                     </div>
                   </div>
@@ -894,7 +894,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                   {/* Parent Association Dropdown (Only for Child) */}
                   {formState.type === 'child' && (
                     <div className="space-y-1">
-                      <label className="text-[11px] font-extrabold text-slate-700">Pilih Navigasi Induk (Parent)</label>
+                      <label className="text-[11px] font-extrabold text-slate-700">Pilih Navigasi Induk</label>
                       <select
                         value={formState.parentId}
                         onChange={(e) => setFormState({ ...formState, parentId: e.target.value })}
@@ -934,7 +934,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                   <div className="space-y-1.5 p-3 rounded-2xl bg-indigo-50/60 border border-indigo-100">
                     <div className="flex items-center justify-between">
                       <label className="text-[11px] font-extrabold text-indigo-950 flex items-center gap-1.5">
-                        <span>URL Slug (Laluan Bersih / Clean URL)</span>
+                        <span>URL Slug</span>
                         <span className="text-[9px] font-extrabold px-1.5 py-0.2 rounded-md bg-indigo-100 text-indigo-800 border border-indigo-200">
                           SES v4.4
                         </span>
@@ -1060,7 +1060,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                           <div className="space-y-1">
                             <div className="flex items-center justify-between">
                               <label className="text-[11px] font-extrabold text-slate-800">
-                                Pautan Google Drive (fail PDF atau folder)
+                                Pautan Google Drive
                               </label>
                               {liveDriveParsed ? (
                                 <span className="text-[9.5px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
@@ -1081,13 +1081,13 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                               className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono bg-white outline-none focus:ring-2 focus:ring-violet-300"
                             />
                             <p className="text-[10px] text-slate-500 leading-relaxed">
-                              Pastikan perkongsian fail ditetapkan kepada <b>"Sesiapa sahaja yang mempunyai pautan"</b> (Viewer). Paparan akan menyokong skrin penuh, butang Buka di Drive, dan iframe automatik.
+                              Pastikan perkongsian fail ditetapkan kepada <b>"Sesiapa sahaja yang mempunyai pautan"</b> sebagai Viewer. Paparan akan menyokong skrin penuh, butang Buka di Drive, dan iframe automatik.
                             </p>
                           </div>
 
                           <div className="space-y-1">
                             <label className="text-[11px] font-extrabold text-slate-800">
-                              Tajuk Paparan Dokumen (Pilihan)
+                              Tajuk Paparan Dokumen
                             </label>
                             <input
                               type="text"
