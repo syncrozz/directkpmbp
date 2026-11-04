@@ -13,7 +13,12 @@
 import React, { useState } from 'react';
 import { NavigationItem } from '../types';
 import { renderNavIcon, saveNavigationItems } from '../services/navigationService';
-import { generateThumbnailForItem, generateBulkThumbnails, isEligibleDrivePdf } from '../services/pdfThumbnailService';
+import {
+  generateThumbnailForItem,
+  generateBulkThumbnails,
+  isEligibleDrivePdf,
+  extractGoogleDriveFileId,
+} from '../services/pdfThumbnailService';
 import {
   FolderTree,
   ChevronRight,
@@ -34,6 +39,7 @@ interface EmptyPageContainerProps {
   item: NavigationItem;
   parentItem?: NavigationItem;
   grandchildren: NavigationItem[];
+  allItems?: NavigationItem[];
   onSelectGrandchild: (grandchild: NavigationItem) => void;
   onSelectParent?: (parentId: string) => void;
   isAdminMode?: boolean;
@@ -44,6 +50,7 @@ export const EmptyPageContainer: React.FC<EmptyPageContainerProps> = ({
   item,
   parentItem,
   grandchildren,
+  allItems = [],
   onSelectGrandchild,
   onSelectParent,
   isAdminMode = false,
@@ -55,7 +62,14 @@ export const EmptyPageContainer: React.FC<EmptyPageContainerProps> = ({
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const eligiblePdfs = grandchildren.filter(isEligibleDrivePdf);
-  const readyThumbnailsCount = eligiblePdfs.filter((g) => g.thumbnailUrl && g.thumbnailStatus === 'ready').length;
+  const readyThumbnailsCount = eligiblePdfs.filter((g) => {
+    const fid = extractGoogleDriveFileId(g.driveUrl);
+    const hasThumb = Boolean(g.thumbnailUrl) || Boolean(fid);
+    return hasThumb && g.thumbnailStatus !== 'processing' && g.thumbnailStatus !== 'generating';
+  }).length;
+  const failedThumbnailsCount = eligiblePdfs.filter(
+    (g) => (g.thumbnailStatus === 'failed' || g.thumbnailStatus === 'error') && !g.thumbnailUrl
+  ).length;
 
   // Single Item Thumbnail Regeneration (Admin)
   const handleRegenerateThumbnail = async (e: React.MouseEvent, gc: NavigationItem) => {
@@ -68,21 +82,24 @@ export const EmptyPageContainer: React.FC<EmptyPageContainerProps> = ({
     try {
       const result = await generateThumbnailForItem(gc, true);
       if (result.success) {
-        // Persist change to Firestore
+        // Persist change to Firestore using full list
         const cached = localStorage.getItem('kpmbp_navigation_items_v4');
-        let allItems: NavigationItem[] = grandchildren;
-        if (cached) {
+        let fullList: NavigationItem[] = allItems.length > 0 ? allItems : grandchildren;
+        if (cached && fullList.length <= grandchildren.length) {
           try {
-            allItems = JSON.parse(cached);
+            const parsed = JSON.parse(cached);
+            if (Array.isArray(parsed) && parsed.length > fullList.length) {
+              fullList = parsed;
+            }
           } catch {
             // fallback
           }
         }
-        const updatedList = allItems.map((itm) => (itm.id === gc.id ? result.item : itm));
+        const updatedList = fullList.map((itm) => (itm.id === gc.id ? result.item : itm));
         await saveNavigationItems(updatedList);
         setNotification({
           type: 'success',
-          message: `Thumbnail bagi "${gc.name}" berjaya dijana dan disimpan.`,
+          message: `Thumbnail bagi "${gc.name}" berjaya dijana dan dimuat naik ke Firebase Storage.`,
         });
       } else {
         setNotification({
@@ -105,31 +122,46 @@ export const EmptyPageContainer: React.FC<EmptyPageContainerProps> = ({
   };
 
   // Bulk Generation for all eligible grandchildren in this container (Admin)
-  const handleBulkGenerate = async () => {
+  const handleBulkGenerate = async (onlyFailed = false) => {
     if (isBulkGenerating || eligiblePdfs.length === 0) return;
 
+    const targetEligible = onlyFailed
+      ? eligiblePdfs.filter((g) => g.thumbnailStatus === 'failed' || g.thumbnailStatus === 'error' || !g.thumbnailUrl)
+      : eligiblePdfs;
+
+    if (targetEligible.length === 0) {
+      setNotification({
+        type: 'success',
+        message: 'Semua thumbnail dokumen telah tersedia dalam status berjaya.',
+      });
+      return;
+    }
+
     setIsBulkGenerating(true);
-    setBulkProgress({ completed: 0, total: eligiblePdfs.length });
+    setBulkProgress({ completed: 0, total: targetEligible.length });
     setNotification(null);
 
     try {
       const cached = localStorage.getItem('kpmbp_navigation_items_v4');
-      let allItems: NavigationItem[] = grandchildren;
-      if (cached) {
+      let fullList: NavigationItem[] = allItems.length > 0 ? allItems : grandchildren;
+      if (cached && fullList.length <= grandchildren.length) {
         try {
-          allItems = JSON.parse(cached);
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > fullList.length) {
+            fullList = parsed;
+          }
         } catch {
           // fallback
         }
       }
 
-      const result = await generateBulkThumbnails(allItems, true, (p) => {
+      const result = await generateBulkThumbnails(fullList, true, (p) => {
         setBulkProgress({ completed: p.completed, total: p.total });
       });
 
       setNotification({
         type: 'success',
-        message: `Selesai: ${result.successCount} thumbnail berjaya dijana (${result.failureCount} gagal, ${result.skippedCount} dilangkau).`,
+        message: `Selesai: ${result.successCount} thumbnail berjaya dijana & disimpan ke Firebase Storage (${result.failureCount} gagal, ${result.skippedCount} dilangkau).`,
       });
     } catch (err: any) {
       setNotification({
@@ -201,7 +233,7 @@ export const EmptyPageContainer: React.FC<EmptyPageContainerProps> = ({
                 {eligiblePdfs.length > 0 && (
                   <button
                     type="button"
-                    onClick={handleBulkGenerate}
+                    onClick={() => handleBulkGenerate(false)}
                     disabled={isBulkGenerating}
                     title="Jana Semula Semua Thumbnail PDF di halaman ini"
                     className="px-3.5 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white rounded-xl text-xs font-extrabold shadow-sm transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 disabled:opacity-50 shrink-0"
@@ -285,8 +317,13 @@ export const EmptyPageContainer: React.FC<EmptyPageContainerProps> = ({
             {grandchildren.map((gc, index) => {
               const isDrive = gc.displayType === 'drive' || Boolean(gc.driveUrl);
               const isEligible = isEligibleDrivePdf(gc);
-              const isGenerating = generatingIds.has(gc.id) || gc.thumbnailStatus === 'generating';
-              const hasThumbnail = Boolean(gc.thumbnailUrl) && gc.thumbnailStatus === 'ready';
+              const fileId = isEligible ? extractGoogleDriveFileId(gc.driveUrl) : null;
+              const isGenerating = generatingIds.has(gc.id) || gc.thumbnailStatus === 'processing' || gc.thumbnailStatus === 'generating';
+              const effectiveThumbnailUrl =
+                gc.thumbnailUrl || (fileId ? `/thumbnails/${fileId}.png` : undefined);
+              const hasThumbnail =
+                Boolean(effectiveThumbnailUrl) && !isGenerating;
+              const isFailed = (gc.thumbnailStatus === 'failed' || gc.thumbnailStatus === 'error') && !effectiveThumbnailUrl;
 
               return (
                 <div
@@ -308,7 +345,7 @@ export const EmptyPageContainer: React.FC<EmptyPageContainerProps> = ({
                         ) : hasThumbnail ? (
                           <>
                             <img
-                              src={gc.thumbnailUrl}
+                              src={effectiveThumbnailUrl}
                               alt={`Lakaran muka surat 1 - ${gc.name}`}
                               className="w-full h-full object-contain rounded drop-shadow-sm transition-transform duration-300 group-hover:scale-[1.02]"
                               loading="lazy"
@@ -339,7 +376,13 @@ export const EmptyPageContainer: React.FC<EmptyPageContainerProps> = ({
                                 Dokumen PDF Rasmi
                               </span>
                               <span className="text-[10px] text-slate-400 font-medium">
-                                Klik untuk melihat kandungan
+                                {isFailed && isAdminMode ? (
+                                  <span className="text-rose-600 font-bold" title={gc.thumbnailError}>
+                                    Gagal dijana (klik ikon semula)
+                                  </span>
+                                ) : (
+                                  'Klik untuk melihat kandungan'
+                                )}
                               </span>
                             </div>
                           </div>

@@ -941,6 +941,7 @@ export default function App() {
             grandchildren={navigationItems.filter(
               (gc) => gc.type === 'grandchild' && gc.parentId === activeNavItem.id && gc.isActive
             )}
+            allItems={navigationItems}
             onSelectGrandchild={(gc) => handleSelectDestination(gc.id || gc.destination)}
             onSelectParent={(pId) => handleSelectDestination(pId)}
             isAdminMode={isAdminMode}

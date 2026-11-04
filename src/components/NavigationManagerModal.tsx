@@ -187,7 +187,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
 
   const eligiblePdfItems = useMemo(() => items.filter(isEligibleDrivePdf), [items]);
   const readyThumbnailsCount = useMemo(
-    () => eligiblePdfItems.filter((i) => i.thumbnailUrl && i.thumbnailStatus === 'ready').length,
+    () => eligiblePdfItems.filter((i) => i.thumbnailUrl && (i.thumbnailStatus === 'generated' || i.thumbnailStatus === 'ready')).length,
     [eligiblePdfItems]
   );
 

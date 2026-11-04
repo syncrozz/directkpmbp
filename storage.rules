@@ -23,19 +23,25 @@ service firebase.storage {
         request.auth.token.email == 'cikgukyee@gmail.com' ||
         request.auth.token.email == 'kpmbp2u@gmail.com' ||
         request.auth.token.email == 'khaikerr@gmail.com' ||
-        request.auth.token.email == 'festivalseni.kpmbp@gmail.com'
+        request.auth.token.email == 'festivalseni.kpmbp@gmail.com' ||
+        request.auth.token.email == 'kpmbppsn@gmail.com'
       );
     }
 
-    // Helper: Enforce max 5MB file size and image content type for staff assets
+    // Helper: Enforce max 5MB file size and image content type for platform assets
     function isValidImage() {
       return request.resource.size < 5 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
     }
 
     // --- DIRECTKPMBP Isolated Platform Namespace ---
-    // Public read for official staff avatars and assets
-    // Write strictly restricted to verified DIRECTKPMBP Master Admins
+    // Thumbnails: Public read, upload permitted for valid document thumbnail images (<5MB, image/*)
+    match /platforms/directkpmbp/thumbnails/{allPaths=**} {
+      allow read: if true;
+      allow write: if isValidImage();
+    }
+
+    // General platform assets (avatars, staff photos, branding): Restricted to Master Admins
     match /platforms/directkpmbp/{allPaths=**} {
       allow read: if true;
       allow write: if isDirectKpmbpAdmin() && isValidImage();

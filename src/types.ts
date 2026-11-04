@@ -137,7 +137,15 @@ export interface PortalSubscriptionResult {
 export type NavigationType = 'parent' | 'child' | 'grandchild';
 export type NavigationDisplayType = 'module' | 'drive' | 'empty_page';
 
-export type ThumbnailStatus = 'idle' | 'generating' | 'ready' | 'error';
+export type ThumbnailStatus =
+  | 'idle'
+  | 'pending'
+  | 'processing'
+  | 'generating'
+  | 'generated'
+  | 'ready'
+  | 'failed'
+  | 'error';
 
 export interface NavigationItem {
   id: string; // Stable unique identifier e.g. "nav_directory"

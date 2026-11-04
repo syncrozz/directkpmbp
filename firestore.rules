@@ -24,7 +24,8 @@ service cloud.firestore {
         request.auth.token.email == 'cikgukyee@gmail.com' ||
         request.auth.token.email == 'kpmbp2u@gmail.com' ||
         request.auth.token.email == 'khaikerr@gmail.com' ||
-        request.auth.token.email == 'festivalseni.kpmbp@gmail.com'
+        request.auth.token.email == 'festivalseni.kpmbp@gmail.com' ||
+        request.auth.token.email == 'kpmbppsn@gmail.com'
       );
     }
 

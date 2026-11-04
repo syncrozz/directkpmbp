@@ -5,12 +5,12 @@
  * DIRECTKPMBP — AUTOMATIC PDF THUMBNAIL GENERATION SERVICE
  * SYNCROZZ ENGINEERING STANDARD
  * 
- * Provides:
- * 1. Extraction of Google Drive File IDs from registered URLs
- * 2. High-fidelity first page rendering to WebP/PNG using PDF.js & Canvas
- * 3. Secure Firebase Storage persistence (platforms/directkpmbp/thumbnails/...)
- * 4. Idempotent caching, change detection, and batch processing
- * 5. Multi-tier fallbacks ensuring zero broken images across mobile & desktop
+ * Pipeline:
+ * 1. Resolves fileId and resourcekey from Google Drive URLs
+ * 2. Fetches direct authorized PDF binary via secure proxy with PDF magic byte validation
+ * 3. Renders Page 1 only using PDF.js & Canvas with crisp proportions & white background
+ * 4. Persists high-efficiency WebP/PNG thumbnail to Firebase Storage without duplicate files
+ * 5. Saves resulting thumbnail URL and status ('pending' | 'processing' | 'generated' | 'failed') in Firestore
  */
 
 import * as pdfjsLib from 'pdfjs-dist';
@@ -20,11 +20,10 @@ import { NavigationItem } from '../types';
 import { saveNavigationItems } from './navigationService';
 import { parseTakwimLink } from './takwimService';
 
-// Configure PDF.js worker using standard ESM worker from CDN to avoid bundler packaging issues
+// Configure PDF.js worker using local matching version to avoid version drift & CSP issues
 if (typeof window !== 'undefined' && pdfjsLib.GlobalWorkerOptions) {
   try {
-    pdfjsLib.GlobalWorkerOptions.workerSrc =
-      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs';
+    pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
   } catch (_e) {
     // Ignore worker assignment error if already frozen
   }
@@ -80,6 +79,30 @@ export function extractGoogleDriveFileId(url?: string | null): string | null {
 }
 
 /**
+ * Extracts optional Google Drive resourcekey for older protected files (post-2021 Drive update)
+ */
+export function extractGoogleDriveResourceKey(url?: string | null): string | null {
+  if (!url) return null;
+  const input = url.trim();
+  if (!input) return null;
+
+  try {
+    const parsedUrl = new URL(input);
+    const key = parsedUrl.searchParams.get('resourcekey');
+    if (key && /^[a-zA-Z0-9_-]+$/.test(key)) {
+      return key;
+    }
+  } catch {
+    const match = input.match(/[?&]resourcekey=([a-zA-Z0-9_-]+)/);
+    if (match && match[1]) {
+      return match[1];
+    }
+  }
+
+  return null;
+}
+
+/**
  * Determines whether a navigation item is an eligible Google Drive document
  */
 export function isEligibleDrivePdf(item: NavigationItem): boolean {
@@ -93,7 +116,7 @@ export function isEligibleDrivePdf(item: NavigationItem): boolean {
 }
 
 /**
- * Renders page 1 of a PDF into an HTML5 Canvas using PDF.js
+ * Renders page 1 only of a PDF into an HTML5 Canvas using PDF.js
  */
 async function renderPdfBufferToCanvas(data: ArrayBuffer | Uint8Array): Promise<HTMLCanvasElement> {
   const loadingTask = pdfjsLib.getDocument({
@@ -104,10 +127,10 @@ async function renderPdfBufferToCanvas(data: ArrayBuffer | Uint8Array): Promise<
   const pdfDocument = await loadingTask.promise;
   const firstPage = await pdfDocument.getPage(1);
 
-  // Target viewport width of ~800-1000px for crisp cards on high-DPI displays
+  // Target viewport width of ~800-900px for crisp cards on high-DPI displays
   const unscaledViewport = firstPage.getViewport({ scale: 1.0 });
-  const desiredWidth = 900;
-  const scale = Math.max(1.0, Math.min(2.5, desiredWidth / unscaledViewport.width));
+  const desiredWidth = 850;
+  const scale = desiredWidth / unscaledViewport.width;
   const viewport = firstPage.getViewport({ scale });
 
   const canvas = document.createElement('canvas');
@@ -119,7 +142,7 @@ async function renderPdfBufferToCanvas(data: ArrayBuffer | Uint8Array): Promise<
   canvas.width = Math.floor(viewport.width);
   canvas.height = Math.floor(viewport.height);
 
-  // White background for documents
+  // White background for documents to avoid transparent artifacts
   context.fillStyle = '#FFFFFF';
   context.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -155,7 +178,7 @@ async function renderImageUrlToCanvas(imageUrl: string): Promise<HTMLCanvasEleme
       resolve(canvas);
     };
     img.onerror = () => {
-      reject(new Error('Gagal memuatkan imej sumber dokumen.'));
+      reject(new Error('Gagal memuatkan imej sumber dokumen daripada Google Drive.'));
     };
     img.src = imageUrl;
   });
@@ -166,7 +189,7 @@ async function renderImageUrlToCanvas(imageUrl: string): Promise<HTMLCanvasEleme
  */
 async function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   return new Promise((resolve, reject) => {
-    // Try modern WebP first
+    // Try modern WebP first with optimized quality
     canvas.toBlob(
       (blob) => {
         if (blob) {
@@ -183,18 +206,19 @@ async function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
         }
       },
       'image/webp',
-      0.90
+      0.88
     );
   });
 }
 
 /**
  * Uploads generated thumbnail blob to Firebase Storage and returns public URL
+ * Uses deterministic path without timestamps to avoid creating duplicate Storage files
  */
 async function uploadThumbnailBlob(blob: Blob, fileId: string): Promise<string> {
   const ext = blob.type.includes('png') ? 'png' : 'webp';
-  const timestamp = Date.now();
-  const storagePath = `platforms/directkpmbp/thumbnails/${fileId}_${timestamp}.${ext}`;
+  // Deterministic file path prevents storage duplication across regenerations
+  const storagePath = `platforms/directkpmbp/thumbnails/${fileId}.${ext}`;
   const storageRef = ref(storage, storagePath);
 
   // Refresh token if admin is authenticated
@@ -206,17 +230,42 @@ async function uploadThumbnailBlob(blob: Blob, fileId: string): Promise<string> 
     }
   }
 
-  const snapshot = await uploadBytes(storageRef, blob, {
-    contentType: blob.type || 'image/webp',
-    cacheControl: 'public, max-age=31536000, immutable',
-    customMetadata: {
-      sourceFileId: fileId,
-      generator: 'DirectoryKPMBP-PdfThumbnailService',
-      generatedAt: new Date().toISOString(),
-    },
-  });
+  try {
+    const snapshot = await uploadBytes(storageRef, blob, {
+      contentType: blob.type || 'image/webp',
+      cacheControl: 'public, max-age=31536000, immutable',
+      customMetadata: {
+        sourceFileId: fileId,
+        generator: 'DirectoryKPMBP-PdfThumbnailService',
+        generatedAt: new Date().toISOString(),
+      },
+    });
 
-  return getDownloadURL(snapshot.ref);
+    return await getDownloadURL(snapshot.ref);
+  } catch (storageErr: any) {
+    console.warn('[PdfThumbnailService] Firebase Storage upload notice:', storageErr?.message);
+    // Reliable fallback: Persist to applet thumbnail storage
+    try {
+      const storeResp = await fetch(`/api/pdf/thumbnail-store?id=${encodeURIComponent(fileId)}&ext=${ext}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': blob.type || 'image/webp',
+        },
+        body: blob,
+      });
+
+      if (storeResp.ok) {
+        const storeData = await storeResp.json();
+        if (storeData.url) {
+          return storeData.url;
+        }
+      }
+    } catch (storeErr: any) {
+      console.warn('[PdfThumbnailService] Fallback store notice:', storeErr?.message);
+    }
+
+    throw storageErr;
+  }
 }
 
 export interface ThumbnailGenerationResult {
@@ -228,14 +277,15 @@ export interface ThumbnailGenerationResult {
 /**
  * Generates thumbnail for a single navigation item
  * 
- * Pipeline:
- * 1. Resolves fileId from driveUrl
- * 2. Attempts fetching PDF bytes from /api/pdf/proxy?id={fileId}
- * 3. Renders Page 1 with PDF.js on Canvas
- * 4. Fallback: If PDF.js fails or stream is direct image, uses /api/pdf/thumbnail-source?id={fileId}
- * 5. Converts Canvas to WebP blob
- * 6. Uploads to Firebase Storage
- * 7. Returns updated NavigationItem with thumbnail metadata
+ * Process:
+ * 1. Resolves fileId & resourcekey from driveUrl
+ * 2. Fetches PDF bytes from /api/pdf/proxy?id={fileId}&resourcekey={resourcekey}
+ * 3. Validates PDF magic header
+ * 4. Renders Page 1 with PDF.js on Canvas
+ * 5. Fallback: If PDF.js buffer fails, loads direct page 1 preview from /api/pdf/thumbnail-source
+ * 6. Converts Canvas to WebP blob
+ * 7. Uploads to Firebase Storage
+ * 8. Returns updated NavigationItem with status: 'generated' or 'failed'
  */
 export async function generateThumbnailForItem(
   item: NavigationItem,
@@ -253,12 +303,14 @@ export async function generateThumbnailForItem(
   }
 
   const fileId = extractGoogleDriveFileId(item.driveUrl);
+  const resourcekey = extractGoogleDriveResourceKey(item.driveUrl);
+
   if (!fileId) {
     return {
       success: false,
       item: {
         ...item,
-        thumbnailStatus: 'error',
+        thumbnailStatus: 'failed',
         thumbnailError: 'ID fail Google Drive tidak dapat dikenal pasti.',
       },
       error: 'ID fail Google Drive tidak sah.',
@@ -266,12 +318,12 @@ export async function generateThumbnailForItem(
   }
 
   // Caching: Avoid re-generation if thumbnail already exists and source file ID matches
-  if (
-    !forceRegenerate &&
+  const isAlreadyGenerated =
     item.thumbnailUrl &&
-    item.thumbnailStatus === 'ready' &&
-    item.thumbnailFileId === fileId
-  ) {
+    (item.thumbnailStatus === 'generated' || item.thumbnailStatus === 'ready') &&
+    item.thumbnailFileId === fileId;
+
+  if (!forceRegenerate && isAlreadyGenerated) {
     return {
       success: true,
       item,
@@ -280,14 +332,15 @@ export async function generateThumbnailForItem(
 
   let canvas: HTMLCanvasElement | null = null;
   let lastError: string | null = null;
+  const rKeyParam = resourcekey ? `&resourcekey=${encodeURIComponent(resourcekey)}` : '';
 
-  // Tier 1: Fetch PDF stream via proxy and render page 1 using PDF.js
+  // Tier 1: Fetch actual PDF stream via authorized proxy and render page 1 using PDF.js
   try {
-    const proxyUrl = `/api/pdf/proxy?id=${encodeURIComponent(fileId)}`;
+    const proxyUrl = `/api/pdf/proxy?id=${encodeURIComponent(fileId)}${rKeyParam}`;
     const response = await fetch(proxyUrl);
     if (response.ok) {
       const arrayBuffer = await response.arrayBuffer();
-      // Verify buffer has PDF magic header %PDF- or minimum length
+      // Verify buffer has PDF magic header %PDF- (0x25, 0x50, 0x44, 0x46)
       const uint8 = new Uint8Array(arrayBuffer);
       const isPdfHeader =
         uint8.length > 4 &&
@@ -298,34 +351,46 @@ export async function generateThumbnailForItem(
 
       if (isPdfHeader) {
         canvas = await renderPdfBufferToCanvas(arrayBuffer);
+      } else {
+        lastError = 'Data yang diterima daripada Google Drive bukan bait PDF yang sah.';
+      }
+    } else {
+      try {
+        const errorData = await response.json();
+        lastError = errorData?.error || `Pelayan Google Drive membalas status HTTP ${response.status}.`;
+      } catch {
+        lastError = `Ralat muat turun HTTP ${response.status}.`;
       }
     }
   } catch (pdfErr: any) {
     console.warn('[PdfThumbnailService] Tier 1 Notice (PDF.js buffer):', pdfErr?.message || pdfErr);
-    lastError = pdfErr?.message || 'Gagal memproses bait PDF.';
+    lastError = pdfErr?.message || 'Gagal memproses bait fail PDF.';
   }
 
   // Tier 2 Fallback: Fetch direct page 1 thumbnail from /api/pdf/thumbnail-source
   if (!canvas) {
     try {
-      const sourceUrl = `/api/pdf/thumbnail-source?id=${encodeURIComponent(fileId)}`;
+      const sourceUrl = `/api/pdf/thumbnail-source?id=${encodeURIComponent(fileId)}${rKeyParam}`;
       canvas = await renderImageUrlToCanvas(sourceUrl);
     } catch (sourceErr: any) {
       console.warn('[PdfThumbnailService] Tier 2 Notice (Direct Preview):', sourceErr?.message || sourceErr);
-      lastError = sourceErr?.message || 'Gagal mendapatkan pratonton daripada Google Drive.';
+      if (!lastError) {
+        lastError = sourceErr?.message || 'Gagal mendapatkan pratonton daripada Google Drive.';
+      }
     }
   }
 
   if (!canvas) {
+    const detailedError = lastError || 'Gagal menjana lakaran kenit (thumbnail) daripada dokumen sumber.';
     return {
       success: false,
       item: {
         ...item,
-        thumbnailStatus: 'error',
+        thumbnailStatus: 'failed',
         thumbnailFileId: fileId,
-        thumbnailError: lastError || 'Gagal menjana lakaran kenit (thumbnail) daripada dokumen sumber.',
+        thumbnailError: detailedError,
       },
-      error: lastError || 'Gagal menjana imej thumbnail.',
+      error: detailedError,
     };
   }
 
@@ -337,7 +402,7 @@ export async function generateThumbnailForItem(
     const updatedItem: NavigationItem = {
       ...item,
       thumbnailUrl: downloadUrl,
-      thumbnailStatus: 'ready',
+      thumbnailStatus: 'generated',
       thumbnailGeneratedAt: new Date().toISOString(),
       thumbnailFileId: fileId,
       thumbnailError: undefined,
@@ -353,15 +418,16 @@ export async function generateThumbnailForItem(
     };
   } catch (uploadErr: any) {
     console.error('[PdfThumbnailService] Storage Upload Error:', uploadErr);
+    const errText = `Ralat muat naik ke Firebase Storage: ${uploadErr?.message || uploadErr}`;
     return {
       success: false,
       item: {
         ...item,
-        thumbnailStatus: 'error',
+        thumbnailStatus: 'failed',
         thumbnailFileId: fileId,
-        thumbnailError: `Ralat muat naik ke Firebase Storage: ${uploadErr?.message || uploadErr}`,
+        thumbnailError: errText,
       },
-      error: uploadErr?.message || 'Ralat muat naik ke storan Firebase.',
+      error: errText,
     };
   }
 }
@@ -402,12 +468,13 @@ export async function generateBulkThumbnails(
     const fileId = extractGoogleDriveFileId(item.driveUrl);
 
     // Skip if already generated and not forced
-    if (
+    const isAlreadyDone =
       !forceRegenerate &&
       item.thumbnailUrl &&
-      item.thumbnailStatus === 'ready' &&
-      item.thumbnailFileId === fileId
-    ) {
+      (item.thumbnailStatus === 'generated' || item.thumbnailStatus === 'ready') &&
+      item.thumbnailFileId === fileId;
+
+    if (isAlreadyDone) {
       completed++;
       skippedCount++;
       onProgress?.({

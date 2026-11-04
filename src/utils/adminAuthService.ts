@@ -24,6 +24,7 @@ export const AUTHORIZED_ADMIN_EMAILS = [
   'kpmbp2u@gmail.com',
   'khaikerr@gmail.com',
   'festivalseni.kpmbp@gmail.com',
+  'kpmbppsn@gmail.com',
 ];
 
 export const MASTER_ADMIN_EMAIL = 'kpmbp2u@gmail.com';

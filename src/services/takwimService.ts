@@ -33,13 +33,17 @@ export function parseTakwimLink(raw: string): ParsedTakwimLink | null {
 
   const host = url.hostname.toLowerCase();
   if (host === 'drive.google.com' || host === 'docs.google.com') {
+    const resourcekey = url.searchParams.get('resourcekey');
+    const rKeyEmbed = resourcekey ? `&resourcekey=${encodeURIComponent(resourcekey)}` : '';
+    const rKeyQuery = resourcekey ? `?resourcekey=${encodeURIComponent(resourcekey)}` : '';
+
     const folder = url.pathname.match(/\/folders\/([a-zA-Z0-9_-]+)/);
     if (folder) {
       const id = folder[1];
       return {
         kind: 'drive-folder',
-        embedUrl: `https://drive.google.com/embeddedfolderview?id=${id}#list`,
-        openUrl: `https://drive.google.com/drive/folders/${id}`,
+        embedUrl: `https://drive.google.com/embeddedfolderview?id=${id}${rKeyEmbed}#list`,
+        openUrl: `https://drive.google.com/drive/folders/${id}${rKeyQuery}`,
       };
     }
     const file = url.pathname.match(/\/(?:file|document|presentation|spreadsheets)\/d\/([a-zA-Z0-9_-]+)/);
@@ -48,8 +52,8 @@ export function parseTakwimLink(raw: string): ParsedTakwimLink | null {
     if (id) {
       return {
         kind: 'drive-file',
-        embedUrl: `https://drive.google.com/file/d/${id}/preview`,
-        openUrl: `https://drive.google.com/file/d/${id}/view`,
+        embedUrl: `https://drive.google.com/file/d/${id}/preview${rKeyQuery}`,
+        openUrl: `https://drive.google.com/file/d/${id}/view${rKeyQuery}`,
       };
     }
     return null;
