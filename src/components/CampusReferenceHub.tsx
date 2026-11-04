@@ -5,20 +5,15 @@
 
 import React, { useState, useEffect } from 'react';
 import { 
-  Calendar, 
   Link, 
-  BookOpen, 
   Info, 
   ExternalLink, 
-  Clock, 
   Search, 
-  CheckCircle2, 
   Sparkles, 
   ChevronRight, 
   FileText, 
   Shield, 
   HelpCircle, 
-  Clock3, 
   Plus,
   Pencil,
   Database,
@@ -38,22 +33,6 @@ import {
   getPortalSiteName
 } from '../services/portalService';
 import { AddEditPortalModal } from './AddEditPortalModal';
-import { TakwimViewer } from './TakwimViewer';
-
-interface CalendarEvent {
-  id: string;
-  title: string;
-  dateRange: string;
-  status: 'Sedang Berjalan' | 'Akan Datang' | 'Selesai';
-  type: 'akademik' | 'aktiviti' | 'cuti';
-}
-
-interface RuleItem {
-  id: string;
-  title: string;
-  desc: string;
-  details: string[];
-}
 
 interface CampusReferenceHubProps {
   isAdminMode?: boolean;
@@ -270,7 +249,6 @@ export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({
   isAdminMode = false, 
   onNavigateToTimetables 
 }) => {
-  const [activeRefTab, setActiveRefTab] = useState<'portal' | 'takwim' | 'panduan'>('portal');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Dynamic Portals State (Initialized to empty to prevent flashing deleted records on refresh)
@@ -323,84 +301,6 @@ export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({
     }
   };
 
-  const calendarEvents: CalendarEvent[] = [
-    {
-      id: 'e1',
-      title: 'Sesi Kuliah Semester I Sesi 2026/2027 Bermula',
-      dateRange: '20 Julai 2026',
-      status: 'Akan Datang',
-      type: 'akademik'
-    },
-    {
-      id: 'e2',
-      title: 'Minggu Silaturrahim (MSR) Pelajar Baharu',
-      dateRange: '15 Julai – 19 Julai 2026',
-      status: 'Akan Datang',
-      type: 'aktiviti'
-    },
-    {
-      id: 'e3',
-      title: 'Cuti Pertengahan Semester I Sesi 2026/2027',
-      dateRange: '05 September – 13 September 2026',
-      status: 'Akan Datang',
-      type: 'cuti'
-    },
-    {
-      id: 'e4',
-      title: 'Peperiksaan Akhir Semester I Sesi 2026/2027',
-      dateRange: '26 Oktober – 10 November 2026',
-      status: 'Akan Datang',
-      type: 'akademik'
-    },
-    {
-      id: 'e5',
-      title: 'Cuti Akhir Semester I',
-      dateRange: '11 November – 29 November 2026',
-      status: 'Akan Datang',
-      type: 'cuti'
-    },
-    {
-      id: 'e6',
-      title: 'Sesi Penilaian Prestasi Mengajar Pensyarah (SPMP)',
-      dateRange: '01 Oktober – 15 Oktober 2026',
-      status: 'Akan Datang',
-      type: 'akademik'
-    }
-  ];
-
-  const collegeRules: RuleItem[] = [
-    {
-      id: 'r1',
-      title: 'Etika Pemakaian & Rupa Diri (Staf & Pelajar)',
-      desc: 'Setiap warga KPM Bandar Penawar mesti mematuhi etika pakaian formal mengikut pekeliling MARA sepanjang waktu kuliah/pejabat.',
-      details: [
-        'Pelajar Lelaki: Baju kemeja lengan panjang lengkap bertali leher, seluar slack hitam/gelap, rambut pendek kemas.',
-        'Pelajar Perempuan: Baju kurung lengkap bertudung kemas (bagi muslim), pemakaian kasut bertutup (sukan/formal).',
-        'Staf Akademik/Sokongan: Pakaian pejabat rasmi. Hari Khamis digalakkan memakai pakaian Batik Malaysia.'
-      ]
-    },
-    {
-      id: 'r2',
-      title: 'Peraturan Keluar Masuk Kampus (Outing & Balik Bermalam)',
-      desc: 'Sistem kemasukan dikawal selia oleh unit pengawal keselamatan dan HEP demi kesejahteraan komuniti kampus.',
-      details: [
-        'Outing Mingguan: Hari Rabu (selepas kelas - 6.30 PM), Jumaat (12.30 PM - 7.00 PM), Sabtu & Ahad (8.00 AM - 7.00 PM).',
-        'Balik Bermalam (Homeleave): Pelajar dibenarkan pulang ke rumah dengan kelulusan Warden/HEP melalui borang digital sekurang-kurangnya 3 hari awal.',
-        'Kawalan Pagar: Pagar utama ditutup sepenuhnya selepas jam 11:00 malam setiap hari.'
-      ]
-    },
-    {
-      id: 'r3',
-      title: 'Panduan Am Perpustakaan Al-Ghazali',
-      desc: 'Waktu operasi dan tatatertib di dalam dewan perpustakaan utama.',
-      details: [
-        'Waktu Operasi: Isnin hingga Jumaat (8.15 AM – 4.45 PM). Ditutup pada hari Sabtu, Ahad, dan cuti am.',
-        'Pinjaman Buku: Setiap pelajar dibenarkan meminjam maksimum 4 buah buku pada satu masa selama 14 hari berturut-turut.',
-        'Larangan: Dilarang membawa makanan, beg galas, minuman manis, atau membuat bising yang mengganggu fokus pembaca lain.'
-      ]
-    }
-  ];
-
   // Searching logic for dynamic portals
   const filteredPortals = portalLinks.filter((item) => {
     // Ordinary users only see active portals; Admin sees both with status badge
@@ -419,62 +319,10 @@ export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({
     );
   });
 
-  const filteredCalendar = calendarEvents.filter(item =>
-    item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    item.dateRange.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const filteredRules = collegeRules.filter(item =>
-    item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    item.desc.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    item.details.some(d => d.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
-
   return (
     <div className="space-y-6 text-left">
-      {/* Segmented Selector for reference types with soft pastel themes */}
-      <div className="flex flex-wrap gap-2">
-        <button
-          onClick={() => setActiveRefTab('portal')}
-          className={`px-4.5 py-2.5 rounded-2xl text-xs font-extrabold transition-all flex items-center gap-2 cursor-pointer ${
-            activeRefTab === 'portal'
-              ? 'bg-purple-100/90 text-purple-950 border-2 border-purple-500 shadow-xs'
-              : 'bg-purple-50/70 text-purple-800 hover:bg-purple-100/70 border border-purple-200/60'
-          }`}
-        >
-          <Link className={`w-3.5 h-3.5 ${activeRefTab === 'portal' ? 'text-purple-600' : 'text-purple-500'}`} />
-          Portal Kolej
-        </button>
-        <button
-          onClick={() => setActiveRefTab('takwim')}
-          className={`px-4.5 py-2.5 rounded-2xl text-xs font-extrabold transition-all flex items-center gap-2 cursor-pointer ${
-            activeRefTab === 'takwim'
-              ? 'bg-emerald-100/90 text-emerald-950 border-2 border-emerald-500 shadow-xs'
-              : 'bg-emerald-50/70 text-emerald-800 hover:bg-emerald-100/70 border border-emerald-200/60'
-          }`}
-        >
-          <Calendar className={`w-3.5 h-3.5 ${activeRefTab === 'takwim' ? 'text-emerald-600' : 'text-emerald-500'}`} />
-          Takwim Akademik
-        </button>
-        <button
-          onClick={() => setActiveRefTab('panduan')}
-          className={`px-4.5 py-2.5 rounded-2xl text-xs font-extrabold transition-all flex items-center gap-2 cursor-pointer ${
-            activeRefTab === 'panduan'
-              ? 'bg-amber-100/90 text-amber-950 border-2 border-amber-500 shadow-xs'
-              : 'bg-amber-50/70 text-amber-800 hover:bg-amber-100/70 border border-amber-200/60'
-          }`}
-        >
-          <BookOpen className={`w-3.5 h-3.5 ${activeRefTab === 'panduan' ? 'text-amber-600' : 'text-amber-500'}`} />
-          Panduan & Peraturan
-        </button>
-      </div>
-
-      {/* Dynamic Content Panels based on Active Tab */}
-      <div className="space-y-8">
-
-        {/* SECTION: Quick Portals Links */}
-        {activeRefTab === 'portal' && (
-          <div className="space-y-4">
+      {/* SECTION: Quick Portals Links */}
+      <div className="space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="flex items-center flex-wrap gap-2">
                 <div className="w-8 h-8 rounded-xl bg-indigo-50/60 border border-indigo-100/40 flex items-center justify-center text-indigo-700 font-extrabold">
@@ -664,110 +512,6 @@ export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({
               )}
             </div>
           </div>
-        )}
-
-        {/* SECTION: Academic Calendar Events */}
-        {activeRefTab === 'takwim' && (
-          <TakwimViewer
-            isAdminMode={isAdminMode}
-            fallback={
-              <div className="glass-panel rounded-[26px] overflow-hidden border border-white/55 shadow-sm">
-                <div className="divide-y divide-slate-100/80">
-                  {filteredCalendar.map((event) => {
-                    const borderLColor = event.type === 'akademik' 
-                      ? 'border-l-4 border-indigo-500' 
-                      : event.type === 'cuti' 
-                        ? 'border-l-4 border-rose-500' 
-                        : 'border-l-4 border-emerald-500';
-
-                    return (
-                      <div 
-                        key={event.id} 
-                        className={`p-4 md:p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 hover:bg-white/50 transition-colors ${borderLColor}`}
-                      >
-                        <div className="flex items-start gap-3.5 text-left">
-                          <div className="p-2.5 rounded-xl bg-white/80 border border-slate-100 text-indigo-700 shadow-2xs">
-                            <Clock className="w-4 h-4" />
-                          </div>
-                          <div>
-                            <h4 className="font-sans font-extrabold text-slate-900 text-[13px]">{event.title}</h4>
-                            <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-1 font-semibold">
-                              <Calendar className="w-3.5 h-3.5" />
-                              <span>{event.dateRange}</span>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 self-start sm:self-center">
-                          <span className={`px-2.5 py-0.5 text-[10px] font-extrabold rounded-md border ${
-                            event.type === 'akademik' 
-                              ? 'bg-blue-50 text-blue-800 border-blue-100' 
-                              : event.type === 'cuti' 
-                                ? 'bg-red-50 text-red-800 border-red-100' 
-                                : 'bg-emerald-50 text-emerald-800 border-emerald-100'
-                          }`}>
-                            {event.type.toUpperCase()}
-                          </span>
-                          <span className="px-2.5 py-0.5 text-[10px] font-extrabold rounded-md bg-white border border-slate-100 text-slate-600 flex items-center gap-1 shadow-2xs">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                            {event.status}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {filteredCalendar.length === 0 && (
-                    <p className="p-6 text-xs text-gray-500">Tiada acara takwim yang sepadan dengan carian.</p>
-                  )}
-                </div>
-              </div>
-            }
-          />
-        )}
-
-        {/* SECTION: Rules & Student Guide */}
-        {activeRefTab === 'panduan' && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-indigo-50/60 border border-indigo-100/40 flex items-center justify-center text-indigo-700 font-extrabold">
-                <BookOpen className="w-4 h-4" />
-              </div>
-              <h3 className="text-xs font-extrabold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
-                Panduan Am, Polisi & Peraturan Kolej ({filteredRules.length})
-              </h3>
-            </div>
-
-            <div className="grid grid-cols-1 gap-5">
-              {filteredRules.map((rule) => (
-                <div 
-                  key={rule.id} 
-                  className="p-6.5 glass-card rounded-[26px] border border-white/55 shadow-sm bg-gradient-to-b from-white/70 to-white/40 hover:scale-[1.005] transition-all text-left"
-                >
-                  <div className="space-y-2 border-b border-slate-100 pb-3.5">
-                    <h4 className="font-sans font-extrabold text-slate-900 text-sm flex items-center gap-2.5">
-                      <Shield className="w-4.5 h-4.5 text-indigo-600 shrink-0" />
-                      {rule.title}
-                    </h4>
-                    <p className="text-xs text-slate-500 font-semibold leading-relaxed">{rule.desc}</p>
-                  </div>
-                  <div className="mt-4.5 space-y-3">
-                    {rule.details.map((detail, idx) => (
-                      <div key={idx} className="flex gap-3 text-xs text-slate-600 font-semibold leading-relaxed">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                        <span>{detail}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-              {filteredRules.length === 0 && (
-                <p className="text-xs text-gray-500">Tiada maklumat peraturan ditemui.</p>
-              )}
-            </div>
-          </div>
-        )}
-
-      </div>
 
       {/* Dynamic Portal Management Modal */}
       {isAdminMode && (
