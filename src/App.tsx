@@ -99,6 +99,24 @@ export default function App() {
     return navigationItems.find((item) => item.destination === activeHub);
   }, [navigationItems, activeHub]);
 
+  // Centralized Navigation Destination Resolver (SES v4.4)
+  // Distinguishes between Navigation Identity (unique item ID) and Module Destination (internal module route)
+  const resolvedDestination = useMemo(() => {
+    // 1. If activeNavItem has a defined destination, use it
+    if (activeNavItem?.destination) {
+      return activeNavItem.destination;
+    }
+
+    // 2. Direct lookup in navigationItems by item ID
+    const byId = navigationItems.find((item) => item.id === activeHub);
+    if (byId?.destination) {
+      return byId.destination;
+    }
+
+    // 3. Fallback to activeHub directly
+    return activeHub;
+  }, [activeNavItem, activeHub, navigationItems]);
+
   const handleSelectDestination = (destination: string) => {
     // Check if target is a known navigation item (by ID or destination)
     const matchedItem = navigationItems.find(
@@ -131,10 +149,10 @@ export default function App() {
 
     setActiveHub(destination);
     if (typeof window !== 'undefined') {
-      if (destination === 'directory') {
+      if (destination === 'directory' || matchedItem?.destination === 'directory') {
         window.location.hash = '';
-      } else if (destination === 'rujukan') {
-        window.location.hash = '#rujukan';
+      } else if (destination === 'rujukan' || (matchedItem?.destination === 'rujukan' && matchedItem.id === destination)) {
+        window.location.hash = destination.startsWith('nav_') ? `#${destination}` : '#rujukan';
       } else if (destination === 'jadual') {
         window.location.hash = '#jadual';
       } else if (destination === 'jadual-pensyarah') {
@@ -283,27 +301,58 @@ export default function App() {
       const pageParam = (searchParams.get('page') || searchParams.get('tab') || '').toLowerCase();
 
       if (cleanHash) {
-        // 1. Direct match with navigation items (e.g. custom IDs like nav_c_kalendar_akademi_3zpy)
-        const found = navigationItems.find(
-          (n) => n.id === cleanHash || n.destination === cleanHash
-        );
-        if (found) {
-          setActiveHub(found.id || found.destination);
+        // 1. Direct match with navigation items by unique item ID
+        const byId = navigationItems.find((n) => n.id === cleanHash);
+        if (byId) {
+          setActiveHub(byId.id);
           return;
         }
 
-        // 2. Standard modules exact check
+        // 2. Standard module aliases & query params
         if (cleanHash === 'daftar' || pageParam === 'daftar') {
           setActiveHub('daftar');
-        } else if (cleanHash === 'pensyarah' || cleanHash === 'jadual-pensyarah' || pageParam === 'pensyarah') {
-          setActiveHub('jadual-pensyarah');
-        } else if (cleanHash === 'jadual' || cleanHash === 'jadual-pelajar' || pageParam === 'jadual') {
-          setActiveHub('jadual');
-        } else if (cleanHash === 'rujukan' || pageParam === 'rujukan') {
-          setActiveHub('rujukan');
-        } else {
-          setActiveHub(cleanHash);
+          return;
         }
+        if (cleanHash === 'pensyarah' || cleanHash === 'jadual-pensyarah' || pageParam === 'pensyarah') {
+          const pensyarahItem = navigationItems.find(
+            (n) => n.type === 'child' && n.destination === 'jadual-pensyarah'
+          );
+          setActiveHub(pensyarahItem ? pensyarahItem.id : 'jadual-pensyarah');
+          return;
+        }
+        if (cleanHash === 'jadual' || cleanHash === 'jadual-pelajar' || pageParam === 'jadual') {
+          const pelajarItem = navigationItems.find(
+            (n) => n.type === 'child' && n.destination === 'jadual'
+          );
+          setActiveHub(pelajarItem ? pelajarItem.id : 'jadual');
+          return;
+        }
+        if (cleanHash === 'rujukan' || pageParam === 'rujukan') {
+          const rujukanItem = navigationItems.find(
+            (n) => n.destination === 'rujukan'
+          );
+          setActiveHub(rujukanItem ? rujukanItem.id : 'rujukan');
+          return;
+        }
+
+        // 3. Fallback: match by destination (prioritizing child items over parent items)
+        const childMatch = navigationItems.find(
+          (n) => n.type === 'child' && n.destination === cleanHash
+        );
+        if (childMatch) {
+          setActiveHub(childMatch.id);
+          return;
+        }
+
+        const parentMatch = navigationItems.find(
+          (n) => n.destination === cleanHash
+        );
+        if (parentMatch) {
+          setActiveHub(parentMatch.id);
+          return;
+        }
+
+        setActiveHub(cleanHash);
       } else {
         // Only set directory when hash is actually empty
         setActiveHub('directory');
@@ -613,13 +662,13 @@ export default function App() {
       
       {/* Dynamic Ambient Background Blobs */}
       <div className={`mesh-blob blob-1 transition-all duration-700 ${
-        activeHub === 'rujukan'
+        resolvedDestination === 'rujukan'
           ? '!bg-[radial-gradient(circle,rgba(16,185,129,0.18)_0%,rgba(20,184,166,0.06)_100%)]'
-          : activeHub === 'jadual'
+          : resolvedDestination === 'jadual'
           ? '!bg-[radial-gradient(circle,rgba(245,158,11,0.18)_0%,rgba(249,115,22,0.06)_100%)]'
-          : activeHub === 'jadual-pensyarah'
+          : resolvedDestination === 'jadual-pensyarah'
           ? '!bg-[radial-gradient(circle,rgba(244,63,94,0.18)_0%,rgba(236,72,153,0.06)_100%)]'
-          : activeHub === 'daftar'
+          : resolvedDestination === 'daftar'
           ? '!bg-[radial-gradient(circle,rgba(168,85,247,0.18)_0%,rgba(217,70,239,0.06)_100%)]'
           : ''
       }`}></div>
@@ -759,7 +808,7 @@ export default function App() {
               await saveNavigationItems(updated);
             }}
           />
-        ) : activeHub === 'directory' ? (
+        ) : resolvedDestination === 'directory' ? (
           <div className="space-y-6">
             
             {/* Unified Search & Directory Control Bar */}
@@ -1030,16 +1079,16 @@ export default function App() {
             )}
 
           </div>
-        ) : activeHub === 'jadual' ? (
+        ) : resolvedDestination === 'jadual' ? (
           <StudentTimetableHub />
-        ) : activeHub === 'jadual-pensyarah' ? (
+        ) : resolvedDestination === 'jadual-pensyarah' ? (
           <LecturerTimetableHub
             staffList={staffList}
             onSelectProfile={(staff) => {
               setSelectedStaff(staff);
             }}
           />
-        ) : activeHub === 'rujukan' ? (
+        ) : resolvedDestination === 'rujukan' ? (
           <div className="glass-panel rounded-3xl p-6 md:p-8 border border-white/55 shadow-sm">
             <CampusReferenceHub 
               isAdminMode={isAdminMode}
@@ -1048,7 +1097,7 @@ export default function App() {
               }}
             />
           </div>
-        ) : activeHub === 'daftar' ? (
+        ) : resolvedDestination === 'daftar' ? (
           <SelfRegistrationPage
             existingStaffList={staffList}
             onRegisterStaff={handleRegisterStaff}
@@ -1063,9 +1112,9 @@ export default function App() {
             <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 mx-auto">
               <Layers className="w-6 h-6" />
             </div>
-            <h3 className="text-base font-extrabold text-slate-800">Destinasi: {activeHub}</h3>
+            <h3 className="text-base font-extrabold text-slate-800">Destinasi: {resolvedDestination}</h3>
             <p className="text-xs text-slate-500 leading-relaxed">
-              Navigasi ini disambungkan ke laluan modul <strong>"{activeHub}"</strong>. Sila pastikan modul atau pautan telah dikonfigurasikan dengan betul.
+              Navigasi ini disambungkan ke laluan modul <strong>"{resolvedDestination}"</strong>. Sila pastikan modul atau pautan telah dikonfigurasikan dengan betul.
             </p>
             <button
               type="button"

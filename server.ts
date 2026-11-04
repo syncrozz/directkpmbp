@@ -1,7 +1,7 @@
 import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
-import { detectUrlMetadata } from './src/services/serverMetadata';
+import { detectUrlMetadata } from './src/services/serverMetadata.ts';
 
 async function startServer() {
   const app = express();

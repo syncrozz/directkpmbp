@@ -235,7 +235,10 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
 
             <div className="flex items-center gap-1.5 shrink-0 py-0.5">
               {currentParentChildren.map((child) => {
-                const isChildActive = activeHub === child.destination || activeHub === child.id;
+                const isChildActive = 
+                  activeHub === child.destination || 
+                  activeHub === child.id || 
+                  ((activeParent?.id === activeHub || activeParent?.destination === activeHub) && currentParentChildren[0]?.id === child.id);
 
                 return (
                   <button
