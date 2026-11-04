@@ -655,11 +655,11 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ staff, committees = 
 
               {/* Jawatankuasa Direct Summary Section */}
               <div className="bg-amber-500/5 p-3.5 rounded-2xl border border-amber-200/80 space-y-2.5">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
                   <div className="p-2 bg-amber-500 text-white rounded-xl shadow-xs">
                     <Award className="w-4 h-4" />
                   </div>
-                  <span className="px-2.5 py-0.5 bg-amber-500 text-white text-[11px] font-black rounded-full shadow-2xs">
+                  <span className="px-2.5 py-1 bg-amber-500 text-white text-[11px] font-black rounded-full shadow-2xs">
                     {matchedCommittees.length} Jawatankuasa
                   </span>
                 </div>
