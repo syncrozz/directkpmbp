@@ -12,7 +12,7 @@
 
 import React, { useMemo } from 'react';
 import { NavigationItem } from '../types';
-import { renderNavIcon } from '../services/navigationService';
+import { renderNavIcon, getHierarchicalSlug } from '../services/navigationService';
 import { Layers, ChevronRight } from 'lucide-react';
 
 interface DynamicNavigationBarProps {
@@ -86,7 +86,8 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
       (p) =>
         p.destination === activeHub ||
         p.id === activeHub ||
-        (p.slug && p.slug.toLowerCase() === activeHub.toLowerCase())
+        (p.slug && p.slug.toLowerCase() === activeHub.toLowerCase()) ||
+        getHierarchicalSlug(p, items).toLowerCase() === activeHub.toLowerCase()
     );
     if (directMatch) return directMatch;
 
@@ -95,7 +96,8 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
       (gc) =>
         gc.destination === activeHub ||
         gc.id === activeHub ||
-        (gc.slug && gc.slug.toLowerCase() === activeHub.toLowerCase())
+        (gc.slug && gc.slug.toLowerCase() === activeHub.toLowerCase()) ||
+        getHierarchicalSlug(gc, items).toLowerCase() === activeHub.toLowerCase()
     );
     if (gcMatch && gcMatch.parentId) {
       const child = activeChildren.find((c) => c.id === gcMatch.parentId);
@@ -110,7 +112,8 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
       (c) =>
         c.destination === activeHub ||
         c.id === activeHub ||
-        (c.slug && c.slug.toLowerCase() === activeHub.toLowerCase())
+        (c.slug && c.slug.toLowerCase() === activeHub.toLowerCase()) ||
+        getHierarchicalSlug(c, items).toLowerCase() === activeHub.toLowerCase()
     );
     if (childMatch && childMatch.parentId) {
       const parent = activeParents.find((p) => p.id === childMatch.parentId);
@@ -122,7 +125,8 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
       (i) =>
         i.id === activeHub ||
         i.destination === activeHub ||
-        (i.slug && i.slug.toLowerCase() === activeHub.toLowerCase())
+        (i.slug && i.slug.toLowerCase() === activeHub.toLowerCase()) ||
+        getHierarchicalSlug(i, items).toLowerCase() === activeHub.toLowerCase()
     );
     if (anyItem) {
       if (anyItem.type === 'grandchild' && anyItem.parentId) {
@@ -156,7 +160,8 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
       (gc) =>
         gc.id === activeHub ||
         gc.destination === activeHub ||
-        (gc.slug && gc.slug.toLowerCase() === activeHub.toLowerCase())
+        (gc.slug && gc.slug.toLowerCase() === activeHub.toLowerCase()) ||
+        getHierarchicalSlug(gc, items).toLowerCase() === activeHub.toLowerCase()
     );
     if (gcMatch && gcMatch.parentId) {
       const child = currentParentChildren.find((c) => c.id === gcMatch.parentId);
@@ -168,13 +173,14 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
       (c) =>
         c.id === activeHub ||
         c.destination === activeHub ||
-        (c.slug && c.slug.toLowerCase() === activeHub.toLowerCase())
+        (c.slug && c.slug.toLowerCase() === activeHub.toLowerCase()) ||
+        getHierarchicalSlug(c, items).toLowerCase() === activeHub.toLowerCase()
     );
     if (directChild) return directChild;
 
     // Fallback: first child of activeParent
     return currentParentChildren[0] || null;
-  }, [activeParent, currentParentChildren, activeGrandchildren, activeHub]);
+  }, [activeParent, currentParentChildren, activeGrandchildren, activeHub, items]);
 
   // Grandchildren of currently selected Child
   const currentChildGrandchildren = useMemo(() => {
@@ -190,12 +196,13 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
       (gc) =>
         gc.id === activeHub ||
         gc.destination === activeHub ||
-        (gc.slug && gc.slug.toLowerCase() === activeHub.toLowerCase())
+        (gc.slug && gc.slug.toLowerCase() === activeHub.toLowerCase()) ||
+        getHierarchicalSlug(gc, items).toLowerCase() === activeHub.toLowerCase()
     );
     if (matched) return matched;
 
     return currentChildGrandchildren[0] || null;
-  }, [currentChildGrandchildren, activeHub]);
+  }, [currentChildGrandchildren, activeHub, items]);
 
   // Color theme generator for active parent
   const getParentThemeClasses = (destination: string, isSelected: boolean) => {

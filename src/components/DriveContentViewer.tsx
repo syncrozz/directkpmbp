@@ -21,7 +21,8 @@ import {
   Check,
   AlertCircle,
   FileText,
-  FolderOpen
+  FolderOpen,
+  ChevronRight
 } from 'lucide-react';
 import { NavigationItem } from '../types';
 import { parseTakwimLink } from '../services/takwimService';
@@ -29,12 +30,18 @@ import { renderNavIcon } from '../services/navigationService';
 
 interface DriveContentViewerProps {
   item: NavigationItem;
+  parentItem?: NavigationItem;
+  grandParentItem?: NavigationItem;
+  onNavigate?: (destination: string) => void;
   isAdminMode?: boolean;
   onUpdateConfig?: (newUrl: string, newTitle?: string) => Promise<void>;
 }
 
 export const DriveContentViewer: React.FC<DriveContentViewerProps> = ({
   item,
+  parentItem,
+  grandParentItem,
+  onNavigate,
   isAdminMode = false,
   onUpdateConfig,
 }) => {
@@ -111,7 +118,40 @@ export const DriveContentViewer: React.FC<DriveContentViewerProps> = ({
           <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-700 shadow-2xs shrink-0">
             {renderNavIcon(item.icon, 'w-4 h-4 sm:w-5 sm:h-5')}
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 space-y-1">
+            {/* Breadcrumb Hierarchy (SES v4.4 Specification) */}
+            {(parentItem || grandParentItem) && (
+              <nav aria-label="Hierarki Navigasi" className="flex items-center gap-1.5 text-[11px] font-extrabold text-slate-400 flex-wrap">
+                {grandParentItem && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => onNavigate?.(grandParentItem.id || grandParentItem.destination)}
+                      className="hover:text-indigo-600 text-slate-500 transition-colors cursor-pointer truncate max-w-[120px] sm:max-w-[200px]"
+                    >
+                      {grandParentItem.name}
+                    </button>
+                    <ChevronRight className="w-3 h-3 text-slate-400 shrink-0" />
+                  </>
+                )}
+                {parentItem && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => onNavigate?.(parentItem.id || parentItem.destination)}
+                      className="hover:text-indigo-600 text-slate-600 transition-colors cursor-pointer truncate max-w-[120px] sm:max-w-[200px]"
+                    >
+                      {parentItem.name}
+                    </button>
+                    <ChevronRight className="w-3 h-3 text-slate-400 shrink-0" />
+                  </>
+                )}
+                <span className="text-indigo-700 font-black truncate max-w-[120px] sm:max-w-[200px]">
+                  {item.name}
+                </span>
+              </nav>
+            )}
+
             <h2 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight leading-tight truncate">
               {title}
             </h2>

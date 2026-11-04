@@ -343,12 +343,79 @@ export function slugify(text: string): string {
 }
 
 /**
+ * Resolves the hierarchical slug for a navigation item.
+ * Walks up the parentId chain, omitting root 'parent' (Induk) hubs as per SES specification:
+ * - Induk (Level 1 Parent) -> Excluded from child/grandchild path (e.g. Rujukan Kolej)
+ * - Anak (Level 2 Child) -> /anak_slug (e.g. /borang)
+ * - Cucu (Level 3 Grandchild) -> /anak_slug/cucu_slug (e.g. /borang/bayaran_penceramah, /borang/lampiran_a)
+ */
+export function getHierarchicalSlug(
+  item: NavigationItem,
+  allItems: NavigationItem[]
+): string {
+  if (!item) return '';
+
+  const itemSlug = item.slug?.trim() ? slugify(item.slug) : slugify(item.name);
+
+  // Level 1: Parent (Induk)
+  if (item.type === 'parent') {
+    if (item.destination === 'directory' || item.id === 'nav_directory') {
+      return '';
+    }
+    return itemSlug;
+  }
+
+  // Level 2: Child (Anak)
+  if (item.type === 'child') {
+    return itemSlug;
+  }
+
+  // Level 3: Grandchild (Cucu) or nested
+  const segments: string[] = [itemSlug];
+  let currentParentId = item.parentId;
+  const visited = new Set<string>([item.id]);
+
+  while (currentParentId && !visited.has(currentParentId)) {
+    visited.add(currentParentId);
+    const parent = allItems.find((i) => i.id === currentParentId);
+    if (!parent) break;
+
+    // Stop at Level 1 parent (Induk), as Induk is not part of child/grandchild URL path
+    if (parent.type === 'parent') {
+      break;
+    }
+
+    const parentSlug = parent.slug?.trim() ? slugify(parent.slug) : slugify(parent.name);
+    if (parentSlug) {
+      segments.unshift(parentSlug);
+    }
+    currentParentId = parent.parentId;
+  }
+
+  return segments.join('/');
+}
+
+/**
+ * Returns canonical absolute URL path for a navigation item.
+ * e.g. "/borang/bayaran_penceramah", "/borang", or "/"
+ */
+export function getHierarchicalPath(
+  item: NavigationItem,
+  allItems: NavigationItem[]
+): string {
+  const slugPath = getHierarchicalSlug(item, allItems);
+  return slugPath ? `/${slugPath}` : '/';
+}
+
+/**
  * Validates a navigation URL slug (SES v4.4 Clean URL Architecture)
  */
 export function validateNavigationSlug(
   slug: string,
   currentItemId?: string,
-  allItems: NavigationItem[] = []
+  allItems: NavigationItem[] = [],
+  parentId?: string,
+  type?: NavigationType
 ): { valid: boolean; error?: string } {
   const trimmed = (slug || '').trim().toLowerCase();
   if (!trimmed) {
@@ -390,14 +457,27 @@ export function validateNavigationSlug(
     return { valid: false, error: `Slug "${trimmed}" adalah laluan terpelihara sistem. Sila pilih slug yang lain.` };
   }
 
-  // Uniqueness validation against all other navigation items
-  const duplicate = allItems.find(
-    (item) => item.id !== currentItemId && item.slug && item.slug.toLowerCase() === trimmed
-  );
+  // Calculate projected hierarchical slug to prevent nested URL collision
+  let projectedHierarchical = trimmed;
+  if (type === 'grandchild' && parentId) {
+    const pChild = allItems.find((c) => c.id === parentId);
+    const pSlug = pChild?.slug ? slugify(pChild.slug) : slugify(pChild?.name || '');
+    if (pSlug) {
+      projectedHierarchical = `${pSlug}/${trimmed}`;
+    }
+  }
+
+  // Check for duplicate canonical hierarchical paths across all other items
+  const duplicate = allItems.find((item) => {
+    if (item.id === currentItemId) return false;
+    const itemHierarchical = getHierarchicalSlug(item, allItems).toLowerCase();
+    return itemHierarchical === projectedHierarchical;
+  });
+
   if (duplicate) {
     return {
       valid: false,
-      error: `Slug "${trimmed}" telah digunakan oleh navigasi "${duplicate.name}". Sila gunakan slug yang unik.`,
+      error: `Slug "${trimmed}" menghasilkan URL hierarki yang bertindih (/${projectedHierarchical}) dengan navigasi "${duplicate.name}". Sila gunakan slug yang unik.`,
     };
   }
 
@@ -410,16 +490,19 @@ export interface ResolvedNavigationResult {
   matchedItem?: NavigationItem;
   parentItem?: NavigationItem;
   grandParentItem?: NavigationItem;
+  canonicalPath?: string;
 }
 
 /**
  * Centralized Navigation Destination Resolver (SES v4.4 Specification)
  * 
- * Resolution Priority:
- * 1. Match navigation by unique ID (Internal identity).
- * 2. Match navigation by configured slug (Public URL identity).
- * 3. Match existing module destination.
- * 4. Apply existing legacy route handling.
+ * Supports Multi-level Hierarchical URL matching:
+ * 1. Match exact hierarchical slug (e.g. "borang/bayaran_penceramah")
+ * 2. Match hierarchical slug with Induk included (e.g. "rujukan/borang/bayaran_penceramah")
+ * 3. Match unique navigation ID (Internal identity)
+ * 4. Backward Compatibility: Match single leaf slug (e.g. "bayaran_penceramah" -> redirect to "/borang/bayaran_penceramah")
+ * 5. Match standard module destinations
+ * 6. Match legacy routes
  */
 export function resolveNavigationFromUrl(
   items: NavigationItem[],
@@ -434,7 +517,7 @@ export function resolveNavigationFromUrl(
     const searchParams = new URLSearchParams(window.location.search);
     const pageParam = (searchParams.get('page') || searchParams.get('tab') || '').trim();
 
-    // Priority of location sources: Hash (for explicit legacy links) -> Pathname -> Query param
+    // Priority of location sources: Hash -> Pathname -> Query param
     if (rawHash) {
       token = rawHash;
     } else if (rawPath && rawPath !== 'index.html') {
@@ -444,7 +527,8 @@ export function resolveNavigationFromUrl(
     }
   }
 
-  const cleanToken = token.toLowerCase();
+  // Clean and normalize token (remove leading/trailing slashes, lowercase)
+  const cleanToken = token.replace(/^\/+|\/+$/g, '').toLowerCase();
 
   const buildHierarchy = (item?: NavigationItem): { parentItem?: NavigationItem; grandParentItem?: NavigationItem } => {
     if (!item) return {};
@@ -460,99 +544,98 @@ export function resolveNavigationFromUrl(
     return {};
   };
 
-  // If root or empty
+  const createResult = (item?: NavigationItem, fallbackNavId?: string, fallbackDest?: string): ResolvedNavigationResult => {
+    if (!item) {
+      return {
+        activeNavId: fallbackNavId || token,
+        resolvedDestination: fallbackDest || token,
+      };
+    }
+    const hierarchy = buildHierarchy(item);
+    return {
+      activeNavId: item.id,
+      resolvedDestination: item.destination || item.id,
+      matchedItem: item,
+      canonicalPath: getHierarchicalPath(item, items),
+      ...hierarchy,
+    };
+  };
+
+  // If root or empty or "directory"
   if (!cleanToken || cleanToken === 'directory') {
     const dirItem = items.find((i) => i.destination === 'directory' || i.id === 'nav_directory');
-    const hierarchy = buildHierarchy(dirItem);
-    return {
-      activeNavId: dirItem?.id || 'nav_directory',
-      resolvedDestination: 'directory',
-      matchedItem: dirItem,
-      ...hierarchy,
-    };
+    return createResult(dirItem, 'nav_directory', 'directory');
   }
 
-  // Priority 1: Match navigation by unique ID
+  // Priority 1: Match Exact Hierarchical Slug (e.g. "borang/bayaran_penceramah", "borang", "jadual_pelajar")
+  const matchByHierarchicalSlug = items.find((i) => {
+    const hSlug = getHierarchicalSlug(i, items).toLowerCase();
+    return hSlug && hSlug === cleanToken;
+  });
+  if (matchByHierarchicalSlug) {
+    return createResult(matchByHierarchicalSlug);
+  }
+
+  // Priority 2: Match Hierarchical Slug with Induk Included (e.g. "rujukan/borang/bayaran_penceramah", "rujukan/borang")
+  // Allows users/links specifying parent hub to resolve seamlessly
+  const parentHub = items.find(
+    (p) => p.type === 'parent' && cleanToken.startsWith((p.slug || slugify(p.name)).toLowerCase() + '/')
+  );
+  if (parentHub) {
+    const parentHubSlug = (parentHub.slug || slugify(parentHub.name)).toLowerCase();
+    const remainder = cleanToken.slice(parentHubSlug.length + 1).replace(/^\/+/, '');
+    if (remainder) {
+      const matchRemainder = items.find((i) => {
+        const hSlug = getHierarchicalSlug(i, items).toLowerCase();
+        return hSlug && hSlug === remainder;
+      });
+      if (matchRemainder) {
+        return createResult(matchRemainder);
+      }
+    }
+  }
+
+  // Priority 3: Match Navigation by Unique ID (Internal Identity)
   const matchById = items.find((i) => i.id === token || i.id.toLowerCase() === cleanToken);
   if (matchById) {
-    const hierarchy = buildHierarchy(matchById);
-    return {
-      activeNavId: matchById.id,
-      resolvedDestination: matchById.destination || matchById.id,
-      matchedItem: matchById,
-      ...hierarchy,
-    };
+    return createResult(matchById);
   }
 
-  // Priority 2: Match navigation by configured slug (or auto-suggested slug from name)
-  const matchBySlug = items.find(
-    (i) => (i.slug && i.slug.toLowerCase() === cleanToken) || (!i.slug && slugify(i.name) === cleanToken)
-  );
-  if (matchBySlug) {
-    const hierarchy = buildHierarchy(matchBySlug);
-    return {
-      activeNavId: matchBySlug.id,
-      resolvedDestination: matchBySlug.destination || matchBySlug.id,
-      matchedItem: matchBySlug,
-      ...hierarchy,
-    };
+  // Priority 4: Backward Compatibility — Match by Single Leaf Slug (e.g. "bayaran_penceramah" -> resolves to grandchild)
+  // Enables transparent redirect from old single-slug URLs to new hierarchical paths
+  const matchBySingleSlug = items.find((i) => {
+    const itemSlug = (i.slug || slugify(i.name)).toLowerCase();
+    return itemSlug === cleanToken;
+  });
+  if (matchBySingleSlug) {
+    return createResult(matchBySingleSlug);
   }
 
-  // Priority 3: Match existing module destination
+  // Priority 5: Match by Destination property
   const matchByDest = items.find((i) => i.destination.toLowerCase() === cleanToken);
   if (matchByDest) {
-    const hierarchy = buildHierarchy(matchByDest);
-    return {
-      activeNavId: matchByDest.id,
-      resolvedDestination: matchByDest.destination,
-      matchedItem: matchByDest,
-      ...hierarchy,
-    };
+    return createResult(matchByDest);
   }
 
-  // Priority 4: Apply existing legacy route handling
+  // Priority 6: Apply Existing Known Legacy Route Handling
   if (cleanToken === 'pensyarah' || cleanToken === 'jadual-pensyarah' || cleanToken === 'jadual_pensyarah') {
     const pensyarahItem = items.find((i) => i.destination === 'jadual-pensyarah');
-    const hierarchy = buildHierarchy(pensyarahItem);
-    return {
-      activeNavId: pensyarahItem?.id || 'nav_jadual_pensyarah',
-      resolvedDestination: 'jadual-pensyarah',
-      matchedItem: pensyarahItem,
-      ...hierarchy,
-    };
+    return createResult(pensyarahItem, 'nav_jadual_pensyarah', 'jadual-pensyarah');
   }
 
   if (cleanToken === 'jadual' || cleanToken === 'jadual_pelajar' || cleanToken === 'pelajar') {
     const jadualItem = items.find((i) => i.destination === 'jadual' && i.type === 'child') || items.find((i) => i.destination === 'jadual');
-    const hierarchy = buildHierarchy(jadualItem);
-    return {
-      activeNavId: jadualItem?.id || 'nav_jadual_pelajar',
-      resolvedDestination: 'jadual',
-      matchedItem: jadualItem,
-      ...hierarchy,
-    };
+    return createResult(jadualItem, 'nav_jadual_pelajar', 'jadual');
   }
 
   if (cleanToken === 'rujukan') {
     const rujukanItem = items.find((i) => i.destination === 'rujukan');
-    const hierarchy = buildHierarchy(rujukanItem);
-    return {
-      activeNavId: rujukanItem?.id || 'nav_rujukan',
-      resolvedDestination: 'rujukan',
-      matchedItem: rujukanItem,
-      ...hierarchy,
-    };
+    return createResult(rujukanItem, 'nav_rujukan', 'rujukan');
   }
 
   if (cleanToken === 'daftar') {
     const daftarItem = items.find((i) => i.destination === 'daftar');
-    const hierarchy = buildHierarchy(daftarItem);
-    return {
-      activeNavId: daftarItem?.id || 'daftar',
-      resolvedDestination: 'daftar',
-      matchedItem: daftarItem,
-      ...hierarchy,
-    };
+    return createResult(daftarItem, 'daftar', 'daftar');
   }
 
   // Default fallback: return token directly as destination

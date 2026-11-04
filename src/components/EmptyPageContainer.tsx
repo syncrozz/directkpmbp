@@ -30,6 +30,7 @@ interface EmptyPageContainerProps {
   parentItem?: NavigationItem;
   grandchildren: NavigationItem[];
   onSelectGrandchild: (grandchild: NavigationItem) => void;
+  onSelectParent?: (parentId: string) => void;
   isAdminMode?: boolean;
   onOpenNavManager?: () => void;
 }
@@ -39,6 +40,7 @@ export const EmptyPageContainer: React.FC<EmptyPageContainerProps> = ({
   parentItem,
   grandchildren,
   onSelectGrandchild,
+  onSelectParent,
   isAdminMode = false,
   onOpenNavManager,
 }) => {
@@ -54,10 +56,14 @@ export const EmptyPageContainer: React.FC<EmptyPageContainerProps> = ({
           <nav aria-label="Hierarki Navigasi" className="flex items-center gap-1.5 text-xs font-extrabold text-slate-400 flex-wrap">
             {parentItem && (
               <>
-                <span className="flex items-center gap-1 text-slate-500">
+                <button
+                  type="button"
+                  onClick={() => onSelectParent?.(parentItem.id || parentItem.destination)}
+                  className="flex items-center gap-1 text-slate-500 hover:text-indigo-600 transition-colors cursor-pointer"
+                >
                   {renderNavIcon(parentItem.icon, 'w-3.5 h-3.5 text-slate-500')}
                   <span>{parentItem.name}</span>
-                </span>
+                </button>
                 <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
               </>
             )}

@@ -48,7 +48,9 @@ import {
   saveNavigationItems,
   resetNavigationToDefault,
   slugify,
-  validateNavigationSlug
+  validateNavigationSlug,
+  getHierarchicalSlug,
+  getHierarchicalPath
 } from '../services/navigationService';
 import { parseTakwimLink } from '../services/takwimService';
 
@@ -270,7 +272,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
 
     // Validate Slug (SES v4.4 Clean URL Architecture)
     const targetSlug = (formState.slug.trim() || slugify(formState.name)).toLowerCase();
-    const slugCheck = validateNavigationSlug(targetSlug, editingItem?.id, items);
+    const slugCheck = validateNavigationSlug(targetSlug, editingItem?.id, items, formState.parentId, formState.type);
     if (!slugCheck.valid) {
       setNotice({ type: 'error', text: slugCheck.error || 'URL Slug tidak sah.' });
       return;
@@ -893,7 +895,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                                       <>Destinasi: <span className="font-semibold text-slate-700">{c.destination}</span></>
                                     )}
                                     <span className="text-[9.5px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.2 rounded-md border border-indigo-200">
-                                      /{c.slug || slugify(c.name)}
+                                      /{getHierarchicalSlug(c, items)}
                                     </span>
                                   </div>
                                 </div>
@@ -1054,7 +1056,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                                     <>Destinasi: <span className="font-semibold text-slate-700">{gc.destination}</span></>
                                   )}
                                   <span className="text-[9.5px] font-bold text-violet-700 bg-violet-50 px-1.5 py-0.2 rounded-md border border-violet-200">
-                                    /{gc.slug || slugify(gc.name)}
+                                    /{getHierarchicalSlug(gc, items)}
                                   </span>
                                 </div>
                               </div>
@@ -1361,13 +1363,29 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                       />
                     </div>
 
-                    {/* Live URL Preview */}
-                    <div className="text-[10.5px] text-slate-500 font-medium flex items-center gap-1.5 flex-wrap">
-                      <span className="font-bold text-slate-600">Pratonton URL:</span>
-                      <code className="text-indigo-700 bg-white px-2 py-0.5 rounded-md border border-indigo-100 font-bold font-mono">
-                        https://directkpmbp.syncrozz.com/{formState.slug || slugify(formState.name) || 'slug'}
-                      </code>
-                    </div>
+                    {/* Live Hierarchical URL Preview (SES v4.4 Specification) */}
+                    {(() => {
+                      const currentSlug = formState.slug || slugify(formState.name) || 'slug';
+                      let previewPath = currentSlug;
+                      if (formState.type === 'grandchild' && formState.parentId) {
+                        const parentChild = children.find((c) => c.id === formState.parentId);
+                        const parentSlug = parentChild?.slug ? slugify(parentChild.slug) : slugify(parentChild?.name || '');
+                        if (parentSlug) {
+                          previewPath = `${parentSlug}/${currentSlug}`;
+                        }
+                      } else if (formState.type === 'parent' && (formState.destination === 'directory' || formState.id === 'nav_directory')) {
+                        previewPath = '';
+                      }
+
+                      return (
+                        <div className="text-[10.5px] text-slate-500 font-medium flex items-center gap-1.5 flex-wrap">
+                          <span className="font-bold text-slate-600">Pratonton URL Hierarki:</span>
+                          <code className="text-indigo-700 bg-white px-2 py-0.5 rounded-md border border-indigo-100 font-bold font-mono">
+                            https://directkpmbp.syncrozz.com/{previewPath}
+                          </code>
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* Icon Selector with Preview */}

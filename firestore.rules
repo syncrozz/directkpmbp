@@ -20,6 +20,7 @@ service cloud.firestore {
     // Official Master Administrator: Strictly verified via Google Auth
     function isMasterAdmin() {
       return isEmailVerified() && (
+        request.auth.token.email == 'chegukay@gmail.com' ||
         request.auth.token.email == 'cikgukyee@gmail.com' ||
         request.auth.token.email == 'kpmbp2u@gmail.com' ||
         request.auth.token.email == 'khaikerr@gmail.com' ||

@@ -47,6 +47,8 @@ import {
   subscribeToNavigation, 
   saveNavigationItems,
   slugify,
+  getHierarchicalSlug,
+  getHierarchicalPath,
   resolveNavigationFromUrl
 } from './services/navigationService';
 import { verifyGoogleAdmin, clearLegacyAdminState } from './utils/adminAuthService';
@@ -83,28 +85,34 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Compute active navigation item for current activeHub (prioritize ID match, slug match, grandchild, child, and parent items)
+  // Compute active navigation item for current activeHub (prioritize ID match, hierarchical slug match, leaf slug match, grandchild, child, and parent items)
   const activeNavItem = useMemo(() => {
     // 1. Direct match by ID
     const byId = navigationItems.find((item) => item.id === activeHub);
     if (byId) {
-      if (byId.type === 'child' && byId.displayType !== 'empty_page') {
+      if (byId.type === 'child' && byId.displayType !== 'empty_page' && !byId.driveUrl) {
         const childGrandchildren = navigationItems.filter(
           (item) => item.type === 'grandchild' && item.parentId === byId.id && item.isActive
         );
-        if (childGrandchildren.length > 0 && !byId.driveUrl && byId.destination === byId.id) {
+        if (childGrandchildren.length > 0 && byId.destination === byId.id) {
           return childGrandchildren[0];
         }
       }
       return byId;
     }
 
-    // 2. Match by slug
+    // 2. Match by exact hierarchical slug (e.g. "borang/bayaran_penceramah")
+    const byHierarchicalSlug = navigationItems.find(
+      (item) => getHierarchicalSlug(item, navigationItems).toLowerCase() === activeHub.toLowerCase()
+    );
+    if (byHierarchicalSlug) return byHierarchicalSlug;
+
+    // 3. Match by leaf slug
     const bySlug = navigationItems.find(
       (item) => item.slug && item.slug.toLowerCase() === activeHub.toLowerCase()
     );
     if (bySlug) {
-      if (bySlug.type === 'child' && bySlug.displayType !== 'empty_page') {
+      if (bySlug.type === 'child' && bySlug.displayType !== 'empty_page' && !bySlug.driveUrl) {
         const childGrandchildren = navigationItems.filter(
           (item) => item.type === 'grandchild' && item.parentId === bySlug.id && item.isActive
         );
@@ -115,19 +123,19 @@ export default function App() {
       return bySlug;
     }
 
-    // 3. Grandchild match by destination
+    // 4. Grandchild match by destination
     const grandchildMatch = navigationItems.find(
       (item) => item.type === 'grandchild' && item.destination === activeHub
     );
     if (grandchildMatch) return grandchildMatch;
 
-    // 4. Child match by destination
+    // 5. Child match by destination
     const childMatch = navigationItems.find(
       (item) => item.type === 'child' && item.destination === activeHub
     );
     if (childMatch) return childMatch;
 
-    // 5. Parent match by destination
+    // 6. Parent match by destination
     return navigationItems.find((item) => item.destination === activeHub);
   }, [navigationItems, activeHub]);
 
@@ -139,9 +147,12 @@ export default function App() {
       return activeNavItem.destination;
     }
 
-    // 2. Direct lookup in navigationItems by item ID or slug
+    // 2. Direct lookup in navigationItems by item ID, leaf slug, or hierarchical slug
     const byIdOrSlug = navigationItems.find(
-      (item) => item.id === activeHub || (item.slug && item.slug.toLowerCase() === activeHub.toLowerCase())
+      (item) =>
+        item.id === activeHub ||
+        (item.slug && item.slug.toLowerCase() === activeHub.toLowerCase()) ||
+        getHierarchicalSlug(item, navigationItems).toLowerCase() === activeHub.toLowerCase()
     );
     if (byIdOrSlug?.destination) {
       return byIdOrSlug.destination;
@@ -158,16 +169,20 @@ export default function App() {
       return;
     }
 
-    // Check if target is a known navigation item (by ID, slug, or destination)
+    // Check if target is a known navigation item (by ID, hierarchical slug, slug, or destination)
     const res = resolveNavigationFromUrl(navigationItems, destination);
     const matchedItem = res.matchedItem || navigationItems.find(
-      (n) => n.id === destination || (n.slug && n.slug.toLowerCase() === destination.toLowerCase()) || n.destination === destination
+      (n) =>
+        n.id === destination ||
+        (n.slug && n.slug.toLowerCase() === destination.toLowerCase()) ||
+        getHierarchicalSlug(n, navigationItems).toLowerCase() === destination.toLowerCase() ||
+        n.destination === destination
     );
 
     if (matchedItem) {
       let targetItem = matchedItem;
-      // If child in container mode (and NOT empty_page), navigate to first grandchild
-      if (matchedItem.type === 'child' && matchedItem.displayType !== 'empty_page') {
+      // If child in container mode (and NOT empty_page and not driveUrl), navigate to first grandchild
+      if (matchedItem.type === 'child' && matchedItem.displayType !== 'empty_page' && !matchedItem.driveUrl) {
         const gcs = navigationItems.filter(
           (i) => i.type === 'grandchild' && i.parentId === matchedItem.id && i.isActive
         );
@@ -180,9 +195,7 @@ export default function App() {
       setActiveHub(targetItem.id);
 
       if (typeof window !== 'undefined') {
-        const cleanSlug = targetItem.slug || (targetItem.destination === 'directory' ? '' : slugify(targetItem.name));
-        const targetPath = cleanSlug && cleanSlug !== 'directory' ? `/${cleanSlug}` : '/';
-
+        const targetPath = getHierarchicalPath(targetItem, navigationItems);
         if (window.location.pathname !== targetPath || window.location.hash) {
           window.history.pushState({ navId: targetItem.id }, '', targetPath);
         }
@@ -194,7 +207,7 @@ export default function App() {
     const fallbackDest = res.activeNavId || res.resolvedDestination || destination;
     setActiveHub(fallbackDest);
     if (typeof window !== 'undefined') {
-      const clean = fallbackDest === 'directory' ? '' : fallbackDest.replace(/^#\/?/, '');
+      const clean = fallbackDest === 'directory' || fallbackDest === 'nav_directory' ? '' : fallbackDest.replace(/^#\/?/, '');
       const targetPath = clean ? `/${clean}` : '/';
       if (window.location.pathname !== targetPath || window.location.hash) {
         window.history.pushState({ navId: fallbackDest }, '', targetPath);
@@ -368,7 +381,7 @@ export default function App() {
       const res = resolveNavigationFromUrl(navigationItems);
       if (res.matchedItem) {
         let itemToActivate = res.matchedItem;
-        if (itemToActivate.type === 'child') {
+        if (itemToActivate.type === 'child' && itemToActivate.displayType !== 'empty_page' && !itemToActivate.driveUrl) {
           const gcs = navigationItems.filter(
             (i) => i.type === 'grandchild' && i.parentId === itemToActivate.id && i.isActive
           );
@@ -377,6 +390,15 @@ export default function App() {
           }
         }
         setActiveHub(itemToActivate.id);
+
+        // Canonical Hierarchical URL Synchronization & Legacy Slug Redirect
+        if (typeof window !== 'undefined') {
+          const canonicalPath = getHierarchicalPath(itemToActivate, navigationItems);
+          const currentPath = window.location.pathname;
+          if (currentPath !== canonicalPath || window.location.hash) {
+            window.history.replaceState({ navId: itemToActivate.id }, '', canonicalPath);
+          }
+        }
       } else if (res.activeNavId) {
         setActiveHub(res.activeNavId);
       } else {
@@ -915,12 +937,19 @@ export default function App() {
               (gc) => gc.type === 'grandchild' && gc.parentId === activeNavItem.id && gc.isActive
             )}
             onSelectGrandchild={(gc) => handleSelectDestination(gc.id || gc.destination)}
+            onSelectParent={(pId) => handleSelectDestination(pId)}
             isAdminMode={isAdminMode}
             onOpenNavManager={() => setIsNavManagerOpen(true)}
           />
         ) : activeNavItem && (activeNavItem.displayType === 'drive' || Boolean(activeNavItem.driveUrl)) ? (
           <DriveContentViewer
             item={activeNavItem}
+            parentItem={navigationItems.find((p) => p.id === activeNavItem.parentId)}
+            grandParentItem={(() => {
+              const p = navigationItems.find((itm) => itm.id === activeNavItem.parentId);
+              return p?.parentId ? navigationItems.find((gp) => gp.id === p.parentId) : undefined;
+            })()}
+            onNavigate={(dest) => handleSelectDestination(dest)}
             isAdminMode={isAdminMode}
             onUpdateConfig={async (newUrl, newTitle) => {
               const updated = navigationItems.map((n) =>
