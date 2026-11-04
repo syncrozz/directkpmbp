@@ -106,19 +106,19 @@ export const DriveContentViewer: React.FC<DriveContentViewerProps> = ({
   return (
     <div className="space-y-4 text-left animate-fadeIn">
       {/* Top Action & Title Bar */}
-      <div className="glass-panel rounded-2xl p-4 sm:p-5 border border-white/60 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-700 shadow-2xs shrink-0">
-            {renderNavIcon(item.icon, 'w-5 h-5')}
+      <div className="glass-panel rounded-2xl p-3.5 sm:p-5 border border-white/60 shadow-xs flex flex-row items-center justify-between gap-2.5 sm:gap-3">
+        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-700 shadow-2xs shrink-0">
+            {renderNavIcon(item.icon, 'w-4 h-4 sm:w-5 sm:h-5')}
           </div>
-          <div>
-            <h2 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight leading-tight">
+          <div className="min-w-0">
+            <h2 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight leading-tight truncate">
               {title}
             </h2>
           </div>
         </div>
 
-        <div className="flex items-center flex-wrap gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           {parsed && (
             <>
               <button
