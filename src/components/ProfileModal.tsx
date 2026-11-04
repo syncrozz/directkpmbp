@@ -656,18 +656,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ staff, committees = 
               {/* Jawatankuasa Direct Summary Section */}
               <div className="bg-amber-500/5 p-3.5 rounded-2xl border border-amber-200/80 space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="p-2 bg-amber-500 text-white rounded-xl shadow-xs">
-                      <Award className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h4 className="text-xs font-black uppercase tracking-wider text-amber-950">
-                        Maklumat Jawatankuasa Staf
-                      </h4>
-                      <p className="text-[10px] text-amber-800/90 font-medium">
-                        Rekod Rasmi: <span className="font-bold">Jawatankuasa KPMBP</span>
-                      </p>
-                    </div>
+                  <div className="p-2 bg-amber-500 text-white rounded-xl shadow-xs">
+                    <Award className="w-4 h-4" />
                   </div>
                   <span className="px-2.5 py-0.5 bg-amber-500 text-white text-[11px] font-black rounded-full shadow-2xs">
                     {matchedCommittees.length} Jawatankuasa
@@ -704,7 +694,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ staff, committees = 
                     onClick={() => onOpenCommittee(staff)}
                     className="w-full mt-2 py-2.5 px-3 bg-amber-500 hover:bg-amber-600 text-white font-black text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-[0.99]"
                   >
-                    Buka Paparan Penuh Jawatankuasa ({matchedCommittees.length}) <ChevronRight className="w-4 h-4" />
+                    <span>Paparan Penuh</span> <ChevronRight className="w-4 h-4" />
                   </button>
                 )}
               </div>
