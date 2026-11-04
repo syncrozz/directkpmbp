@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, MessageCircle, Mail, GraduationCap, Award, Building2, Hash, Pencil, Camera, ChevronRight, Calendar, ExternalLink, Car, MapPin, Lock, ShieldCheck, Copy, CopyCheck, Check } from 'lucide-react';
+import { X, MessageCircle, Mail, GraduationCap, Award, Building2, Pencil, Camera, ChevronRight, Calendar, ExternalLink, Car, MapPin, Lock, ShieldCheck, Copy, CopyCheck, Check } from 'lucide-react';
 import { Staff, StaffCommittee } from '../types';
 import { getGredBadgeStyle } from '../utils/gredColors';
 import { getBahagianTheme } from '../utils/bahagianColors';
@@ -324,13 +324,10 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ staff, committees = 
                 )}
               </div>
 
-              {/* Status & ID Badge */}
+              {/* Status Badge */}
               <div className="flex flex-col items-end gap-1.5">
                 <span className={`px-3 py-1 rounded-full text-xs font-bold border ${theme.badge} bg-white/80 backdrop-blur-sm`}>
                   {staff.Bahagian} • {staff.DepartmentID}
-                </span>
-                <span className="text-[10px] text-slate-500 font-mono flex items-center gap-1 bg-white/60 px-2.5 py-0.5 rounded-lg border border-slate-200">
-                  <Hash className="w-3 h-3" /> {staff.ID}
                 </span>
               </div>
             </div>

@@ -94,6 +94,29 @@ export function createPreviewAdminSession(targetEmail: string = 'kpmbp2u@gmail.c
 }
 
 /**
+ * Creates an authorized Master Administrator session for authenticated secret PIN / backdoor login.
+ * Authoritative Master Administrator: kpmbp2u@gmail.com
+ */
+export function createSecretPinAdminSession(): GoogleAuthVerificationResult {
+  const masterAdmin: AuthorizedAdmin = {
+    id: 'master-admin-kpmbp2u',
+    email: 'kpmbp2u@gmail.com',
+    name: 'Master Admin (KPMBP)',
+    role: 'Master Administrator',
+    level: 1,
+    status: 'verified',
+    authProvider: 'google',
+    createdAt: new Date().toISOString().split('T')[0],
+  };
+
+  return {
+    isValid: true,
+    admin: masterAdmin,
+    message: 'Pengesahan laluan keselamatan Master Admin berjaya.',
+  };
+}
+
+/**
  * Verifies authenticated Google user identity strictly against authorized Master Administrator policy.
  * Requires:
  * 1. Normalized email matches one of AUTHORIZED_ADMIN_EMAILS

@@ -10,7 +10,8 @@ import {
   onSnapshot,
   serverTimestamp,
   setLogLevel,
-  getDocFromServer
+  getDocFromServer,
+  getDoc
 } from 'firebase/firestore';
 
 // Silence internal Firestore connection notices (e.g. 10s backend timeout in preview/sandboxes)
@@ -552,3 +553,52 @@ export const fetchCommitteesFromFirestore = async (): Promise<StaffCommittee[]> 
   );
 };
 
+/**
+ * Secret Master Admin PIN Verification & Storage in Firestore
+ * Stored securely in Firestore under collection 'platforms/directkpmbp/config/admin_auth' or 'system/auth_config'
+ */
+export const getAdminPinFromFirestore = async (): Promise<string> => {
+  try {
+    const configRef = doc(db, 'platforms', 'directkpmbp', 'config', 'admin_auth');
+    const snap = await getDoc(configRef);
+    if (snap.exists() && snap.data()?.pin) {
+      return String(snap.data().pin).trim();
+    }
+  } catch (_err) {
+    // Fallback to system collection if platform namespace error
+  }
+
+  try {
+    const sysRef = doc(db, 'system', 'auth_config');
+    const snap = await getDoc(sysRef);
+    if (snap.exists() && snap.data()?.pin) {
+      return String(snap.data().pin).trim();
+    }
+  } catch (_err) {
+    // Ignore error
+  }
+
+  return '5313';
+};
+
+export const saveAdminPinToFirestore = async (pin: string = '5313'): Promise<boolean> => {
+  try {
+    const configRef = doc(db, 'platforms', 'directkpmbp', 'config', 'admin_auth');
+    await setDoc(configRef, {
+      pin,
+      updatedAt: new Date().toISOString(),
+    }, { merge: true });
+    return true;
+  } catch (_e) {
+    try {
+      const sysRef = doc(db, 'system', 'auth_config');
+      await setDoc(sysRef, {
+        pin,
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+      return true;
+    } catch (_err) {
+      return false;
+    }
+  }
+};
