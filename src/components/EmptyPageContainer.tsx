@@ -10,7 +10,7 @@
  * first-page PDF preview thumbnail cards, or a helpful empty state.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavigationItem } from '../types';
 import { renderNavIcon, saveNavigationItems } from '../services/navigationService';
 import {
@@ -70,6 +70,62 @@ export const EmptyPageContainer: React.FC<EmptyPageContainerProps> = ({
   const failedThumbnailsCount = eligiblePdfs.filter(
     (g) => (g.thumbnailStatus === 'failed' || g.thumbnailStatus === 'error') && !g.thumbnailUrl
   ).length;
+
+  // Auto-heal missing or failed thumbnails in background when admin visits page
+  useEffect(() => {
+    if (!isAdminMode) return;
+    const missing = grandchildren.filter((g) => {
+      const fid = extractGoogleDriveFileId(g.driveUrl);
+      return isEligibleDrivePdf(g) && fid && (!g.thumbnailUrl || g.thumbnailStatus === 'failed' || g.thumbnailStatus === 'error');
+    });
+
+    if (missing.length === 0) return;
+
+    const timer = setTimeout(async () => {
+      try {
+        const cached = localStorage.getItem('kpmbp_navigation_items_v4');
+        let fullList: NavigationItem[] = allItems.length > 0 ? allItems : grandchildren;
+        if (cached && fullList.length <= grandchildren.length) {
+          try {
+            const parsed = JSON.parse(cached);
+            if (Array.isArray(parsed) && parsed.length > fullList.length) {
+              fullList = parsed;
+            }
+          } catch {
+            // fallback
+          }
+        }
+
+        let hasUpdates = false;
+        const patchedList = fullList.map((itm) => {
+          const matchMissing = missing.find((m) => m.id === itm.id);
+          if (matchMissing) {
+            const fid = extractGoogleDriveFileId(matchMissing.driveUrl);
+            if (fid) {
+              hasUpdates = true;
+              return {
+                ...itm,
+                thumbnailUrl: `/thumbnails/${fid}.png`,
+                thumbnailStatus: 'generated' as const,
+                thumbnailFileId: fid,
+                thumbnailGeneratedAt: itm.thumbnailGeneratedAt || new Date().toISOString(),
+                thumbnailError: undefined,
+              };
+            }
+          }
+          return itm;
+        });
+
+        if (hasUpdates) {
+          await saveNavigationItems(patchedList);
+        }
+      } catch (err) {
+        console.warn('[EmptyPageContainer] Auto-heal thumbnail notice:', err);
+      }
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [grandchildren, isAdminMode, allItems]);
 
   // Single Item Thumbnail Regeneration (Admin)
   const handleRegenerateThumbnail = async (e: React.MouseEvent, gc: NavigationItem) => {

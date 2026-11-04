@@ -394,11 +394,17 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
       setNotice(null);
 
       let updatedList: NavigationItem[];
+      const driveFileId = isDriveDisplay ? extractGoogleDriveFileId(formState.driveUrl) : null;
 
       if (editingItem) {
         // Update existing item
         updatedList = items.map((item) => {
           if (item.id === editingItem.id) {
+            const isSameDriveUrl = item.driveUrl === formState.driveUrl.trim();
+            const thumbUrl = driveFileId
+              ? (isSameDriveUrl && item.thumbnailUrl ? item.thumbnailUrl : `/thumbnails/${driveFileId}.png`)
+              : undefined;
+
             return {
               ...item,
               name: formState.name.trim(),
@@ -411,6 +417,11 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
               driveUrl: isDriveDisplay ? formState.driveUrl.trim() : undefined,
               displayTitle: isDriveDisplay ? (formState.displayTitle.trim() || formState.name.trim()) : undefined,
               isActive: formState.isActive,
+              thumbnailUrl: thumbUrl,
+              thumbnailStatus: driveFileId ? 'generated' : (item.thumbnailStatus || 'idle'),
+              thumbnailFileId: driveFileId || item.thumbnailFileId,
+              thumbnailGeneratedAt: driveFileId ? (item.thumbnailGeneratedAt || new Date().toISOString()) : item.thumbnailGeneratedAt,
+              thumbnailError: driveFileId ? undefined : item.thumbnailError,
               updatedAt: new Date().toISOString(),
             };
           }
@@ -439,6 +450,11 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
           displayTitle: isDriveDisplay ? (formState.displayTitle.trim() || formState.name.trim()) : undefined,
           order: nextOrder,
           isActive: formState.isActive,
+          thumbnailUrl: driveFileId ? `/thumbnails/${driveFileId}.png` : undefined,
+          thumbnailStatus: driveFileId ? 'generated' : 'idle',
+          thumbnailFileId: driveFileId || undefined,
+          thumbnailGeneratedAt: driveFileId ? new Date().toISOString() : undefined,
+          thumbnailError: undefined,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         };

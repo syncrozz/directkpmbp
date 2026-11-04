@@ -23,6 +23,69 @@ async function startServer() {
     res.json({ status: 'ok', service: 'Directory KPMBP' });
   });
 
+  // On-demand automatic thumbnail generator and cache route
+  app.get('/thumbnails/:filename', async (req, res, next) => {
+    const filename = req.params.filename || '';
+    const match = filename.match(/^([a-zA-Z0-9_-]{10,128})\.(png|webp|jpg|jpeg)$/);
+    if (!match) return next();
+
+    const fileId = match[1];
+    const ext = match[2];
+    const filePath = path.join(process.cwd(), 'public', 'thumbnails', `${fileId}.${ext}`);
+
+    // If already generated and cached on disk, send directly
+    if (fs.existsSync(filePath)) {
+      return res.sendFile(filePath);
+    }
+
+    // Auto-generate on-demand from Google Drive preview
+    try {
+      const resourcekey = String(req.query.resourcekey || '').trim();
+      const rKeyParam = resourcekey ? `&resourcekey=${encodeURIComponent(resourcekey)}` : '';
+      const candidateUrls = [
+        `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000${rKeyParam}`,
+        `https://lh3.googleusercontent.com/d/${fileId}=w1000${rKeyParam}`,
+        `https://lh3.googleusercontent.com/d/${fileId}${rKeyParam}`,
+      ];
+
+      for (const url of candidateUrls) {
+        try {
+          const resp = await fetch(url, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+              Accept: 'image/webp,image/jpeg,image/png,*/*',
+            },
+            redirect: 'follow',
+          });
+
+          if (resp.ok) {
+            const buf = Buffer.from(await resp.arrayBuffer());
+            const isImageMagic =
+              (buf.length > 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) ||
+              (buf.length > 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) ||
+              (buf.length > 12 && buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46);
+
+            if (isImageMagic) {
+              const dir = path.join(process.cwd(), 'public', 'thumbnails');
+              if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+              fs.writeFileSync(filePath, buf);
+
+              res.setHeader('Content-Type', ext === 'webp' ? 'image/webp' : 'image/png');
+              res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+              return res.send(buf);
+            }
+          }
+        } catch {
+          // try next candidate
+        }
+      }
+    } catch (genErr) {
+      console.warn('[AutoThumbnail] Generation notice for', fileId, genErr);
+    }
+
+    return next();
+  });
+
   // Serve static files from public directory
   app.use(express.static(path.join(process.cwd(), 'public')));
 
