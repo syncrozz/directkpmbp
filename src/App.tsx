@@ -53,24 +53,19 @@ import {
 } from './config/firebase';
 
 export default function App() {
-  // Navigation State ('directory' | 'rujukan' | 'jadual' | 'jadual-pensyarah' | 'daftar')
-  const [activeHub, setActiveHub] = useState<'directory' | 'rujukan' | 'jadual' | 'jadual-pensyarah' | 'daftar' | string>(() => {
+  // Navigation State ('directory' | 'rujukan' | 'jadual' | 'jadual-pensyarah' | 'daftar' | custom item ID)
+  const [activeHub, setActiveHub] = useState<string>(() => {
     if (typeof window !== 'undefined') {
-      const hash = window.location.hash.toLowerCase();
-      const pathname = window.location.pathname.toLowerCase();
+      const rawHash = window.location.hash.replace(/^#\/?/, '').trim();
       const searchParams = new URLSearchParams(window.location.search);
       const pageParam = (searchParams.get('page') || searchParams.get('tab') || '').toLowerCase();
-      if (hash.includes('daftar') || pathname.endsWith('/daftar') || pageParam === 'daftar') {
-        return 'daftar';
-      }
-      if (hash.includes('pensyarah') || pathname.endsWith('/pensyarah') || pageParam === 'pensyarah') {
-        return 'jadual-pensyarah';
-      }
-      if (hash.includes('jadual') || pathname.endsWith('/jadual') || pageParam === 'jadual') {
-        return 'jadual';
-      }
-      if (hash.includes('rujukan') || pathname.endsWith('/rujukan') || pageParam === 'rujukan') {
-        return 'rujukan';
+
+      if (rawHash) {
+        if (rawHash === 'daftar' || pageParam === 'daftar') return 'daftar';
+        if (rawHash === 'pensyarah' || rawHash === 'jadual-pensyarah' || pageParam === 'pensyarah') return 'jadual-pensyarah';
+        if (rawHash === 'jadual' || pageParam === 'jadual') return 'jadual';
+        if (rawHash === 'rujukan' || pageParam === 'rujukan') return 'rujukan';
+        return rawHash;
       }
     }
     return 'directory';
@@ -88,23 +83,49 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Compute active navigation item for current activeHub
+  // Compute active navigation item for current activeHub (prioritize ID match and child items)
   const activeNavItem = useMemo(() => {
-    return navigationItems.find(
-      (item) => item.destination === activeHub || item.id === activeHub
+    // 1. Direct match by ID
+    const byId = navigationItems.find((item) => item.id === activeHub);
+    if (byId) return byId;
+
+    // 2. Child match by destination
+    const childMatch = navigationItems.find(
+      (item) => item.type === 'child' && item.destination === activeHub
     );
+    if (childMatch) return childMatch;
+
+    // 3. Parent match by destination
+    return navigationItems.find((item) => item.destination === activeHub);
   }, [navigationItems, activeHub]);
 
   const handleSelectDestination = (destination: string) => {
+    // Check if target is a known navigation item (by ID or destination)
+    const matchedItem = navigationItems.find(
+      (n) => n.id === destination || n.destination === destination
+    );
+
+    // If it's a Drive viewer item, ALWAYS open internally in DriveContentViewer
+    if (matchedItem && (matchedItem.displayType === 'drive' || Boolean(matchedItem.driveUrl))) {
+      setActiveHub(matchedItem.id);
+      if (typeof window !== 'undefined') {
+        window.location.hash = `#${matchedItem.id}`;
+      }
+      return;
+    }
+
+    // External Web Link
     if (destination.startsWith('http://') || destination.startsWith('https://')) {
       window.open(destination, '_blank', 'noopener,noreferrer');
       return;
     }
 
     if (destination.startsWith('#')) {
-      window.location.hash = destination;
-      const clean = destination.replace(/^#\/?/, '');
+      const clean = destination.replace(/^#\/?/, '').trim();
       if (clean) setActiveHub(clean);
+      if (typeof window !== 'undefined') {
+        window.location.hash = destination;
+      }
       return;
     }
 
@@ -253,23 +274,38 @@ export default function App() {
     };
   }, []);
 
-  // Listen to URL hash and history state for direct slug navigation (e.g. #/daftar, ?invite=)
+  // Listen to URL hash and history state for direct slug navigation (e.g. #/daftar, ?invite=, #nav_c_...)
   useEffect(() => {
     const handleUrlChange = () => {
-      const hash = window.location.hash.toLowerCase();
-      const pathname = window.location.pathname.toLowerCase();
+      const rawHash = window.location.hash;
+      const cleanHash = rawHash.replace(/^#\/?/, '').trim();
       const searchParams = new URLSearchParams(window.location.search);
       const pageParam = (searchParams.get('page') || searchParams.get('tab') || '').toLowerCase();
 
-      if (hash.includes('daftar') || pathname.endsWith('/daftar') || pageParam === 'daftar') {
-        setActiveHub('daftar');
-      } else if (hash.includes('pensyarah') || pathname.endsWith('/pensyarah') || pageParam === 'pensyarah') {
-        setActiveHub('jadual-pensyarah');
-      } else if (hash.includes('jadual') || pathname.endsWith('/jadual') || pageParam === 'jadual') {
-        setActiveHub('jadual');
-      } else if (hash.includes('rujukan') || pathname.endsWith('/rujukan') || pageParam === 'rujukan') {
-        setActiveHub('rujukan');
-      } else if (hash === '' || hash === '#' || hash === '#/' || pathname === '/') {
+      if (cleanHash) {
+        // 1. Direct match with navigation items (e.g. custom IDs like nav_c_kalendar_akademi_3zpy)
+        const found = navigationItems.find(
+          (n) => n.id === cleanHash || n.destination === cleanHash
+        );
+        if (found) {
+          setActiveHub(found.id || found.destination);
+          return;
+        }
+
+        // 2. Standard modules exact check
+        if (cleanHash === 'daftar' || pageParam === 'daftar') {
+          setActiveHub('daftar');
+        } else if (cleanHash === 'pensyarah' || cleanHash === 'jadual-pensyarah' || pageParam === 'pensyarah') {
+          setActiveHub('jadual-pensyarah');
+        } else if (cleanHash === 'jadual' || cleanHash === 'jadual-pelajar' || pageParam === 'jadual') {
+          setActiveHub('jadual');
+        } else if (cleanHash === 'rujukan' || pageParam === 'rujukan') {
+          setActiveHub('rujukan');
+        } else {
+          setActiveHub(cleanHash);
+        }
+      } else {
+        // Only set directory when hash is actually empty
         setActiveHub('directory');
       }
     };
@@ -281,7 +317,7 @@ export default function App() {
       window.removeEventListener('hashchange', handleUrlChange);
       window.removeEventListener('popstate', handleUrlChange);
     };
-  }, []);
+  }, [navigationItems]);
 
   const handleInstallPWA = async () => {
     if (deferredPrompt) {
@@ -704,7 +740,26 @@ export default function App() {
 
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 relative z-10">
-        {activeHub === 'directory' ? (
+        {activeNavItem && (activeNavItem.displayType === 'drive' || Boolean(activeNavItem.driveUrl)) ? (
+          <DriveContentViewer
+            item={activeNavItem}
+            isAdminMode={isAdminMode}
+            onUpdateConfig={async (newUrl, newTitle) => {
+              const updated = navigationItems.map((n) =>
+                n.id === activeNavItem.id
+                  ? {
+                      ...n,
+                      driveUrl: newUrl,
+                      displayTitle: newTitle || n.name,
+                      updatedAt: new Date().toISOString(),
+                    }
+                  : n
+              );
+              setNavigationItems(updated);
+              await saveNavigationItems(updated);
+            }}
+          />
+        ) : activeHub === 'directory' ? (
           <div className="space-y-6">
             
             {/* Unified Search & Directory Control Bar */}
@@ -1001,25 +1056,6 @@ export default function App() {
             onViewStaffProfile={(staff) => {
               handleGoHome();
               setSelectedStaff(staff);
-            }}
-          />
-        ) : activeNavItem && (activeNavItem.displayType === 'drive' || Boolean(activeNavItem.driveUrl)) ? (
-          <DriveContentViewer
-            item={activeNavItem}
-            isAdminMode={isAdminMode}
-            onUpdateConfig={async (newUrl, newTitle) => {
-              const updated = navigationItems.map((n) =>
-                n.id === activeNavItem.id
-                  ? {
-                      ...n,
-                      driveUrl: newUrl,
-                      displayTitle: newTitle || n.name,
-                      updatedAt: new Date().toISOString(),
-                    }
-                  : n
-              );
-              setNavigationItems(updated);
-              await saveNavigationItems(updated);
             }}
           />
         ) : (

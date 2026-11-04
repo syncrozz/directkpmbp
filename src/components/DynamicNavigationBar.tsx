@@ -60,23 +60,36 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
 
   // 4. Determine currently selected Parent based on activeHub
   // A parent is active if:
-  // a) Parent's destination strictly equals activeHub
-  // b) Or any of its active children has destination === activeHub
+  // a) Parent's destination or id equals activeHub
+  // b) Or any of its active children has destination === activeHub or id === activeHub
   const activeParent = useMemo(() => {
-    // Exact match on parent destination
-    const directMatch = activeParents.find((p) => p.destination === activeHub);
+    // Exact match on parent destination or id
+    const directMatch = activeParents.find(
+      (p) => p.destination === activeHub || p.id === activeHub
+    );
     if (directMatch) return directMatch;
 
-    // Match via child destination
-    const childMatch = activeChildren.find((c) => c.destination === activeHub);
+    // Match via child destination or id
+    const childMatch = activeChildren.find(
+      (c) => c.destination === activeHub || c.id === activeHub
+    );
     if (childMatch && childMatch.parentId) {
       const parent = activeParents.find((p) => p.id === childMatch.parentId);
       if (parent) return parent;
     }
 
+    // Match via any item in hierarchy
+    const anyChild = items.find(
+      (i) => (i.id === activeHub || i.destination === activeHub) && i.parentId
+    );
+    if (anyChild && anyChild.parentId) {
+      const parent = activeParents.find((p) => p.id === anyChild.parentId);
+      if (parent) return parent;
+    }
+
     // Fallback: first active parent if any
     return activeParents[0] || null;
-  }, [activeParents, activeChildren, activeHub]);
+  }, [activeParents, activeChildren, activeHub, items]);
 
   // 5. Children of currently selected Parent
   const currentParentChildren = useMemo(() => {
@@ -128,20 +141,24 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
     const pChildren = childrenMap.get(parent.id) || [];
     if (pChildren.length > 0) {
       // If currently activeHub is already one of the children, keep it
-      const currentChildIsActive = pChildren.some((c) => c.destination === activeHub);
+      const currentChildIsActive = pChildren.some(
+        (c) => c.destination === activeHub || c.id === activeHub
+      );
       if (!currentChildIsActive) {
-        // Activate first active child
-        onSelectDestination(pChildren[0].destination);
+        // Activate first active child - prefer child id for uniqueness
+        const firstChild = pChildren[0];
+        onSelectDestination(firstChild.id || firstChild.destination);
       }
     } else {
       // Direct access parent
-      onSelectDestination(parent.destination);
+      onSelectDestination(parent.id || parent.destination);
     }
   };
 
   // Click on Child Navigation item
   const handleChildClick = (child: NavigationItem) => {
-    onSelectDestination(child.destination);
+    // Prefer unique child.id so routes and views are never ambiguously hijacked
+    onSelectDestination(child.id || child.destination);
   };
 
   return (
@@ -218,7 +235,7 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
 
             <div className="flex items-center gap-1.5 shrink-0 py-0.5">
               {currentParentChildren.map((child) => {
-                const isChildActive = activeHub === child.destination;
+                const isChildActive = activeHub === child.destination || activeHub === child.id;
 
                 return (
                   <button

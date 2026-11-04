@@ -208,7 +208,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
         });
         return;
       }
-      finalDest = editingItem?.destination || editingItem?.id || generateNavId(formState.name, 'child');
+      finalDest = editingItem?.id || generateNavId(formState.name, 'child');
     } else {
       finalDest = formState.useCustomDestination
         ? formState.customDestination.trim()
