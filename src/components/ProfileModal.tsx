@@ -438,21 +438,16 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({ staff, committees = 
                 </div>
               </div>
 
-              {/* Unit / Jabatan & Kategori */}
-              {(staff.Unit || staff.DepartmentID || staff.Kategori) && (
+              {/* Unit / Jabatan */}
+              {(staff.Unit || staff.DepartmentID) && (
                 <div className="flex gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-100">
                   <div className="mt-0.5 p-2 bg-indigo-100 text-indigo-700 rounded-xl h-9 w-9 flex items-center justify-center shrink-0">
                     <Building2 className="w-4 h-4" />
                   </div>
                   <div>
-                    <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Unit / Jabatan & Kategori</h4>
+                    <h4 className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Unit / Jabatan</h4>
                     <p className="text-sm text-slate-900 font-bold">
                       {staff.Unit || staff.DepartmentID}
-                      {staff.Kategori && (
-                        <span className="ml-2 text-xs font-semibold text-slate-500">
-                          ({staff.Kategori})
-                        </span>
-                      )}
                     </p>
                   </div>
                 </div>
