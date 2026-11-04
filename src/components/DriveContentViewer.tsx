@@ -111,12 +111,12 @@ export const DriveContentViewer: React.FC<DriveContentViewerProps> = ({
   };
 
   return (
-    <div className="space-y-4 text-left animate-fadeIn">
+    <div className="space-y-3 text-left animate-fadeIn">
       {/* Top Action & Title Bar */}
-      <div className="glass-panel rounded-2xl p-3.5 sm:p-5 border border-white/60 shadow-xs flex flex-row items-center justify-between gap-2.5 sm:gap-3">
+      <div className="glass-panel rounded-2xl px-3.5 py-2.5 sm:px-4 sm:py-3 border border-white/60 shadow-xs flex flex-row items-center justify-between gap-2.5 sm:gap-3">
         <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-          {item.thumbnailUrl && item.thumbnailStatus === 'ready' ? (
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-white border border-slate-200 overflow-hidden shadow-2xs shrink-0 flex items-center justify-center p-0.5">
+          {item.thumbnailUrl && (item.thumbnailStatus === 'ready' || item.thumbnailStatus === 'generated') ? (
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-white border border-slate-200 overflow-hidden shadow-2xs shrink-0 flex items-center justify-center p-0.5">
               <img
                 src={item.thumbnailUrl}
                 alt={title}
@@ -127,14 +127,14 @@ export const DriveContentViewer: React.FC<DriveContentViewerProps> = ({
               />
             </div>
           ) : (
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-700 shadow-2xs shrink-0">
-              {renderNavIcon(item.icon, 'w-4 h-4 sm:w-5 sm:h-5')}
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-700 shadow-2xs shrink-0">
+              {renderNavIcon(item.icon, 'w-4 h-4')}
             </div>
           )}
-          <div className="min-w-0 space-y-1">
-            {/* Breadcrumb Hierarchy (SES v4.4 Specification) */}
-            {(parentItem || grandParentItem) && (
-              <nav aria-label="Hierarki Navigasi" className="flex items-center gap-1.5 text-[11px] font-extrabold text-slate-400 flex-wrap">
+          <div className="min-w-0">
+            {/* Breadcrumb & Document Header */}
+            {(parentItem || grandParentItem) ? (
+              <nav aria-label="Hierarki Navigasi" className="flex items-center gap-1.5 text-xs sm:text-sm font-extrabold text-slate-500 flex-wrap">
                 {grandParentItem && (
                   <>
                     <button
@@ -144,7 +144,7 @@ export const DriveContentViewer: React.FC<DriveContentViewerProps> = ({
                     >
                       {grandParentItem.name}
                     </button>
-                    <ChevronRight className="w-3 h-3 text-slate-400 shrink-0" />
+                    <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                   </>
                 )}
                 {parentItem && (
@@ -156,18 +156,18 @@ export const DriveContentViewer: React.FC<DriveContentViewerProps> = ({
                     >
                       {parentItem.name}
                     </button>
-                    <ChevronRight className="w-3 h-3 text-slate-400 shrink-0" />
+                    <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                   </>
                 )}
-                <span className="text-indigo-700 font-black truncate max-w-[120px] sm:max-w-[200px]">
-                  {item.name}
+                <span className="text-slate-900 font-black truncate max-w-[180px] sm:max-w-[360px]">
+                  {title}
                 </span>
               </nav>
+            ) : (
+              <span className="text-sm sm:text-base font-black text-slate-900 truncate">
+                {title}
+              </span>
             )}
-
-            <h2 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight leading-tight truncate">
-              {title}
-            </h2>
           </div>
         </div>
 
@@ -346,7 +346,7 @@ export const DriveContentViewer: React.FC<DriveContentViewerProps> = ({
             src={parsed.embedUrl}
             title={title}
             onLoad={() => setIframeLoaded(true)}
-            className="relative z-10 w-full h-[76vh] min-h-[500px] border-0 bg-transparent"
+            className="relative z-10 w-full h-[80vh] sm:h-[calc(100vh-175px)] min-h-[560px] border-0 bg-transparent"
             allow="fullscreen"
             loading="lazy"
           />
