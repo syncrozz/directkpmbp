@@ -6,14 +6,14 @@
  * SES v4.4 Specification (Level 2 Child Container for Level 3 Grandchildren)
  * 
  * Renders a clean, structured container page for child navigation items
- * configured as "Pages Kosong". Displays the hierarchy breadcrumbs, container overview,
- * quick-access cards for associated grandchildren items, or a helpful empty state
- * when no grandchildren have been added yet.
+ * configured as "Pages Kosong". Displays hierarchy breadcrumbs, container overview,
+ * first-page PDF preview thumbnail cards, or a helpful empty state.
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import { NavigationItem } from '../types';
-import { renderNavIcon } from '../services/navigationService';
+import { renderNavIcon, saveNavigationItems } from '../services/navigationService';
+import { generateThumbnailForItem, generateBulkThumbnails, isEligibleDrivePdf } from '../services/pdfThumbnailService';
 import {
   FolderTree,
   ChevronRight,
@@ -22,7 +22,12 @@ import {
   Layers,
   ArrowRight,
   Sparkles,
-  Info
+  Info,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  RotateCcw,
+  ExternalLink
 } from 'lucide-react';
 
 interface EmptyPageContainerProps {
@@ -44,6 +49,99 @@ export const EmptyPageContainer: React.FC<EmptyPageContainerProps> = ({
   isAdminMode = false,
   onOpenNavManager,
 }) => {
+  const [generatingIds, setGeneratingIds] = useState<Set<string>>(new Set());
+  const [isBulkGenerating, setIsBulkGenerating] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState<{ completed: number; total: number } | null>(null);
+  const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  const eligiblePdfs = grandchildren.filter(isEligibleDrivePdf);
+  const readyThumbnailsCount = eligiblePdfs.filter((g) => g.thumbnailUrl && g.thumbnailStatus === 'ready').length;
+
+  // Single Item Thumbnail Regeneration (Admin)
+  const handleRegenerateThumbnail = async (e: React.MouseEvent, gc: NavigationItem) => {
+    e.stopPropagation();
+    if (generatingIds.has(gc.id)) return;
+
+    setGeneratingIds((prev) => new Set(prev).add(gc.id));
+    setNotification(null);
+
+    try {
+      const result = await generateThumbnailForItem(gc, true);
+      if (result.success) {
+        // Persist change to Firestore
+        const cached = localStorage.getItem('kpmbp_navigation_items_v4');
+        let allItems: NavigationItem[] = grandchildren;
+        if (cached) {
+          try {
+            allItems = JSON.parse(cached);
+          } catch {
+            // fallback
+          }
+        }
+        const updatedList = allItems.map((itm) => (itm.id === gc.id ? result.item : itm));
+        await saveNavigationItems(updatedList);
+        setNotification({
+          type: 'success',
+          message: `Thumbnail bagi "${gc.name}" berjaya dijana dan disimpan.`,
+        });
+      } else {
+        setNotification({
+          type: 'error',
+          message: result.error || `Gagal menjana thumbnail bagi "${gc.name}".`,
+        });
+      }
+    } catch (err: any) {
+      setNotification({
+        type: 'error',
+        message: err?.message || 'Ralat semasa menjana thumbnail.',
+      });
+    } finally {
+      setGeneratingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(gc.id);
+        return next;
+      });
+    }
+  };
+
+  // Bulk Generation for all eligible grandchildren in this container (Admin)
+  const handleBulkGenerate = async () => {
+    if (isBulkGenerating || eligiblePdfs.length === 0) return;
+
+    setIsBulkGenerating(true);
+    setBulkProgress({ completed: 0, total: eligiblePdfs.length });
+    setNotification(null);
+
+    try {
+      const cached = localStorage.getItem('kpmbp_navigation_items_v4');
+      let allItems: NavigationItem[] = grandchildren;
+      if (cached) {
+        try {
+          allItems = JSON.parse(cached);
+        } catch {
+          // fallback
+        }
+      }
+
+      const result = await generateBulkThumbnails(allItems, true, (p) => {
+        setBulkProgress({ completed: p.completed, total: p.total });
+      });
+
+      setNotification({
+        type: 'success',
+        message: `Selesai: ${result.successCount} thumbnail berjaya dijana (${result.failureCount} gagal, ${result.skippedCount} dilangkau).`,
+      });
+    } catch (err: any) {
+      setNotification({
+        type: 'error',
+        message: err?.message || 'Ralat semasa memproses thumbnail pukal.',
+      });
+    } finally {
+      setIsBulkGenerating(false);
+      setBulkProgress(null);
+    }
+  };
+
   return (
     <div className="space-y-6 text-left animate-fadeIn">
       {/* 1. Header Hero Glass Card */}
@@ -97,20 +195,75 @@ export const EmptyPageContainer: React.FC<EmptyPageContainerProps> = ({
               </div>
             </div>
 
-            {/* Admin Add Grandchild Fast-track Button */}
-            {isAdminMode && onOpenNavManager && (
-              <button
-                type="button"
-                onClick={onOpenNavManager}
-                className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-extrabold shadow-sm transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 shrink-0 self-start sm:self-auto"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Urus / Tambah Cucu</span>
-              </button>
+            {/* Admin Fast-track Buttons */}
+            {isAdminMode && (
+              <div className="flex items-center gap-2 flex-wrap">
+                {eligiblePdfs.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleBulkGenerate}
+                    disabled={isBulkGenerating}
+                    title="Jana Semula Semua Thumbnail PDF di halaman ini"
+                    className="px-3.5 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white rounded-xl text-xs font-extrabold shadow-sm transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 disabled:opacity-50 shrink-0"
+                  >
+                    {isBulkGenerating ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>
+                          Menjana... ({bulkProgress?.completed}/{bulkProgress?.total})
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>Jana Thumbnail ({readyThumbnailsCount}/{eligiblePdfs.length})</span>
+                      </>
+                    )}
+                  </button>
+                )}
+
+                {onOpenNavManager && (
+                  <button
+                    type="button"
+                    onClick={onOpenNavManager}
+                    className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-extrabold shadow-sm transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 shrink-0"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Urus / Tambah Cucu</span>
+                  </button>
+                )}
+              </div>
             )}
           </div>
         </div>
       </div>
+
+      {/* Notification Banner */}
+      {notification && (
+        <div
+          className={`p-3.5 rounded-2xl text-xs font-bold flex items-center justify-between gap-2 animate-fadeIn ${
+            notification.type === 'success'
+              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+              : 'bg-rose-50 text-rose-800 border border-rose-200'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {notification.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            ) : (
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            )}
+            <span>{notification.message}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setNotification(null)}
+            className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {/* 2. Content Section: Grid of Grandchildren vs Empty State */}
       {grandchildren.length > 0 ? (
@@ -123,59 +276,139 @@ export const EmptyPageContainer: React.FC<EmptyPageContainerProps> = ({
               </h3>
             </div>
             <span className="text-[11px] text-slate-400 font-medium hidden sm:inline">
-              Klik mana-mana item untuk membuka kandungan
+              Klik mana-mana item untuk membuka dokumen Google Drive
             </span>
           </div>
 
           {/* Grandchildren Cards Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {grandchildren.map((gc, index) => {
               const isDrive = gc.displayType === 'drive' || Boolean(gc.driveUrl);
+              const isEligible = isEligibleDrivePdf(gc);
+              const isGenerating = generatingIds.has(gc.id) || gc.thumbnailStatus === 'generating';
+              const hasThumbnail = Boolean(gc.thumbnailUrl) && gc.thumbnailStatus === 'ready';
 
               return (
                 <div
                   key={gc.id}
                   onClick={() => onSelectGrandchild(gc)}
-                  className="glass-panel p-4 rounded-2xl border border-slate-200/80 hover:border-indigo-300 bg-white hover:bg-gradient-to-br hover:from-white hover:to-indigo-50/40 transition-all cursor-pointer shadow-2xs hover:shadow-md group flex flex-col justify-between gap-3 text-left"
+                  className="glass-panel p-4 rounded-3xl border border-slate-200/80 hover:border-indigo-400 bg-white hover:bg-gradient-to-br hover:from-white hover:to-indigo-50/30 transition-all cursor-pointer shadow-2xs hover:shadow-lg group flex flex-col justify-between gap-3 text-left relative overflow-hidden"
                 >
-                  <div className="space-y-2.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-700 group-hover:bg-indigo-600 group-hover:text-white transition-colors flex items-center justify-center shrink-0 border border-indigo-100">
-                        {renderNavIcon(gc.icon, 'w-4 h-4')}
+                  <div className="space-y-3">
+                    {/* First Page Preview Thumbnail Display */}
+                    {isDrive && (
+                      <div className="w-full aspect-[4/3] bg-gradient-to-b from-slate-50 via-slate-100/70 to-slate-200/50 rounded-2xl overflow-hidden relative border border-slate-200/90 flex items-center justify-center p-2 group-hover:border-indigo-300 transition-colors shadow-inner">
+                        {isGenerating ? (
+                          <div className="flex flex-col items-center justify-center gap-2 text-indigo-600">
+                            <Loader2 className="w-6 h-6 animate-spin text-indigo-600" />
+                            <span className="text-[10px] font-bold text-slate-500">
+                              Menjana thumbnail muka surat 1...
+                            </span>
+                          </div>
+                        ) : hasThumbnail ? (
+                          <>
+                            <img
+                              src={gc.thumbnailUrl}
+                              alt={`Lakaran muka surat 1 - ${gc.name}`}
+                              className="w-full h-full object-contain rounded drop-shadow-sm transition-transform duration-300 group-hover:scale-[1.02]"
+                              loading="lazy"
+                              onError={(e) => {
+                                // Graceful fallback on broken image url without broken icon symbol
+                                e.currentTarget.style.display = 'none';
+                                const fb = e.currentTarget.nextElementSibling as HTMLElement;
+                                if (fb) fb.style.display = 'flex';
+                              }}
+                            />
+                            {/* Hidden fallback shown on image error */}
+                            <div
+                              style={{ display: 'none' }}
+                              className="w-full h-full flex flex-col items-center justify-center gap-1 text-slate-400"
+                            >
+                              <FileText className="w-8 h-8 text-rose-500" />
+                              <span className="text-[10px] font-bold">Google Drive PDF</span>
+                            </div>
+                          </>
+                        ) : (
+                          /* Fallback PDF Card (Consistent Card Dimensions, No Broken Placeholder) */
+                          <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-center p-3">
+                            <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 shadow-2xs group-hover:scale-105 transition-transform">
+                              <FileText className="w-6 h-6" />
+                            </div>
+                            <div>
+                              <span className="text-[11px] font-extrabold text-slate-700 block">
+                                Dokumen PDF Rasmi
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-medium">
+                                Klik untuk melihat kandungan
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Top Badges */}
+                        <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded-lg bg-white/90 backdrop-blur-xs text-slate-700 border border-slate-200 shadow-2xs font-extrabold">
+                            #{index + 1}
+                          </span>
+                        </div>
+
+                        <div className="absolute top-2.5 right-2.5 flex items-center gap-1">
+                          <span className="px-2 py-0.5 rounded-lg bg-slate-900/80 backdrop-blur-xs text-[9.5px] font-extrabold text-white uppercase tracking-wider flex items-center gap-1 shadow-2xs">
+                            <FileText className="w-3 h-3 text-rose-400" />
+                            <span>PDF</span>
+                          </span>
+
+                          {/* Admin Instant Single Regenerate Button */}
+                          {isAdminMode && isEligible && (
+                            <button
+                              type="button"
+                              onClick={(e) => handleRegenerateThumbnail(e, gc)}
+                              disabled={isGenerating}
+                              title="Jana Semula Thumbnail untuk dokumen ini"
+                              className="p-1.5 bg-white/90 hover:bg-white text-indigo-700 hover:text-indigo-900 rounded-lg shadow-2xs border border-indigo-100 transition-all cursor-pointer active:scale-90"
+                            >
+                              <RotateCcw className={`w-3 h-3 ${isGenerating ? 'animate-spin' : ''}`} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Metadata & Title */}
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-700 group-hover:bg-indigo-600 group-hover:text-white transition-colors flex items-center justify-center shrink-0 border border-indigo-100">
+                          {renderNavIcon(gc.icon, 'w-3.5 h-3.5')}
+                        </div>
+                        <h4 className="font-sans font-extrabold text-slate-900 group-hover:text-indigo-700 transition-colors text-sm leading-snug line-clamp-2">
+                          {gc.name}
+                        </h4>
                       </div>
 
-                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">
-                        #{index + 1}
-                      </span>
-                    </div>
-
-                    <div>
-                      <h4 className="font-sans font-extrabold text-slate-900 group-hover:text-indigo-700 transition-colors text-sm leading-snug line-clamp-2">
-                        {gc.name}
-                      </h4>
-                      <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+                      <p className="text-[11px] text-slate-400 font-mono pl-9 truncate">
                         /{gc.slug || gc.id}
                       </p>
                     </div>
                   </div>
 
-                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
-                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-500">
+                  {/* Card Footer */}
+                  <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs">
+                    <span className="inline-flex items-center gap-1 text-[10.5px] font-bold text-slate-500">
                       {isDrive ? (
                         <>
-                          <FileText className="w-3 h-3 text-violet-600" />
+                          <FileText className="w-3.5 h-3.5 text-rose-500" />
                           <span>Google Drive</span>
                         </>
                       ) : (
                         <>
-                          <Layers className="w-3 h-3 text-indigo-600" />
+                          <Layers className="w-3.5 h-3.5 text-indigo-600" />
                           <span>Modul</span>
                         </>
                       )}
                     </span>
 
-                    <span className="inline-flex items-center gap-1 text-xs font-extrabold text-indigo-600 group-hover:translate-x-0.5 transition-transform">
-                      <span>Buka</span>
+                    <span className="inline-flex items-center gap-1 text-xs font-black text-indigo-600 group-hover:translate-x-0.5 transition-transform">
+                      <span>Buka Dokumen</span>
                       <ArrowRight className="w-3.5 h-3.5" />
                     </span>
                   </div>

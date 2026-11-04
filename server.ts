@@ -63,6 +63,122 @@ async function startServer() {
     }
   });
 
+  // Google Drive PDF Proxy endpoint (CORS bypass for client PDF.js rendering)
+  app.get('/api/pdf/proxy', async (req, res) => {
+    const fileId = String(req.query.id || '').trim();
+    if (!fileId || !/^[a-zA-Z0-9_-]{10,128}$/.test(fileId)) {
+      return res.status(400).json({ success: false, error: 'ID fail Google Drive tidak sah.' });
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
+
+    try {
+      const gdriveUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+      const response = await fetch(gdriveUrl, {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          Accept: 'application/pdf,application/octet-stream,*/*',
+        },
+      });
+
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        return res.status(response.status).json({
+          success: false,
+          error: `Gagal memuat turun fail dari Google Drive (Status HTTP ${response.status}). Sila pastikan perkongsian fail ditetapkan kepada "Sesiapa sahaja yang mempunyai pautan".`,
+        });
+      }
+
+      const contentType = response.headers.get('content-type') || 'application/pdf';
+      const arrayBuffer = await response.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Length', buffer.length);
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      return res.send(buffer);
+    } catch (err: any) {
+      clearTimeout(timeout);
+      const isTimeout = err?.name === 'AbortError';
+      return res.status(isTimeout ? 504 : 502).json({
+        success: false,
+        error: isTimeout
+          ? 'Masa menunggu tamat semasa mengambil fail dari Google Drive.'
+          : err?.message || 'Ralat semasa mengambil fail dari Google Drive.',
+      });
+    }
+  });
+
+  // Google Drive Direct Thumbnail endpoint (Fast fallback/direct preview source)
+  app.get('/api/pdf/thumbnail-source', async (req, res) => {
+    const fileId = String(req.query.id || '').trim();
+    if (!fileId || !/^[a-zA-Z0-9_-]{10,128}$/.test(fileId)) {
+      return res.status(400).json({ success: false, error: 'ID fail Google Drive tidak sah.' });
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+
+    try {
+      // Primary source: lh3.googleusercontent.com/d/{id}=w1000 or drive.google.com/thumbnail
+      const urls = [
+        `https://lh3.googleusercontent.com/d/${fileId}=w1000`,
+        `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000`,
+      ];
+
+      let imageBuffer: Buffer | null = null;
+      let contentType = 'image/jpeg';
+
+      for (const u of urls) {
+        try {
+          const resp = await fetch(u, {
+            signal: controller.signal,
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+              Accept: 'image/webp,image/jpeg,image/png,*/*',
+            },
+          });
+          if (resp.ok) {
+            const ct = resp.headers.get('content-type') || '';
+            if (ct.includes('image/')) {
+              contentType = ct;
+              const ab = await resp.arrayBuffer();
+              imageBuffer = Buffer.from(ab);
+              break;
+            }
+          }
+        } catch {
+          // try next url
+        }
+      }
+
+      clearTimeout(timeout);
+
+      if (!imageBuffer) {
+        return res.status(404).json({
+          success: false,
+          error: 'Pratonton imej fail tidak dapat dijana daripada Google Drive.',
+        });
+      }
+
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Length', imageBuffer.length);
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      return res.send(imageBuffer);
+    } catch (err: any) {
+      clearTimeout(timeout);
+      return res.status(502).json({
+        success: false,
+        error: err?.message || 'Ralat semasa mengambil imej pratonton fail.',
+      });
+    }
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({

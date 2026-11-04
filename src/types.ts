@@ -137,6 +137,8 @@ export interface PortalSubscriptionResult {
 export type NavigationType = 'parent' | 'child' | 'grandchild';
 export type NavigationDisplayType = 'module' | 'drive' | 'empty_page';
 
+export type ThumbnailStatus = 'idle' | 'generating' | 'ready' | 'error';
+
 export interface NavigationItem {
   id: string; // Stable unique identifier e.g. "nav_directory"
   name: string; // Display name e.g. "Directory Staff"
@@ -153,6 +155,19 @@ export interface NavigationItem {
   driveUrl?: string; // Google Drive PDF or Folder URL
   displayTitle?: string; // Custom title for content viewer
   slug?: string; // SEO-friendly human-readable unique slug e.g. 'jadual_exam'
+  // Automatic PDF Thumbnail Generation Fields (SES Specification)
+  thumbnailUrl?: string; // Firebase Storage public URL of rendered 1st page
+  thumbnailStatus?: ThumbnailStatus; // 'idle' | 'generating' | 'ready' | 'error'
+  thumbnailGeneratedAt?: string; // ISO timestamp when thumbnail was generated
+  thumbnailFileId?: string; // Google Drive file ID for cache invalidation & change detection
+  thumbnailError?: string; // Detailed error message if generation failed
+  sourceFileMetadata?: {
+    fileId: string;
+    fileName?: string;
+    mimeType?: string;
+    sizeBytes?: number;
+    lastModified?: string;
+  };
 }
 
 

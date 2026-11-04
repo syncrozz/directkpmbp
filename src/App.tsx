@@ -60,6 +60,11 @@ import {
   signOutAdmin,
   subscribeToAuthChanges
 } from './config/firebase';
+import {
+  generateThumbnailForItem,
+  generateBulkThumbnails,
+  isEligibleDrivePdf
+} from './services/pdfThumbnailService';
 
 export default function App() {
   // Navigation State ('directory' | 'rujukan' | 'jadual' | 'jadual-pensyarah' | 'daftar' | custom item ID)
@@ -958,12 +963,25 @@ export default function App() {
                       ...n,
                       driveUrl: newUrl,
                       displayTitle: newTitle || n.name,
+                      thumbnailStatus: 'generating' as const,
                       updatedAt: new Date().toISOString(),
                     }
                   : n
               );
               setNavigationItems(updated);
               await saveNavigationItems(updated);
+
+              // Auto-generate thumbnail for updated URL
+              const target = updated.find((it) => it.id === activeNavItem.id);
+              if (target && isEligibleDrivePdf(target)) {
+                generateThumbnailForItem(target, true).then(async (res) => {
+                  if (res.success) {
+                    const withThumb = updated.map((it) => (it.id === target.id ? res.item : it));
+                    setNavigationItems(withThumb);
+                    await saveNavigationItems(withThumb);
+                  }
+                }).catch(console.warn);
+              }
             }}
           />
         ) : resolvedDestination === 'directory' ? (

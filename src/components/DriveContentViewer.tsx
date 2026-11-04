@@ -115,9 +115,22 @@ export const DriveContentViewer: React.FC<DriveContentViewerProps> = ({
       {/* Top Action & Title Bar */}
       <div className="glass-panel rounded-2xl p-3.5 sm:p-5 border border-white/60 shadow-xs flex flex-row items-center justify-between gap-2.5 sm:gap-3">
         <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-700 shadow-2xs shrink-0">
-            {renderNavIcon(item.icon, 'w-4 h-4 sm:w-5 sm:h-5')}
-          </div>
+          {item.thumbnailUrl && item.thumbnailStatus === 'ready' ? (
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-white border border-slate-200 overflow-hidden shadow-2xs shrink-0 flex items-center justify-center p-0.5">
+              <img
+                src={item.thumbnailUrl}
+                alt={title}
+                className="w-full h-full object-contain"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                }}
+              />
+            </div>
+          ) : (
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-700 shadow-2xs shrink-0">
+              {renderNavIcon(item.icon, 'w-4 h-4 sm:w-5 sm:h-5')}
+            </div>
+          )}
           <div className="min-w-0 space-y-1">
             {/* Breadcrumb Hierarchy (SES v4.4 Specification) */}
             {(parentItem || grandParentItem) && (

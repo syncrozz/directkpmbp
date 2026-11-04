@@ -33,7 +33,10 @@ import {
   Loader2,
   FileText,
   CornerDownRight,
-  Layout
+  Layout,
+  Sparkles,
+  CheckCircle2,
+  Image as ImageIcon
 } from 'lucide-react';
 import { NavigationItem, NavigationType, NavigationDisplayType } from '../types';
 import {
@@ -53,6 +56,12 @@ import {
   getHierarchicalPath
 } from '../services/navigationService';
 import { parseTakwimLink } from '../services/takwimService';
+import {
+  generateThumbnailForItem,
+  generateBulkThumbnails,
+  isEligibleDrivePdf,
+  extractGoogleDriveFileId
+} from '../services/pdfThumbnailService';
 
 interface NavigationManagerModalProps {
   isOpen: boolean;
@@ -170,6 +179,79 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
     () => parseTakwimLink(formState.driveUrl),
     [formState.driveUrl]
   );
+
+  // Automatic PDF Thumbnail Generation States & Counts
+  const [generatingThumbnailIds, setGeneratingThumbnailIds] = useState<Set<string>>(new Set());
+  const [isBulkGeneratingThumbnails, setIsBulkGeneratingThumbnails] = useState(false);
+  const [bulkThumbnailProgress, setBulkThumbnailProgress] = useState<{ completed: number; total: number } | null>(null);
+
+  const eligiblePdfItems = useMemo(() => items.filter(isEligibleDrivePdf), [items]);
+  const readyThumbnailsCount = useMemo(
+    () => eligiblePdfItems.filter((i) => i.thumbnailUrl && i.thumbnailStatus === 'ready').length,
+    [eligiblePdfItems]
+  );
+
+  const handleSingleThumbnailGeneration = async (targetItem: NavigationItem) => {
+    if (generatingThumbnailIds.has(targetItem.id)) return;
+    setGeneratingThumbnailIds((prev) => new Set(prev).add(targetItem.id));
+    setNotice(null);
+
+    try {
+      const result = await generateThumbnailForItem(targetItem, true);
+      if (result.success) {
+        const updated = items.map((i) => (i.id === targetItem.id ? result.item : i));
+        await saveNavigationItems(updated);
+        onItemsChange?.(updated);
+        setNotice({
+          type: 'success',
+          text: `Thumbnail untuk "${targetItem.name}" berjaya dijana dan disimpan ke Firebase Storage.`,
+        });
+      } else {
+        setNotice({
+          type: 'error',
+          text: result.error || `Gagal menjana thumbnail untuk "${targetItem.name}".`,
+        });
+      }
+    } catch (err: any) {
+      setNotice({
+        type: 'error',
+        text: err?.message || 'Ralat semasa menjana thumbnail PDF.',
+      });
+    } finally {
+      setGeneratingThumbnailIds((prev) => {
+        const next = new Set(prev);
+        next.delete(targetItem.id);
+        return next;
+      });
+    }
+  };
+
+  const handleBulkGenerateAllThumbnails = async () => {
+    if (isBulkGeneratingThumbnails || eligiblePdfItems.length === 0) return;
+    setIsBulkGeneratingThumbnails(true);
+    setBulkThumbnailProgress({ completed: 0, total: eligiblePdfItems.length });
+    setNotice(null);
+
+    try {
+      const result = await generateBulkThumbnails(items, true, (p) => {
+        setBulkThumbnailProgress({ completed: p.completed, total: p.total });
+      });
+
+      onItemsChange?.(result.updatedItems);
+      setNotice({
+        type: 'success',
+        text: `Penjanaan thumbnail pukal selesai: ${result.successCount} berjaya, ${result.failureCount} gagal, ${result.skippedCount} dilangkau.`,
+      });
+    } catch (err: any) {
+      setNotice({
+        type: 'error',
+        text: err?.message || 'Ralat semasa penjanaan thumbnail pukal.',
+      });
+    } finally {
+      setIsBulkGeneratingThumbnails(false);
+      setBulkThumbnailProgress(null);
+    }
+  };
 
   // Available children filtered by parent filter (used in Grandchild Form)
   const childrenForGrandchildForm = useMemo(() => {
@@ -371,6 +453,25 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
         type: 'success',
         text: `Navigasi "${formState.name}" berjaya disimpan ke Firestore.`
       });
+
+      // Automatically generate thumbnail for newly registered or updated Google Drive PDF documents
+      if (isDriveDisplay && formState.driveUrl) {
+        const targetSavedId = editingItem ? editingItem.id : (updatedList[updatedList.length - 1]?.id);
+        const savedItem = updatedList.find((i) => i.id === targetSavedId);
+        if (savedItem && isEligibleDrivePdf(savedItem)) {
+          generateThumbnailForItem(savedItem, true).then(async (thumbResult) => {
+            if (thumbResult.success) {
+              const withThumbnailList = updatedList.map((i) =>
+                i.id === savedItem.id ? thumbResult.item : i
+              );
+              await saveNavigationItems(withThumbnailList);
+              onItemsChange?.(withThumbnailList);
+            }
+          }).catch((thumbErr) => {
+            console.warn('[NavigationManagerModal] Auto-generate thumbnail notice:', thumbErr?.message || thumbErr);
+          });
+        }
+      }
     } catch (err: any) {
       setNotice({
         type: 'error',
@@ -596,6 +697,51 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                 className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
               >
                 <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          {/* Automatic PDF Thumbnail Engine Bar */}
+          {eligiblePdfItems.length > 0 && (
+            <div className="mt-3 p-3 bg-gradient-to-r from-violet-50 via-indigo-50 to-amber-50/50 rounded-2xl border border-violet-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-violet-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <Sparkles className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black text-slate-800">
+                      Enjin Thumbnail PDF Google Drive
+                    </span>
+                    <span className="text-[10px] font-extrabold px-2 py-0.2 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                      {readyThumbnailsCount} / {eligiblePdfItems.length} Sedia
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    Jana imej lakaran muka surat 1 dokumen secara automatik dan simpan ke Firebase Storage.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleBulkGenerateAllThumbnails}
+                disabled={isBulkGeneratingThumbnails}
+                className="px-3.5 py-1.5 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white rounded-xl text-xs font-extrabold shadow-xs transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 disabled:opacity-50 shrink-0 self-start sm:self-auto"
+              >
+                {isBulkGeneratingThumbnails ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>
+                      Memproses... ({bulkThumbnailProgress?.completed}/{bulkThumbnailProgress?.total})
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Jana Semua ({eligiblePdfItems.length} Dokumen)</span>
+                  </>
+                )}
               </button>
             </div>
           )}
@@ -898,6 +1044,45 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                                       /{getHierarchicalSlug(c, items)}
                                     </span>
                                   </div>
+
+                                  {isEligibleDrivePdf(c) && (
+                                    <div className="flex items-center gap-2 mt-1.5">
+                                      {c.thumbnailUrl && c.thumbnailStatus === 'ready' ? (
+                                        <div className="flex items-center gap-1.5">
+                                          <img
+                                            src={c.thumbnailUrl}
+                                            alt={c.name}
+                                            className="w-5 h-6 object-cover rounded border border-slate-200 bg-white"
+                                          />
+                                          <span className="text-[9.5px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200 flex items-center gap-1">
+                                            <CheckCircle2 className="w-2.5 h-2.5" />
+                                            <span>Thumbnail Sedia</span>
+                                          </span>
+                                        </div>
+                                      ) : generatingThumbnailIds.has(c.id) || c.thumbnailStatus === 'generating' ? (
+                                        <span className="text-[9.5px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.2 rounded border border-indigo-200 flex items-center gap-1">
+                                          <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                                          <span>Menjana...</span>
+                                        </span>
+                                      ) : (
+                                        <span className="text-[9.5px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200 flex items-center gap-1">
+                                          <AlertCircle className="w-2.5 h-2.5" />
+                                          <span>Belum Dijana</span>
+                                        </span>
+                                      )}
+
+                                      <button
+                                        type="button"
+                                        onClick={() => handleSingleThumbnailGeneration(c)}
+                                        disabled={generatingThumbnailIds.has(c.id)}
+                                        title="Jana Semula Thumbnail Dokumen"
+                                        className="text-[10px] font-bold text-violet-700 hover:text-violet-900 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded border border-violet-200 cursor-pointer flex items-center gap-1 disabled:opacity-50"
+                                      >
+                                        <RotateCcw className={`w-2.5 h-2.5 ${generatingThumbnailIds.has(c.id) ? 'animate-spin' : ''}`} />
+                                        <span>Jana Thumbnail</span>
+                                      </button>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
 
@@ -1059,6 +1244,45 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                                     /{getHierarchicalSlug(gc, items)}
                                   </span>
                                 </div>
+
+                                {isEligibleDrivePdf(gc) && (
+                                  <div className="flex items-center gap-2 mt-1.5">
+                                    {gc.thumbnailUrl && gc.thumbnailStatus === 'ready' ? (
+                                      <div className="flex items-center gap-1.5">
+                                        <img
+                                          src={gc.thumbnailUrl}
+                                          alt={gc.name}
+                                          className="w-5 h-6 object-cover rounded border border-slate-200 bg-white"
+                                        />
+                                        <span className="text-[9.5px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200 flex items-center gap-1">
+                                          <CheckCircle2 className="w-2.5 h-2.5" />
+                                          <span>Thumbnail Sedia</span>
+                                        </span>
+                                      </div>
+                                    ) : generatingThumbnailIds.has(gc.id) || gc.thumbnailStatus === 'generating' ? (
+                                      <span className="text-[9.5px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.2 rounded border border-indigo-200 flex items-center gap-1">
+                                        <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                                        <span>Menjana...</span>
+                                      </span>
+                                    ) : (
+                                      <span className="text-[9.5px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200 flex items-center gap-1">
+                                        <AlertCircle className="w-2.5 h-2.5" />
+                                        <span>Belum Dijana</span>
+                                      </span>
+                                    )}
+
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSingleThumbnailGeneration(gc)}
+                                      disabled={generatingThumbnailIds.has(gc.id)}
+                                      title="Jana Semula Thumbnail Dokumen"
+                                      className="text-[10px] font-bold text-violet-700 hover:text-violet-900 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded border border-violet-200 cursor-pointer flex items-center gap-1 disabled:opacity-50"
+                                    >
+                                      <RotateCcw className={`w-2.5 h-2.5 ${generatingThumbnailIds.has(gc.id) ? 'animate-spin' : ''}`} />
+                                      <span>Jana Thumbnail</span>
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                             </div>
 
