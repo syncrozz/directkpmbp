@@ -41,6 +41,7 @@ import { LecturerTimetableHub } from './components/LecturerTimetableHub';
 import { DynamicNavigationBar } from './components/DynamicNavigationBar';
 import { NavigationManagerModal } from './components/NavigationManagerModal';
 import { DriveContentViewer } from './components/DriveContentViewer';
+import { EmptyPageContainer } from './components/EmptyPageContainer';
 import { 
   DEFAULT_NAVIGATION_ITEMS, 
   subscribeToNavigation, 
@@ -87,7 +88,7 @@ export default function App() {
     // 1. Direct match by ID
     const byId = navigationItems.find((item) => item.id === activeHub);
     if (byId) {
-      if (byId.type === 'child') {
+      if (byId.type === 'child' && byId.displayType !== 'empty_page') {
         const childGrandchildren = navigationItems.filter(
           (item) => item.type === 'grandchild' && item.parentId === byId.id && item.isActive
         );
@@ -103,7 +104,7 @@ export default function App() {
       (item) => item.slug && item.slug.toLowerCase() === activeHub.toLowerCase()
     );
     if (bySlug) {
-      if (bySlug.type === 'child') {
+      if (bySlug.type === 'child' && bySlug.displayType !== 'empty_page') {
         const childGrandchildren = navigationItems.filter(
           (item) => item.type === 'grandchild' && item.parentId === bySlug.id && item.isActive
         );
@@ -165,8 +166,8 @@ export default function App() {
 
     if (matchedItem) {
       let targetItem = matchedItem;
-      // If child in container mode, navigate to first grandchild
-      if (matchedItem.type === 'child') {
+      // If child in container mode (and NOT empty_page), navigate to first grandchild
+      if (matchedItem.type === 'child' && matchedItem.displayType !== 'empty_page') {
         const gcs = navigationItems.filter(
           (i) => i.type === 'grandchild' && i.parentId === matchedItem.id && i.isActive
         );
@@ -906,7 +907,18 @@ export default function App() {
 
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 relative z-10">
-        {activeNavItem && (activeNavItem.displayType === 'drive' || Boolean(activeNavItem.driveUrl)) ? (
+        {activeNavItem?.displayType === 'empty_page' ? (
+          <EmptyPageContainer
+            item={activeNavItem}
+            parentItem={navigationItems.find((p) => p.id === activeNavItem.parentId)}
+            grandchildren={navigationItems.filter(
+              (gc) => gc.type === 'grandchild' && gc.parentId === activeNavItem.id && gc.isActive
+            )}
+            onSelectGrandchild={(gc) => handleSelectDestination(gc.id || gc.destination)}
+            isAdminMode={isAdminMode}
+            onOpenNavManager={() => setIsNavManagerOpen(true)}
+          />
+        ) : activeNavItem && (activeNavItem.displayType === 'drive' || Boolean(activeNavItem.driveUrl)) ? (
           <DriveContentViewer
             item={activeNavItem}
             isAdminMode={isAdminMode}

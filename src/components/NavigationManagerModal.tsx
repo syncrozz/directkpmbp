@@ -32,7 +32,8 @@ import {
   ShieldAlert,
   Loader2,
   FileText,
-  CornerDownRight
+  CornerDownRight,
+  Layout
 } from 'lucide-react';
 import { NavigationItem, NavigationType, NavigationDisplayType } from '../types';
 import {
@@ -276,6 +277,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
     }
 
     const isDriveDisplay = (formState.type === 'child' || formState.type === 'grandchild') && formState.displayType === 'drive';
+    const isEmptyPageDisplay = (formState.type === 'child' || formState.type === 'grandchild') && formState.displayType === 'empty_page';
 
     let finalDest = '';
     if (isDriveDisplay) {
@@ -287,6 +289,9 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
         });
         return;
       }
+      finalDest = editingItem?.id || generateNavId(formState.name, formState.type);
+    } else if (isEmptyPageDisplay) {
+      // Empty page container uses its own unique ID as destination
       finalDest = editingItem?.id || generateNavId(formState.name, formState.type);
     } else {
       finalDest = formState.useCustomDestination
@@ -329,7 +334,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
         });
       } else {
         // Create new item
-        const newId = isDriveDisplay && finalDest ? finalDest : generateNavId(formState.name, formState.type);
+        const newId = (isDriveDisplay || isEmptyPageDisplay) && finalDest ? finalDest : generateNavId(formState.name, formState.type);
         const siblings = formState.type === 'parent'
           ? parents
           : formState.type === 'child'
@@ -344,7 +349,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
           icon: formState.icon,
           type: formState.type,
           parentId: formState.type === 'parent' ? undefined : formState.parentId,
-          destination: isDriveDisplay ? newId : finalDest,
+          destination: (isDriveDisplay || isEmptyPageDisplay) ? newId : finalDest,
           displayType: formState.type === 'parent' ? undefined : formState.displayType,
           driveUrl: isDriveDisplay ? formState.driveUrl.trim() : undefined,
           displayTitle: isDriveDisplay ? (formState.displayTitle.trim() || formState.name.trim()) : undefined,
@@ -857,13 +862,18 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                                     <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-slate-100 text-slate-600">
                                       #{c.order + 1}
                                     </span>
-                                    {gcs.length > 0 ? (
+                                    {c.displayType === 'empty_page' ? (
+                                      <span className="text-[9.5px] font-extrabold px-2 py-0.2 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
+                                        <Layout className="w-2.5 h-2.5" />
+                                        <span>Pages Kosong ({gcs.length} Cucu)</span>
+                                      </span>
+                                    ) : gcs.length > 0 ? (
                                       <span className="text-[9.5px] font-extrabold px-2 py-0.2 rounded-full bg-violet-100 text-violet-800 border border-violet-200 flex items-center gap-1">
                                         <FolderTree className="w-2.5 h-2.5" />
                                         <span>Bekas ({gcs.length} Cucu)</span>
                                       </span>
                                     ) : c.displayType === 'drive' || c.driveUrl ? (
-                                      <span className="text-[9.5px] font-extrabold px-2 py-0.2 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
+                                      <span className="text-[9.5px] font-extrabold px-2 py-0.2 rounded-full bg-violet-100 text-violet-800 border border-violet-200 flex items-center gap-1">
                                         <FileText className="w-2.5 h-2.5" />
                                         <span>Google Drive</span>
                                       </span>
@@ -875,7 +885,9 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                                     )}
                                   </div>
                                   <div className="text-[10px] text-slate-500 font-mono mt-0.5 truncate max-w-xs sm:max-w-md flex items-center gap-2 flex-wrap">
-                                    {c.displayType === 'drive' || c.driveUrl ? (
+                                    {c.displayType === 'empty_page' ? (
+                                      <>Container: <span className="font-semibold text-emerald-700">Pages Kosong ({gcs.length} Cucu)</span></>
+                                    ) : c.displayType === 'drive' || c.driveUrl ? (
                                       <>Drive URL: <span className="font-semibold text-violet-700">{c.driveUrl || 'Belum diisi'}</span></>
                                     ) : (
                                       <>Destinasi: <span className="font-semibold text-slate-700">{c.destination}</span></>
@@ -1402,11 +1414,11 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                       </div>
 
                       {/* Display Type Selector Segmented Buttons */}
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className={`grid ${formState.type === 'child' ? 'grid-cols-3' : 'grid-cols-2'} gap-2`}>
                         <button
                           type="button"
                           onClick={() => setFormState({ ...formState, displayType: 'module' })}
-                          className={`py-2 px-3 rounded-xl text-xs font-extrabold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                          className={`py-2 px-2 rounded-xl text-xs font-extrabold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                             formState.displayType === 'module'
                               ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
                               : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
@@ -1418,7 +1430,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                         <button
                           type="button"
                           onClick={() => setFormState({ ...formState, displayType: 'drive' })}
-                          className={`py-2 px-3 rounded-xl text-xs font-extrabold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                          className={`py-2 px-2 rounded-xl text-xs font-extrabold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                             formState.displayType === 'drive'
                               ? 'bg-violet-600 text-white border-violet-600 shadow-xs'
                               : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
@@ -1427,9 +1439,41 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                           <FileText className="w-3.5 h-3.5" />
                           <span>Paparan Google Drive</span>
                         </button>
+                        {formState.type === 'child' && (
+                          <button
+                            type="button"
+                            onClick={() => setFormState({ ...formState, displayType: 'empty_page' })}
+                            className={`py-2 px-2 rounded-xl text-xs font-extrabold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                              formState.displayType === 'empty_page'
+                                ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                                : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
+                            }`}
+                          >
+                            <Layout className="w-3.5 h-3.5" />
+                            <span>Pages Kosong</span>
+                          </button>
+                        )}
                       </div>
 
-                      {formState.displayType === 'drive' ? (
+                      {formState.displayType === 'empty_page' ? (
+                        <div className="space-y-2 p-3.5 bg-emerald-50/70 border border-emerald-200/80 rounded-xl text-left">
+                          <div className="flex items-center gap-2 text-emerald-800 font-extrabold text-xs">
+                            <Layout className="w-4 h-4 text-emerald-600" />
+                            <span>Halaman Kosong / Container Navigasi Cucu</span>
+                          </div>
+                          <p className="text-[11px] text-emerald-700 leading-relaxed">
+                            Navigasi ini akan berfungsi sebagai <b>halaman container</b> yang membolehkan navigasi cucu diletakkan di bawahnya. Tidak memerlukan pautan Google Drive atau modul aplikasi khusus.
+                          </p>
+                          <div className="text-[10px] text-emerald-900 bg-white/90 p-2.5 rounded-lg border border-emerald-200 font-medium space-y-1">
+                            <div className="font-bold flex items-center gap-1 text-emerald-800">
+                              <span>✓ Bersedia Menerima Navigasi Cucu:</span>
+                            </div>
+                            <p className="text-slate-600 leading-normal">
+                              Halaman kosong yang sah ini boleh menerima navigasi cucu kemudian. Anda boleh menambah navigasi cucu di bawahnya bila-bila masa melalui tab Cucu atau dari paparan container ini.
+                            </p>
+                          </div>
+                        </div>
+                      ) : formState.displayType === 'drive' ? (
                         <div className="space-y-2.5 pt-2 border-t border-slate-200/80">
                           <div className="space-y-1">
                             <div className="flex items-center justify-between">

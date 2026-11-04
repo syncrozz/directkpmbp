@@ -194,8 +194,8 @@ export function validateNavigationDestination(dest: string, displayType?: string
     return { valid: false, error: 'Destinasi modul/laluan tidak boleh dibiarkan kosong.' };
   }
 
-  // If displayType is drive or dest is an internal navigation item id
-  if (displayType === 'drive' || trimmed.startsWith('nav_')) {
+  // If displayType is drive, empty_page, or dest is an internal navigation item id
+  if (displayType === 'drive' || displayType === 'empty_page' || trimmed.startsWith('nav_')) {
     return { valid: true };
   }
 

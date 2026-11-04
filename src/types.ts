@@ -135,7 +135,7 @@ export interface PortalSubscriptionResult {
 }
 
 export type NavigationType = 'parent' | 'child' | 'grandchild';
-export type NavigationDisplayType = 'module' | 'drive';
+export type NavigationDisplayType = 'module' | 'drive' | 'empty_page';
 
 export interface NavigationItem {
   id: string; // Stable unique identifier e.g. "nav_directory"
@@ -149,7 +149,7 @@ export interface NavigationItem {
   createdAt?: string; // ISO string
   updatedAt?: string; // ISO string
   updatedBy?: string; // Admin email
-  displayType?: NavigationDisplayType; // 'module' | 'drive'
+  displayType?: NavigationDisplayType; // 'module' | 'drive' | 'empty_page'
   driveUrl?: string; // Google Drive PDF or Folder URL
   displayTitle?: string; // Custom title for content viewer
   slug?: string; // SEO-friendly human-readable unique slug e.g. 'jadual_exam'

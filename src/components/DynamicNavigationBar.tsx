@@ -250,13 +250,17 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
       );
       if (!currentChildIsActive) {
         const firstChild = pChildren[0];
-        const gcs = grandchildrenMap.get(firstChild.id) || [];
-        if (gcs.length > 0) {
-          // If first child is in container mode, select its first grandchild
-          const firstGc = gcs[0];
-          onSelectDestination(firstGc.id || firstGc.destination);
-        } else {
+        if (firstChild.displayType === 'empty_page') {
           onSelectDestination(firstChild.id || firstChild.destination);
+        } else {
+          const gcs = grandchildrenMap.get(firstChild.id) || [];
+          if (gcs.length > 0) {
+            // If first child is in container mode, select its first grandchild
+            const firstGc = gcs[0];
+            onSelectDestination(firstGc.id || firstGc.destination);
+          } else {
+            onSelectDestination(firstChild.id || firstChild.destination);
+          }
         }
       }
     } else {
@@ -267,6 +271,11 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
 
   // Click on Child Navigation item
   const handleChildClick = (child: NavigationItem) => {
+    // If the child is an empty_page container, user directly views the container page
+    if (child.displayType === 'empty_page') {
+      onSelectDestination(child.id || child.destination);
+      return;
+    }
     const gcs = grandchildrenMap.get(child.id) || [];
     if (gcs.length > 0) {
       // Container mode: auto-select first grandchild
@@ -409,11 +418,18 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
 
             <div className="flex items-center gap-1.5 shrink-0 py-0.5">
               {currentChildGrandchildren.map((gc) => {
+                const isChildContainerViewing =
+                  activeChild?.displayType === 'empty_page' &&
+                  (activeHub === activeChild.id ||
+                    activeHub === activeChild.destination ||
+                    (activeChild.slug && activeHub.toLowerCase() === activeChild.slug.toLowerCase()));
+
                 const isGcActive =
-                  activeGrandchild?.id === gc.id ||
-                  activeHub === gc.id ||
-                  (gc.slug && activeHub.toLowerCase() === gc.slug.toLowerCase()) ||
-                  activeHub === gc.destination;
+                  !isChildContainerViewing &&
+                  (activeGrandchild?.id === gc.id ||
+                    activeHub === gc.id ||
+                    (gc.slug && activeHub.toLowerCase() === gc.slug.toLowerCase()) ||
+                    activeHub === gc.destination);
 
                 return (
                   <button
