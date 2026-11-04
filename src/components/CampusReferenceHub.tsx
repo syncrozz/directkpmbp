@@ -8,7 +8,6 @@ import {
   Calendar, 
   Link, 
   BookOpen, 
-  MapPin, 
   Info, 
   ExternalLink, 
   Clock, 
@@ -20,7 +19,6 @@ import {
   Shield, 
   HelpCircle, 
   Clock3, 
-  Compass,
   Plus,
   Pencil,
   Database,
@@ -29,7 +27,6 @@ import {
   Loader2,
   Globe
 } from 'lucide-react';
-import { CampusLocationMap } from './CampusLocationMap';
 import { PortalLink, PortalSyncStatus } from '../types';
 import { 
   DEFAULT_PORTAL_LINKS, 
@@ -273,7 +270,7 @@ export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({
   isAdminMode = false, 
   onNavigateToTimetables 
 }) => {
-  const [activeRefTab, setActiveRefTab] = useState<'portal' | 'peta' | 'takwim' | 'panduan'>('portal');
+  const [activeRefTab, setActiveRefTab] = useState<'portal' | 'takwim' | 'panduan'>('portal');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Dynamic Portals State (Initialized to empty to prevent flashing deleted records on refresh)
@@ -449,17 +446,6 @@ export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({
           Portal Kolej
         </button>
         <button
-          onClick={() => setActiveRefTab('peta')}
-          className={`px-4.5 py-2.5 rounded-2xl text-xs font-extrabold transition-all flex items-center gap-2 cursor-pointer ${
-            activeRefTab === 'peta'
-              ? 'bg-blue-100/90 text-blue-950 border-2 border-blue-500 shadow-xs'
-              : 'bg-blue-50/70 text-blue-800 hover:bg-blue-100/70 border border-blue-200/60'
-          }`}
-        >
-          <Compass className={`w-3.5 h-3.5 ${activeRefTab === 'peta' ? 'text-blue-600' : 'text-blue-500'}`} />
-          Peta Lokasi Kampus
-        </button>
-        <button
           onClick={() => setActiveRefTab('takwim')}
           className={`px-4.5 py-2.5 rounded-2xl text-xs font-extrabold transition-all flex items-center gap-2 cursor-pointer ${
             activeRefTab === 'takwim'
@@ -485,11 +471,6 @@ export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({
 
       {/* Dynamic Content Panels based on Active Tab */}
       <div className="space-y-8">
-        
-        {/* SECTION: Campus Location Map */}
-        {activeRefTab === 'peta' && (
-          <CampusLocationMap />
-        )}
 
         {/* SECTION: Quick Portals Links */}
         {activeRefTab === 'portal' && (

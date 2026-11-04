@@ -33,7 +33,8 @@ import {
   CheckCircle2,
   AlertTriangle,
   Sparkles,
-  Clock
+  Clock,
+  Layers
 } from 'lucide-react';
 import { Staff, StaffCommittee, AuthorizedAdmin } from '../types';
 import { saveStaffListToFirestore, saveCommitteesToFirestore, cleanupLegacyJtmDuplicates } from '../config/firebase';
@@ -57,6 +58,7 @@ interface SyncSettingsProps {
   onInstallPWA?: () => void;
   canInstallPWA?: boolean;
   onNavigateToRegistration?: () => void;
+  onOpenNavigationManager?: () => void;
 }
 
 // CSV escaping helper for proper quotes and UTF-8 handling
@@ -98,6 +100,7 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
   onInstallPWA,
   canInstallPWA = false,
   onNavigateToRegistration,
+  onOpenNavigationManager,
 }) => {
   // Slug sharing state
   const [copiedSlug, setCopiedSlug] = useState(false);
@@ -893,6 +896,42 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Dynamic Navigation Management (SES v4.4) */}
+          <div className="p-4.5 bg-gradient-to-br from-indigo-50/80 via-white to-violet-50/60 rounded-2xl border border-indigo-200/90 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-left">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-xl bg-indigo-600 text-white shadow-sm shadow-indigo-200 shrink-0 mt-0.5">
+                <Layers className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <h4 className="text-xs font-extrabold text-indigo-950">
+                    Pengurusan Navigasi Dinamik (Parent & Child)
+                  </h4>
+                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200">
+                    SES v4.4
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 font-medium leading-relaxed">
+                  Urus menu utama (Directory, Rujukan, Jadual), navigasi anak (Jadual Pelajar, Jadual Pensyarah), susun atur, ikon, keaktifan dan laluan modul secara masa nyata.
+                </p>
+              </div>
+            </div>
+
+            {onOpenNavigationManager && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (onClose) onClose();
+                  onOpenNavigationManager();
+                }}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-extrabold shadow-xs transition-all flex items-center gap-1.5 cursor-pointer shrink-0 active:scale-95 self-start sm:self-auto"
+              >
+                <Layers className="w-4 h-4" />
+                <span>Buka Pengurus Navigasi</span>
+              </button>
+            )}
           </div>
 
           {/* Direct Data Importer & Exporter (CSV) - Single Official Method for Registration */}

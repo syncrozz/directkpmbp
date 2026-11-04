@@ -134,4 +134,21 @@ export interface PortalSubscriptionResult {
   source: 'firestore' | 'fallback';
 }
 
+export type NavigationType = 'parent' | 'child';
+
+export interface NavigationItem {
+  id: string; // Stable unique identifier e.g. "nav_directory"
+  name: string; // Display name e.g. "Directory Staff"
+  icon: string; // Icon identifier e.g. "UserCheck", "BookOpen", "Calendar"
+  type: NavigationType; // 'parent' | 'child'
+  parentId?: string | null; // ID of parent for child navigation
+  destination: string; // Module identifier or route ('directory' | 'rujukan' | 'jadual' | 'jadual-pensyarah' | 'daftar' | custom URL)
+  order: number; // Display order index
+  isActive: boolean; // Active toggle
+  createdAt?: string; // ISO string
+  updatedAt?: string; // ISO string
+  updatedBy?: string; // Admin email
+}
+
+
 

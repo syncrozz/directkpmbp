@@ -19,9 +19,10 @@ import {
   FileSpreadsheet,
   Upload,
   ChevronDown,
-  GraduationCap
+  GraduationCap,
+  Layers
 } from 'lucide-react';
-import { Staff, DivisionType, StaffCommittee, AuthorizedAdmin } from './types';
+import { Staff, DivisionType, StaffCommittee, AuthorizedAdmin, NavigationItem } from './types';
 import { INITIAL_STAFF_DATA } from './data/initialStaff';
 import { STAFF_GRADE_MAP, determineBahagian } from './utils/staffGrade';
 import { getDistrictState } from './utils/stateMapping';
@@ -37,6 +38,9 @@ import { AdminPinModal } from './components/AdminPinModal';
 import { SelfRegistrationPage } from './components/SelfRegistrationPage';
 import { StudentTimetableHub } from './components/StudentTimetableHub';
 import { LecturerTimetableHub } from './components/LecturerTimetableHub';
+import { DynamicNavigationBar } from './components/DynamicNavigationBar';
+import { NavigationManagerModal } from './components/NavigationManagerModal';
+import { DEFAULT_NAVIGATION_ITEMS, subscribeToNavigation } from './services/navigationService';
 import { verifyGoogleAdmin, clearLegacyAdminState } from './utils/adminAuthService';
 import { 
   fetchStaffListFromFirestore, 
@@ -49,7 +53,7 @@ import {
 
 export default function App() {
   // Navigation State ('directory' | 'rujukan' | 'jadual' | 'jadual-pensyarah' | 'daftar')
-  const [activeHub, setActiveHub] = useState<'directory' | 'rujukan' | 'jadual' | 'jadual-pensyarah' | 'daftar'>(() => {
+  const [activeHub, setActiveHub] = useState<'directory' | 'rujukan' | 'jadual' | 'jadual-pensyarah' | 'daftar' | string>(() => {
     if (typeof window !== 'undefined') {
       const hash = window.location.hash.toLowerCase();
       const pathname = window.location.pathname.toLowerCase();
@@ -70,6 +74,47 @@ export default function App() {
     }
     return 'directory';
   });
+
+  // Dynamic Hierarchical Navigation State (SES v4.4)
+  const [navigationItems, setNavigationItems] = useState<NavigationItem[]>(DEFAULT_NAVIGATION_ITEMS);
+  const [isNavManagerOpen, setIsNavManagerOpen] = useState(false);
+
+  // Authoritative real-time Firestore synchronization for navigation architecture
+  useEffect(() => {
+    const unsubscribe = subscribeToNavigation((items) => {
+      setNavigationItems(items);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleSelectDestination = (destination: string) => {
+    if (destination.startsWith('http://') || destination.startsWith('https://')) {
+      window.open(destination, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    if (destination.startsWith('#')) {
+      window.location.hash = destination;
+      const clean = destination.replace(/^#\/?/, '');
+      if (clean) setActiveHub(clean);
+      return;
+    }
+
+    setActiveHub(destination);
+    if (typeof window !== 'undefined') {
+      if (destination === 'directory') {
+        window.location.hash = '';
+      } else if (destination === 'rujukan') {
+        window.location.hash = '#rujukan';
+      } else if (destination === 'jadual') {
+        window.location.hash = '#jadual';
+      } else if (destination === 'jadual-pensyarah') {
+        window.location.hash = '#pensyarah';
+      } else if (destination === 'daftar') {
+        window.location.hash = '#daftar';
+      }
+    }
+  };
 
   // Staff Directory State
   const [staffList, setStaffList] = useState<Staff[]>([]);
@@ -264,6 +309,7 @@ export default function App() {
     setEditingStaff(null);
     setIsSettingsOpen(false);
     setIsAdminPinOpen(false);
+    setIsNavManagerOpen(false);
     setSearchQuery('');
     setDebouncedSearchQuery('');
     setSelectedDivision('Semua');
@@ -616,111 +662,35 @@ export default function App() {
                 <FileSpreadsheet className={`w-4 h-4 sm:w-5 sm:h-5 ${isSettingsOpen ? 'text-white' : 'text-indigo-600'}`} />
               </button>
             )}
+
+            {/* Dynamic Navigation Architecture Manager Button (Hanya muncul semasa Admin Mode Aktif) */}
+            {isAdminMode && (
+              <button
+                onClick={() => setIsNavManagerOpen(true)}
+                title="Pengurusan Navigasi Dinamik (SES v4.4)"
+                aria-label="Pengurusan Navigasi Dinamik"
+                className={`relative p-2 sm:p-2.5 rounded-xl sm:rounded-2xl transition-all border cursor-pointer flex items-center justify-center shrink-0 ${
+                  isNavManagerOpen 
+                    ? 'bg-gradient-to-r from-indigo-600 via-violet-600 to-indigo-700 text-white border-transparent shadow-md shadow-indigo-200' 
+                    : 'bg-white/80 text-slate-700 hover:text-indigo-600 border-slate-200/80 hover:bg-white shadow-2xs'
+                }`}
+              >
+                <Layers className={`w-4 h-4 sm:w-5 sm:h-5 ${isNavManagerOpen ? 'text-white' : 'text-indigo-600'}`} />
+              </button>
+            )}
           </div>
 
         </div>
       </header>
 
-      {/* Sub-Header Tab Switcher with Dynamic Section Color Identity */}
-      <div className={`transition-all duration-300 border-b relative z-30 backdrop-blur-md ${
-        activeHub === 'directory'
-          ? 'bg-gradient-to-r from-indigo-50/80 via-white/70 to-indigo-50/40 border-indigo-100/90'
-          : activeHub === 'rujukan'
-          ? 'bg-gradient-to-r from-emerald-50/80 via-white/70 to-emerald-50/40 border-emerald-100/90'
-          : activeHub === 'jadual'
-          ? 'bg-gradient-to-r from-amber-50/80 via-white/70 to-amber-50/40 border-amber-100/90'
-          : activeHub === 'jadual-pensyarah'
-          ? 'bg-gradient-to-r from-rose-50/80 via-white/70 to-rose-50/40 border-rose-100/90'
-          : 'bg-gradient-to-r from-purple-50/80 via-white/70 to-purple-50/40 border-purple-100/90'
-      }`}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between gap-2 overflow-x-auto scrollbar-none">
-          <div className="flex items-center gap-2 shrink-0">
-            {/* Button 1: Directory Staff (Indigo Theme) */}
-            <button
-              onClick={() => {
-                setActiveHub('directory');
-                if (typeof window !== 'undefined' && window.location.hash.includes('daftar')) {
-                  window.location.hash = '';
-                }
-              }}
-              className={`px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-2xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer ${
-                activeHub === 'directory'
-                  ? 'bg-gradient-to-r from-indigo-600 via-indigo-600 to-indigo-700 text-white shadow-md shadow-indigo-300/60 ring-2 ring-indigo-400/30'
-                  : 'bg-white/75 text-slate-700 hover:bg-indigo-50/90 hover:text-indigo-700 border border-slate-200/70 hover:border-indigo-200'
-              }`}
-            >
-              <UserCheck className={`w-4 h-4 transition-colors ${activeHub === 'directory' ? 'text-white' : 'text-indigo-600'}`} />
-              <span>Directory Staff</span>
-              {activeHub === 'directory' && (
-                <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-              )}
-            </button>
-
-            {/* Button 2: Rujukan Kolej (Emerald Theme) */}
-            <button
-              onClick={() => {
-                setActiveHub('rujukan');
-                if (typeof window !== 'undefined' && window.location.hash) {
-                  window.location.hash = '#rujukan';
-                }
-              }}
-              className={`px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-2xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer ${
-                activeHub === 'rujukan'
-                  ? 'bg-gradient-to-r from-emerald-600 via-emerald-600 to-teal-700 text-white shadow-md shadow-emerald-300/60 ring-2 ring-emerald-400/30'
-                  : 'bg-white/75 text-slate-700 hover:bg-emerald-50/90 hover:text-emerald-700 border border-slate-200/70 hover:border-emerald-200'
-              }`}
-            >
-              <BookOpen className={`w-4 h-4 transition-colors ${activeHub === 'rujukan' ? 'text-white' : 'text-emerald-600'}`} />
-              <span>Rujukan Kolej</span>
-              {activeHub === 'rujukan' && (
-                <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-              )}
-            </button>
-
-            {/* Button 3: Jadual Pelajar (Amber Theme) */}
-            <button
-              onClick={() => {
-                setActiveHub('jadual');
-                if (typeof window !== 'undefined') {
-                  window.location.hash = '#jadual';
-                }
-              }}
-              className={`px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-2xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer ${
-                activeHub === 'jadual'
-                  ? 'bg-gradient-to-r from-amber-500 via-amber-600 to-orange-600 text-white shadow-md shadow-amber-300/60 ring-2 ring-amber-400/30'
-                  : 'bg-white/75 text-slate-700 hover:bg-amber-50/90 hover:text-amber-800 border border-slate-200/70 hover:border-amber-200'
-              }`}
-            >
-              <Calendar className={`w-4 h-4 transition-colors ${activeHub === 'jadual' ? 'text-white' : 'text-amber-600'}`} />
-              <span>Jadual Pelajar</span>
-              {activeHub === 'jadual' && (
-                <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-              )}
-            </button>
-
-            {/* Button 4: Jadual Pensyarah (Rose Theme) */}
-            <button
-              onClick={() => {
-                setActiveHub('jadual-pensyarah');
-                if (typeof window !== 'undefined') {
-                  window.location.hash = '#pensyarah';
-                }
-              }}
-              className={`px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-2xl text-xs font-extrabold flex items-center gap-2 transition-all cursor-pointer ${
-                activeHub === 'jadual-pensyarah'
-                  ? 'bg-gradient-to-r from-rose-600 via-rose-600 to-pink-600 text-white shadow-md shadow-rose-300/60 ring-2 ring-rose-400/30'
-                  : 'bg-white/75 text-slate-700 hover:bg-rose-50/90 hover:text-rose-700 border border-slate-200/70 hover:border-rose-200'
-              }`}
-            >
-              <GraduationCap className={`w-4 h-4 transition-colors ${activeHub === 'jadual-pensyarah' ? 'text-white' : 'text-rose-600'}`} />
-              <span>Jadual Pensyarah</span>
-              {activeHub === 'jadual-pensyarah' && (
-                <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-              )}
-            </button>
-          </div>
-        </div>
-      </div>
+      {/* Dynamic Navigation Architecture (SES v4.4 Specification) */}
+      <DynamicNavigationBar
+        items={navigationItems}
+        activeHub={activeHub}
+        onSelectDestination={handleSelectDestination}
+        isAdminMode={isAdminMode}
+        onOpenNavManager={() => setIsNavManagerOpen(true)}
+      />
 
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 relative z-10">
@@ -1009,15 +979,11 @@ export default function App() {
             <CampusReferenceHub 
               isAdminMode={isAdminMode}
               onNavigateToTimetables={() => {
-                setActiveHub('jadual');
-                if (typeof window !== 'undefined') {
-                  window.location.hash = '#jadual';
-                }
-                window.scrollTo({ top: 0, behavior: 'smooth' });
+                handleSelectDestination('jadual');
               }}
             />
           </div>
-        ) : (
+        ) : activeHub === 'daftar' ? (
           <SelfRegistrationPage
             existingStaffList={staffList}
             onRegisterStaff={handleRegisterStaff}
@@ -1027,6 +993,23 @@ export default function App() {
               setSelectedStaff(staff);
             }}
           />
+        ) : (
+          <div className="glass-panel rounded-3xl p-10 text-center space-y-4 max-w-lg mx-auto my-12">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 mx-auto">
+              <Layers className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-extrabold text-slate-800">Destinasi: {activeHub}</h3>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Navigasi ini disambungkan ke laluan modul <strong>"{activeHub}"</strong>. Sila pastikan modul atau pautan telah dikonfigurasikan dengan betul.
+            </p>
+            <button
+              type="button"
+              onClick={() => handleSelectDestination('directory')}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer transition-all active:scale-95"
+            >
+              Kembali ke Directory Staff
+            </button>
+          </div>
         )}
 
       </main>
@@ -1136,6 +1119,7 @@ export default function App() {
           }
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }}
+        onOpenNavigationManager={() => setIsNavManagerOpen(true)}
       />
 
       <AdminPinModal
@@ -1146,6 +1130,14 @@ export default function App() {
           setCurrentAdmin(admin || null);
           setIsAdminPinOpen(false);
         }}
+      />
+
+      {/* Dynamic Navigation Architecture Management Modal (SES v4.4) */}
+      <NavigationManagerModal
+        isOpen={isNavManagerOpen}
+        onClose={() => setIsNavManagerOpen(false)}
+        items={navigationItems}
+        onItemsChange={setNavigationItems}
       />
 
 
