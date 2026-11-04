@@ -134,19 +134,21 @@ export const DriveContentViewer: React.FC<DriveContentViewerProps> = ({
               <button
                 type="button"
                 onClick={() => setIsFullscreen(true)}
-                className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold transition-all shadow-xs cursor-pointer active:scale-95"
+                title="Lihat Paparan Penuh"
+                aria-label="Lihat Paparan Penuh"
+                className="p-2 sm:p-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl transition-all shadow-xs cursor-pointer active:scale-95 flex items-center justify-center shrink-0"
               >
-                <Maximize2 className="w-3.5 h-3.5" />
-                <span>Lihat Penuh</span>
+                <Maximize2 className="w-4 h-4" />
               </button>
               <a
                 href={parsed.openUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-1.5 px-3.5 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-extrabold transition-all shadow-2xs no-underline active:scale-95"
+                title="Buka di Google Drive"
+                aria-label="Buka di Google Drive"
+                className="p-2 sm:p-2.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl transition-all shadow-2xs no-underline active:scale-95 flex items-center justify-center shrink-0"
               >
-                <ExternalLink className="w-3.5 h-3.5" />
-                <span>Buka di Drive</span>
+                <ExternalLink className="w-4 h-4" />
               </a>
             </>
           )}
@@ -155,10 +157,11 @@ export const DriveContentViewer: React.FC<DriveContentViewerProps> = ({
             <button
               type="button"
               onClick={openEditor}
-              className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-extrabold transition-all shadow-xs cursor-pointer active:scale-95"
+              title="Tukar Pautan"
+              aria-label="Tukar Pautan"
+              className="p-2 sm:p-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition-all shadow-xs cursor-pointer active:scale-95 flex items-center justify-center shrink-0"
             >
-              <Pencil className="w-3.5 h-3.5" />
-              <span>Tukar Pautan</span>
+              <Pencil className="w-4 h-4" />
             </button>
           )}
         </div>
@@ -363,10 +366,11 @@ export const DriveContentViewer: React.FC<DriveContentViewerProps> = ({
                 href={parsed.openUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-white text-xs font-extrabold no-underline transition-all active:scale-95"
+                title="Buka di Google Drive"
+                aria-label="Buka di Google Drive"
+                className="p-2 rounded-xl bg-white/15 hover:bg-white/25 text-white transition-all active:scale-95 flex items-center justify-center shrink-0"
               >
-                <ExternalLink className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Buka di Drive</span>
+                <ExternalLink className="w-4 h-4" />
               </a>
               <button
                 type="button"

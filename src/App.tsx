@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Search,
   Filter, 
@@ -234,6 +234,38 @@ export default function App() {
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [currentAdmin, setCurrentAdmin] = useState<AuthorizedAdmin | null>(null);
   const [isAdminPinOpen, setIsAdminPinOpen] = useState(false);
+  const [isAdminProfileOpen, setIsAdminProfileOpen] = useState(false);
+  const adminProfileRef = useRef<HTMLDivElement>(null);
+
+  // Close admin profile dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (adminProfileRef.current && !adminProfileRef.current.contains(event.target as Node)) {
+        setIsAdminProfileOpen(false);
+      }
+    };
+    if (isAdminProfileOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isAdminProfileOpen]);
+
+  const getAdminInitials = (admin?: AuthorizedAdmin | null) => {
+    if (!admin) return 'KK';
+    if (admin.email === 'khaikerr@gmail.com' || (admin.name && admin.name.toLowerCase().includes('khai'))) {
+      return 'KK';
+    }
+    if (admin.name) {
+      const parts = admin.name.trim().split(/\s+/);
+      if (parts.length >= 2) {
+        return (parts[0][0] + parts[1][0]).toUpperCase();
+      }
+      return admin.name.slice(0, 2).toUpperCase();
+    }
+    return 'KK';
+  };
 
   // Clear obsolete admin LocalStorage keys and listen to authoritative Firebase Auth state
   useEffect(() => {
@@ -382,6 +414,7 @@ export default function App() {
   };
 
   const handleToggleAdminMode = () => {
+    setIsAdminProfileOpen(false);
     if (isAdminMode) {
       setIsAdminMode(false);
       setCurrentAdmin(null);
@@ -404,6 +437,7 @@ export default function App() {
     setEditingStaff(null);
     setIsSettingsOpen(false);
     setIsAdminPinOpen(false);
+    setIsAdminProfileOpen(false);
     setIsNavManagerOpen(false);
     setSearchQuery('');
     setDebouncedSearchQuery('');
@@ -702,29 +736,108 @@ export default function App() {
 
           {/* Dynamic Campus Center Control Deck */}
           <div className="flex flex-wrap items-center gap-2 sm:gap-2.5">
-            {/* Master Admin Indicator Badge when Admin Mode is active */}
+            {/* Compact Standalone KK Avatar Icon & Profile Dropdown when Admin Mode is active */}
             {isAdminMode && currentAdmin && (
-              <div className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-amber-50/90 border border-amber-200 text-amber-950 shadow-2xs">
-                {currentAdmin.photoUrl ? (
-                  <img
-                    src={currentAdmin.photoUrl}
-                    alt={currentAdmin.name || 'Admin'}
-                    className="w-5 h-5 rounded-full object-cover border border-amber-300"
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  <div className="w-5 h-5 rounded-full bg-amber-500 text-white text-[10px] font-black flex items-center justify-center">
-                    {(currentAdmin.name || 'A').charAt(0).toUpperCase()}
+              <div className="relative" ref={adminProfileRef}>
+                <button
+                  type="button"
+                  onClick={() => setIsAdminProfileOpen((prev) => !prev)}
+                  title={`Profil Pentadbir: ${currentAdmin.email === 'khaikerr@gmail.com' ? 'Master Admin' : currentAdmin.name || 'Admin'} (${currentAdmin.email})`}
+                  aria-label="Profil Pentadbir"
+                  aria-expanded={isAdminProfileOpen}
+                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 p-0.5 border-2 border-amber-300 shadow-2xs hover:shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer flex items-center justify-center shrink-0 focus:outline-hidden focus:ring-2 focus:ring-amber-400/50"
+                >
+                  {currentAdmin.photoUrl ? (
+                    <img
+                      src={currentAdmin.photoUrl}
+                      alt={currentAdmin.name || 'Master Admin'}
+                      className="w-full h-full rounded-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : (
+                    <div className="w-full h-full rounded-full bg-amber-500 text-white text-xs sm:text-xs font-black tracking-tight flex items-center justify-center select-none shadow-inner">
+                      {getAdminInitials(currentAdmin)}
+                    </div>
+                  )}
+                </button>
+
+                {/* Admin Profile Dropdown Menu */}
+                {isAdminProfileOpen && (
+                  <div className="absolute right-0 mt-2 w-72 sm:w-80 rounded-2xl bg-white/95 backdrop-blur-md border border-amber-200/80 shadow-xl py-3 px-4 z-50 text-left">
+                    <div className="flex items-center gap-3 pb-3 border-b border-amber-100">
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 p-0.5 border-2 border-amber-300 shadow-2xs shrink-0 flex items-center justify-center">
+                        {currentAdmin.photoUrl ? (
+                          <img
+                            src={currentAdmin.photoUrl}
+                            alt={currentAdmin.name || 'Master Admin'}
+                            className="w-full h-full rounded-full object-cover"
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : (
+                          <div className="w-full h-full rounded-full bg-amber-500 text-white text-xs font-black flex items-center justify-center">
+                            {getAdminInitials(currentAdmin)}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex flex-col min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-black text-slate-900 truncate">
+                            {currentAdmin.email === 'khaikerr@gmail.com' ? 'Master Admin' : currentAdmin.name || 'Admin'}
+                          </span>
+                          <span className="px-1.5 py-0.5 text-[9px] font-extrabold bg-amber-100 text-amber-800 rounded-md border border-amber-200/70 shrink-0">
+                            Level 1
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-slate-500 font-mono truncate">
+                          {currentAdmin.email}
+                        </span>
+                        <span className="text-[9px] text-emerald-600 font-bold mt-0.5 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                          Disahkan (Google Auth)
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="pt-2.5 pb-1 space-y-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsAdminProfileOpen(false);
+                          setIsSettingsOpen(true);
+                        }}
+                        className="w-full px-2.5 py-2 text-xs font-bold text-slate-700 hover:text-indigo-600 hover:bg-slate-50 rounded-xl transition-all flex items-center gap-2 cursor-pointer"
+                      >
+                        <FileSpreadsheet className="w-3.5 h-3.5 text-indigo-500" />
+                        <span>Pengurusan Data & Import CSV</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsAdminProfileOpen(false);
+                          setIsNavManagerOpen(true);
+                        }}
+                        className="w-full px-2.5 py-2 text-xs font-bold text-slate-700 hover:text-indigo-600 hover:bg-slate-50 rounded-xl transition-all flex items-center gap-2 cursor-pointer"
+                      >
+                        <Layers className="w-3.5 h-3.5 text-indigo-500" />
+                        <span>Pengurusan Navigasi Dinamik</span>
+                      </button>
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-100">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsAdminProfileOpen(false);
+                          handleToggleAdminMode();
+                        }}
+                        className="w-full px-2.5 py-2 text-xs font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-all flex items-center gap-2 cursor-pointer"
+                      >
+                        <Settings className="w-3.5 h-3.5 text-rose-500" />
+                        <span>Matikan Mod Admin (Log Keluar)</span>
+                      </button>
+                    </div>
                   </div>
                 )}
-                <div className="flex flex-col text-left leading-tight max-w-[130px] sm:max-w-[170px]">
-                  <span className="text-[11px] font-extrabold truncate">
-                    {currentAdmin.email === 'khaikerr@gmail.com' ? 'Master Admin' : currentAdmin.name || 'Admin'}
-                  </span>
-                  <span className="text-[9px] text-amber-800 font-mono truncate">
-                    {currentAdmin.email}
-                  </span>
-                </div>
               </div>
             )}
 
