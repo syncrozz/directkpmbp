@@ -64,7 +64,6 @@ export const LecturerTimetableHub: React.FC<LecturerTimetableHubProps> = ({
   const [loadedStaffId, setLoadedStaffId] = useState<string | null>(null);
   const [imageError, setImageError] = useState(false);
   const [isFullscreenOpen, setIsFullscreenOpen] = useState(false);
-  const [rotation, setRotation] = useState(0);
   const [copiedLink, setCopiedLink] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
@@ -185,7 +184,6 @@ export const LecturerTimetableHub: React.FC<LecturerTimetableHubProps> = ({
   const handleSelectLecturer = (staff: Staff) => {
     setSelectedStaff(staff);
     setImageError(false);
-    setRotation(0);
     // Smooth scroll to viewer on mobile screens
     if (typeof window !== 'undefined' && window.innerWidth < 1024) {
       const viewerElem = document.getElementById('lecturer-timetable-viewer-section');
@@ -578,10 +576,9 @@ export const LecturerTimetableHub: React.FC<LecturerTimetableHubProps> = ({
                       alt={`Jadual Waktu ${selectedStaff.Nama} (${currentStaffId})`}
                       onLoad={() => setLoadedStaffId(currentStaffId)}
                       onError={() => setImageError(true)}
-                      className={`w-full max-h-[620px] object-contain rounded-xl shadow-xs transition-transform duration-300 ${
+                      className={`w-full max-h-[620px] object-contain rounded-xl shadow-xs ${
                         isImageLoading ? 'opacity-0' : 'opacity-100'
                       }`}
-                      style={{ transform: `rotate(${rotation}deg)` }}
                     />
                   </div>
                 ) : (
@@ -622,16 +619,6 @@ export const LecturerTimetableHub: React.FC<LecturerTimetableHubProps> = ({
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setRotation((r) => (r + 90) % 360)}
-                      className="px-2.5 py-1 text-[11px] font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
-                      title="Putar imej 90 darjah"
-                    >
-                      <RotateCw className="w-3 h-3" />
-                      <span>Putar {rotation}°</span>
-                    </button>
-
                     <a
                       href={currentTimetableUrl}
                       target="_blank"
@@ -681,14 +668,6 @@ export const LecturerTimetableHub: React.FC<LecturerTimetableHubProps> = ({
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setRotation((r) => (r + 90) % 360)}
-                className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
-                title="Putar imej 90°"
-              >
-                <RotateCw className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
                 onClick={handleDownload}
                 className="p-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white transition-colors cursor-pointer"
                 title="Muat turun imej"
@@ -714,8 +693,7 @@ export const LecturerTimetableHub: React.FC<LecturerTimetableHubProps> = ({
             <img
               src={currentTimetableUrl}
               alt={`Jadual Penuh ${selectedStaff.Nama}`}
-              className="max-h-[85vh] max-w-full object-contain rounded-xl shadow-2xl transition-transform duration-300"
-              style={{ transform: `rotate(${rotation}deg)` }}
+              className="max-h-[85vh] max-w-full object-contain rounded-xl shadow-2xl"
             />
           </div>
         </div>
