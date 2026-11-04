@@ -29,19 +29,22 @@ import {
   ExternalLink,
   ShieldAlert,
   Loader2,
-  CornerDownRight
+  CornerDownRight,
+  FileText
 } from 'lucide-react';
-import { NavigationItem, NavigationType } from '../types';
+import { NavigationItem, NavigationType, NavigationDisplayType } from '../types';
 import {
   KNOWN_MODULE_DESTINATIONS,
   AVAILABLE_NAV_ICONS,
   renderNavIcon,
   validateNavigationDestination,
+  validateDriveUrl,
   canDeleteParent,
   generateNavId,
   saveNavigationItems,
   resetNavigationToDefault
 } from '../services/navigationService';
+import { parseTakwimLink } from '../services/takwimService';
 
 interface NavigationManagerModalProps {
   isOpen: boolean;
@@ -56,6 +59,9 @@ interface FormState {
   icon: string;
   type: NavigationType;
   parentId: string;
+  displayType: NavigationDisplayType;
+  driveUrl: string;
+  displayTitle: string;
   destination: string;
   customDestination: string;
   useCustomDestination: boolean;
@@ -80,6 +86,9 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
     icon: 'Layers',
     type: 'parent',
     parentId: '',
+    displayType: 'module',
+    driveUrl: '',
+    displayTitle: '',
     destination: 'directory',
     customDestination: '',
     useCustomDestination: false,
@@ -121,6 +130,11 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
     return map;
   }, [parents, children]);
 
+  const liveDriveParsed = useMemo(
+    () => parseTakwimLink(formState.driveUrl),
+    [formState.driveUrl]
+  );
+
   if (!isOpen) return null;
 
   // Open Form for Adding New Item
@@ -129,9 +143,12 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
     const firstParentId = defaultParentId || (parents[0]?.id || '');
     setFormState({
       name: '',
-      icon: type === 'parent' ? 'Layers' : 'CornerDownRight',
+      icon: type === 'parent' ? 'Layers' : 'FileText',
       type,
       parentId: firstParentId,
+      displayType: 'module',
+      driveUrl: '',
+      displayTitle: '',
       destination: 'directory',
       customDestination: '',
       useCustomDestination: false,
@@ -145,15 +162,20 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
   const handleEdit = (item: NavigationItem) => {
     setEditingItem(item);
     const isStandardModule = KNOWN_MODULE_DESTINATIONS.some((m) => m.id === item.destination);
+    const itemDisplayType: NavigationDisplayType = item.displayType || (item.driveUrl ? 'drive' : 'module');
+
     setFormState({
       id: item.id,
       name: item.name,
       icon: item.icon,
       type: item.type,
       parentId: item.parentId || (parents[0]?.id || ''),
+      displayType: itemDisplayType,
+      driveUrl: item.driveUrl || '',
+      displayTitle: item.displayTitle || '',
       destination: isStandardModule ? item.destination : 'custom',
       customDestination: isStandardModule ? '' : item.destination,
-      useCustomDestination: !isStandardModule,
+      useCustomDestination: !isStandardModule && itemDisplayType !== 'drive',
       isActive: item.isActive,
     });
     setNotice(null);
@@ -163,16 +185,6 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
   // Save changes from Form (Add or Edit)
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const finalDest = formState.useCustomDestination
-      ? formState.customDestination.trim()
-      : formState.destination.trim();
-
-    // Validate destination
-    const validCheck = validateNavigationDestination(finalDest);
-    if (!validCheck.valid) {
-      setNotice({ type: 'error', text: validCheck.error || 'Destinasi tidak sah.' });
-      return;
-    }
 
     if (!formState.name.trim()) {
       setNotice({ type: 'error', text: 'Sila masukkan nama paparan navigasi.' });
@@ -182,6 +194,31 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
     if (formState.type === 'child' && !formState.parentId) {
       setNotice({ type: 'error', text: 'Navigasi anak wajib dikaitkan dengan satu Navigasi Induk.' });
       return;
+    }
+
+    const isDriveDisplay = formState.type === 'child' && formState.displayType === 'drive';
+
+    let finalDest = '';
+    if (isDriveDisplay) {
+      const driveCheck = validateDriveUrl(formState.driveUrl);
+      if (!driveCheck.valid) {
+        setNotice({
+          type: 'error',
+          text: driveCheck.error || 'Pautan Google Drive tidak sah. Sila masukkan pautan fail PDF atau folder yang betul.',
+        });
+        return;
+      }
+      finalDest = editingItem?.destination || editingItem?.id || generateNavId(formState.name, 'child');
+    } else {
+      finalDest = formState.useCustomDestination
+        ? formState.customDestination.trim()
+        : formState.destination.trim();
+
+      const validCheck = validateNavigationDestination(finalDest, formState.displayType);
+      if (!validCheck.valid) {
+        setNotice({ type: 'error', text: validCheck.error || 'Destinasi tidak sah.' });
+        return;
+      }
     }
 
     try {
@@ -201,6 +238,9 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
               type: formState.type,
               parentId: formState.type === 'child' ? formState.parentId : undefined,
               destination: finalDest,
+              displayType: formState.type === 'child' ? formState.displayType : undefined,
+              driveUrl: isDriveDisplay ? formState.driveUrl.trim() : undefined,
+              displayTitle: isDriveDisplay ? (formState.displayTitle.trim() || formState.name.trim()) : undefined,
               isActive: formState.isActive,
               updatedAt: new Date().toISOString(),
             };
@@ -209,7 +249,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
         });
       } else {
         // Create new item
-        const newId = generateNavId(formState.name, formState.type);
+        const newId = isDriveDisplay && finalDest ? finalDest : generateNavId(formState.name, formState.type);
         const siblings = formState.type === 'parent'
           ? parents
           : children.filter((c) => c.parentId === formState.parentId);
@@ -221,7 +261,10 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
           icon: formState.icon,
           type: formState.type,
           parentId: formState.type === 'child' ? formState.parentId : undefined,
-          destination: finalDest,
+          destination: isDriveDisplay ? newId : finalDest,
+          displayType: formState.type === 'child' ? formState.displayType : undefined,
+          driveUrl: isDriveDisplay ? formState.driveUrl.trim() : undefined,
+          displayTitle: isDriveDisplay ? (formState.displayTitle.trim() || formState.name.trim()) : undefined,
           order: nextOrder,
           isActive: formState.isActive,
           createdAt: new Date().toISOString(),
@@ -675,16 +718,31 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                               </div>
 
                               <div>
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 flex-wrap">
                                   <h5 className="font-sans font-extrabold text-slate-900 text-xs">
                                     {c.name}
                                   </h5>
                                   <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-slate-100 text-slate-600">
                                     #{c.order + 1}
                                   </span>
+                                  {c.displayType === 'drive' || c.driveUrl ? (
+                                    <span className="text-[9.5px] font-extrabold px-2 py-0.2 rounded-full bg-violet-100 text-violet-800 border border-violet-200 flex items-center gap-1">
+                                      <FileText className="w-2.5 h-2.5" />
+                                      <span>Google Drive</span>
+                                    </span>
+                                  ) : (
+                                    <span className="text-[9.5px] font-extrabold px-2 py-0.2 rounded-full bg-slate-100 text-slate-700 border border-slate-200 flex items-center gap-1">
+                                      <Layers className="w-2.5 h-2.5" />
+                                      <span>Modul</span>
+                                    </span>
+                                  )}
                                 </div>
-                                <p className="text-[10px] text-slate-500 font-mono mt-0.5">
-                                  Destinasi: <span className="font-semibold text-slate-700">{c.destination}</span>
+                                <p className="text-[10px] text-slate-500 font-mono mt-0.5 truncate max-w-xs sm:max-w-md">
+                                  {c.displayType === 'drive' || c.driveUrl ? (
+                                    <>Drive URL: <span className="font-semibold text-violet-700">{c.driveUrl || 'Belum diisi'}</span></>
+                                  ) : (
+                                    <>Destinasi: <span className="font-semibold text-slate-700">{c.destination}</span></>
+                                  )}
                                 </p>
                               </div>
                             </div>
@@ -870,47 +928,178 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                     </div>
                   </div>
 
-                  {/* Destination / Route Configuration */}
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[11px] font-extrabold text-slate-700">Destinasi Modul / Pautan</label>
-                      <label className="flex items-center gap-1 text-[11px] text-slate-500 cursor-pointer font-medium">
-                        <input
-                          type="checkbox"
-                          checked={formState.useCustomDestination}
-                          onChange={(e) => setFormState({ ...formState, useCustomDestination: e.target.checked })}
-                          className="rounded text-indigo-600"
-                        />
-                        <span>Pautan Luar / Khas</span>
-                      </label>
-                    </div>
+                  {/* SECTION B: DISPLAY TYPE & DESTINATION CONFIGURATION */}
+                  {formState.type === 'child' ? (
+                    <div className="space-y-3 p-3.5 bg-slate-50 border border-slate-200 rounded-2xl">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-extrabold text-slate-800">
+                          SEKSYEN B — JENIS PAPARAN KANDUNGAN
+                        </label>
+                        <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200">
+                          SES v4.4
+                        </span>
+                      </div>
 
-                    {!formState.useCustomDestination ? (
-                      <select
-                        value={formState.destination}
-                        onChange={(e) => setFormState({ ...formState, destination: e.target.value })}
-                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white outline-none focus:ring-2 focus:ring-indigo-200"
-                      >
-                        {KNOWN_MODULE_DESTINATIONS.map((mod) => (
-                          <option key={mod.id} value={mod.id}>
-                            {mod.name}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        type="text"
-                        value={formState.customDestination}
-                        onChange={(e) => setFormState({ ...formState, customDestination: e.target.value })}
-                        placeholder="https://... atau #slug"
-                        required={formState.useCustomDestination}
-                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono bg-white outline-none focus:ring-2 focus:ring-indigo-200"
-                      />
-                    )}
-                    <p className="text-[10px] text-slate-400">
-                      Modul sasaran dalam aplikasi: <code>directory</code>, <code>rujukan</code>, <code>jadual</code>, <code>jadual-pensyarah</code>, <code>daftar</code>.
-                    </p>
-                  </div>
+                      {/* Display Type Selector Segmented Buttons */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setFormState({ ...formState, displayType: 'module' })}
+                          className={`py-2 px-3 rounded-xl text-xs font-extrabold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                            formState.displayType === 'module'
+                              ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
+                              : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
+                          }`}
+                        >
+                          <Layers className="w-3.5 h-3.5" />
+                          <span>Modul Sedia Ada</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setFormState({ ...formState, displayType: 'drive' })}
+                          className={`py-2 px-3 rounded-xl text-xs font-extrabold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                            formState.displayType === 'drive'
+                              ? 'bg-violet-600 text-white border-violet-600 shadow-xs'
+                              : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
+                          }`}
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                          <span>Paparan Google Drive</span>
+                        </button>
+                      </div>
+
+                      {formState.displayType === 'drive' ? (
+                        <div className="space-y-2.5 pt-2 border-t border-slate-200/80">
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between">
+                              <label className="text-[11px] font-extrabold text-slate-800">
+                                Pautan Google Drive (fail PDF atau folder)
+                              </label>
+                              {liveDriveParsed ? (
+                                <span className="text-[9.5px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                  {liveDriveParsed.kind === 'drive-folder' ? 'Folder Drive Dikesan' : 'Fail PDF Dikesan'}
+                                </span>
+                              ) : formState.driveUrl.trim() ? (
+                                <span className="text-[9.5px] font-extrabold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200">
+                                  Format Tidak Sah
+                                </span>
+                              ) : null}
+                            </div>
+                            <input
+                              type="url"
+                              value={formState.driveUrl}
+                              onChange={(e) => setFormState({ ...formState, driveUrl: e.target.value })}
+                              placeholder="https://drive.google.com/file/d/... atau https://drive.google.com/drive/folders/..."
+                              required={formState.displayType === 'drive'}
+                              className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono bg-white outline-none focus:ring-2 focus:ring-violet-300"
+                            />
+                            <p className="text-[10px] text-slate-500 leading-relaxed">
+                              Pastikan perkongsian fail ditetapkan kepada <b>"Sesiapa sahaja yang mempunyai pautan"</b> (Viewer). Paparan akan menyokong skrin penuh, butang Buka di Drive, dan iframe automatik.
+                            </p>
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="text-[11px] font-extrabold text-slate-800">
+                              Tajuk Paparan Dokumen (Pilihan)
+                            </label>
+                            <input
+                              type="text"
+                              value={formState.displayTitle}
+                              onChange={(e) => setFormState({ ...formState, displayTitle: e.target.value })}
+                              placeholder={formState.name || 'Contoh: Jadual Waktu Sesi 2026/2027'}
+                              className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white outline-none focus:ring-2 focus:ring-violet-300"
+                            />
+                            <p className="text-[10px] text-slate-400">
+                              Jika dikosongkan, nama paparan navigasi akan digunakan sebagai tajuk dokumen.
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5 pt-2 border-t border-slate-200/80">
+                          <div className="flex items-center justify-between">
+                            <label className="text-[11px] font-extrabold text-slate-700">Pilih Modul Sasaran</label>
+                            <label className="flex items-center gap-1 text-[11px] text-slate-500 cursor-pointer font-medium">
+                              <input
+                                type="checkbox"
+                                checked={formState.useCustomDestination}
+                                onChange={(e) => setFormState({ ...formState, useCustomDestination: e.target.checked })}
+                                className="rounded text-indigo-600"
+                              />
+                              <span>Pautan Luar / Khas</span>
+                            </label>
+                          </div>
+
+                          {!formState.useCustomDestination ? (
+                            <select
+                              value={formState.destination}
+                              onChange={(e) => setFormState({ ...formState, destination: e.target.value })}
+                              className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white outline-none focus:ring-2 focus:ring-indigo-200"
+                            >
+                              {KNOWN_MODULE_DESTINATIONS.map((mod) => (
+                                <option key={mod.id} value={mod.id}>
+                                  {mod.name}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input
+                              type="text"
+                              value={formState.customDestination}
+                              onChange={(e) => setFormState({ ...formState, customDestination: e.target.value })}
+                              placeholder="https://... atau #slug"
+                              required={formState.useCustomDestination}
+                              className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono bg-white outline-none focus:ring-2 focus:ring-indigo-200"
+                            />
+                          )}
+                          <p className="text-[10px] text-slate-400">
+                            Modul sasaran dalam aplikasi: <code>directory</code>, <code>rujukan</code>, <code>jadual</code>, <code>jadual-pensyarah</code>, <code>daftar</code>.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    /* Parent Destination / Route Configuration */
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-extrabold text-slate-700">Destinasi Modul / Pautan Induk</label>
+                        <label className="flex items-center gap-1 text-[11px] text-slate-500 cursor-pointer font-medium">
+                          <input
+                            type="checkbox"
+                            checked={formState.useCustomDestination}
+                            onChange={(e) => setFormState({ ...formState, useCustomDestination: e.target.checked })}
+                            className="rounded text-indigo-600"
+                          />
+                          <span>Pautan Luar / Khas</span>
+                        </label>
+                      </div>
+
+                      {!formState.useCustomDestination ? (
+                        <select
+                          value={formState.destination}
+                          onChange={(e) => setFormState({ ...formState, destination: e.target.value })}
+                          className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white outline-none focus:ring-2 focus:ring-indigo-200"
+                        >
+                          {KNOWN_MODULE_DESTINATIONS.map((mod) => (
+                            <option key={mod.id} value={mod.id}>
+                              {mod.name}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          value={formState.customDestination}
+                          onChange={(e) => setFormState({ ...formState, customDestination: e.target.value })}
+                          placeholder="https://... atau #slug"
+                          required={formState.useCustomDestination}
+                          className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono bg-white outline-none focus:ring-2 focus:ring-indigo-200"
+                        />
+                      )}
+                      <p className="text-[10px] text-slate-400">
+                        Jika navigasi induk mempunyai anak, klik pada induk akan membuka anak pertama secara automatik.
+                      </p>
+                    </div>
+                  )}
 
                   {/* Active Toggle */}
                   <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">

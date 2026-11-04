@@ -14,6 +14,7 @@ import React from 'react';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db, auth } from '../config/firebase';
 import { NavigationItem, NavigationType } from '../types';
+import { parseTakwimLink } from './takwimService';
 import {
   UserCheck,
   BookOpen,
@@ -182,10 +183,15 @@ export function renderNavIcon(iconName: string, className = 'w-4 h-4'): React.Re
 /**
  * Validates navigation destination before saving (SES v4.4 Section 6D)
  */
-export function validateNavigationDestination(dest: string): { valid: boolean; error?: string } {
+export function validateNavigationDestination(dest: string, displayType?: string): { valid: boolean; error?: string } {
   const trimmed = (dest || '').trim();
   if (!trimmed) {
     return { valid: false, error: 'Destinasi modul/laluan tidak boleh dibiarkan kosong.' };
+  }
+
+  // If displayType is drive or dest is an internal navigation item id
+  if (displayType === 'drive' || trimmed.startsWith('nav_')) {
+    return { valid: true };
   }
 
   // Known modules check
@@ -209,6 +215,67 @@ export function validateNavigationDestination(dest: string): { valid: boolean; e
     error: `Destinasi "${trimmed}" tidak sah. Pilih modul sedia ada (directory, rujukan, jadual, jadual-pensyarah, daftar) atau pautan sah (https://..., #...).`,
   };
 }
+
+/**
+ * Validates Google Drive URL and extracts its kind (file or folder)
+ */
+export function validateDriveUrl(url: string): { valid: boolean; kind?: 'drive-file' | 'drive-folder' | 'other'; error?: string } {
+  const trimmed = (url || '').trim();
+  if (!trimmed) {
+    return { valid: false, error: 'Sila masukkan pautan fail atau folder Google Drive.' };
+  }
+
+  const parsed = parseTakwimLink(trimmed);
+  if (!parsed) {
+    return { valid: false, error: 'Format URL tidak sah. Sila pastikan pautan bermula dengan https://drive.google.com/...' };
+  }
+
+  if (parsed.kind === 'other') {
+    return {
+      valid: false,
+      error: 'Pautan mestilah daripada domain Google Drive (drive.google.com atau docs.google.com).'
+    };
+  }
+
+  return { valid: true, kind: parsed.kind };
+}
+
+/**
+ * Direct update of a Child Navigation item's Google Drive configuration (Admin inline update)
+ */
+export async function updateNavigationItemDriveConfig(
+  navId: string,
+  driveUrl: string,
+  displayTitle?: string
+): Promise<boolean> {
+  const cached = typeof window !== 'undefined' ? localStorage.getItem(LOCAL_STORAGE_NAV_KEY) : null;
+  let currentItems = DEFAULT_NAVIGATION_ITEMS;
+  if (cached) {
+    try {
+      const parsed = JSON.parse(cached);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        currentItems = parsed;
+      }
+    } catch (_e) {
+      // ignore
+    }
+  }
+
+  const updated = currentItems.map((item) => {
+    if (item.id === navId) {
+      return {
+        ...item,
+        driveUrl: driveUrl.trim(),
+        displayTitle: (displayTitle || '').trim() || item.name,
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    return item;
+  });
+
+  return saveNavigationItems(updated);
+}
+
 
 /**
  * Checks whether a Parent Navigation item can be safely deleted (SES v4.4 Section 6B)

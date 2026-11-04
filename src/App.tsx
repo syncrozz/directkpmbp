@@ -40,7 +40,8 @@ import { StudentTimetableHub } from './components/StudentTimetableHub';
 import { LecturerTimetableHub } from './components/LecturerTimetableHub';
 import { DynamicNavigationBar } from './components/DynamicNavigationBar';
 import { NavigationManagerModal } from './components/NavigationManagerModal';
-import { DEFAULT_NAVIGATION_ITEMS, subscribeToNavigation } from './services/navigationService';
+import { DriveContentViewer } from './components/DriveContentViewer';
+import { DEFAULT_NAVIGATION_ITEMS, subscribeToNavigation, saveNavigationItems } from './services/navigationService';
 import { verifyGoogleAdmin, clearLegacyAdminState } from './utils/adminAuthService';
 import { 
   fetchStaffListFromFirestore, 
@@ -87,6 +88,13 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // Compute active navigation item for current activeHub
+  const activeNavItem = useMemo(() => {
+    return navigationItems.find(
+      (item) => item.destination === activeHub || item.id === activeHub
+    );
+  }, [navigationItems, activeHub]);
+
   const handleSelectDestination = (destination: string) => {
     if (destination.startsWith('http://') || destination.startsWith('https://')) {
       window.open(destination, '_blank', 'noopener,noreferrer');
@@ -112,6 +120,8 @@ export default function App() {
         window.location.hash = '#pensyarah';
       } else if (destination === 'daftar') {
         window.location.hash = '#daftar';
+      } else {
+        window.location.hash = `#${destination}`;
       }
     }
   };
@@ -991,6 +1001,25 @@ export default function App() {
             onViewStaffProfile={(staff) => {
               handleGoHome();
               setSelectedStaff(staff);
+            }}
+          />
+        ) : activeNavItem && (activeNavItem.displayType === 'drive' || Boolean(activeNavItem.driveUrl)) ? (
+          <DriveContentViewer
+            item={activeNavItem}
+            isAdminMode={isAdminMode}
+            onUpdateConfig={async (newUrl, newTitle) => {
+              const updated = navigationItems.map((n) =>
+                n.id === activeNavItem.id
+                  ? {
+                      ...n,
+                      driveUrl: newUrl,
+                      displayTitle: newTitle || n.name,
+                      updatedAt: new Date().toISOString(),
+                    }
+                  : n
+              );
+              setNavigationItems(updated);
+              await saveNavigationItems(updated);
             }}
           />
         ) : (
