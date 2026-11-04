@@ -417,43 +417,15 @@ export const EmptyPageContainer: React.FC<EmptyPageContainerProps> = ({
                       </div>
                     )}
 
-                    {/* Metadata & Title */}
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-700 group-hover:bg-indigo-600 group-hover:text-white transition-colors flex items-center justify-center shrink-0 border border-indigo-100">
-                          {renderNavIcon(gc.icon, 'w-3.5 h-3.5')}
-                        </div>
-                        <h4 className="font-sans font-extrabold text-slate-900 group-hover:text-indigo-700 transition-colors text-sm leading-snug line-clamp-2">
-                          {gc.name}
-                        </h4>
+                    {/* Title & Icon */}
+                    <div className="flex items-center gap-2.5 pt-0.5">
+                      <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-700 group-hover:bg-indigo-600 group-hover:text-white transition-colors flex items-center justify-center shrink-0 border border-indigo-100">
+                        {renderNavIcon(gc.icon, 'w-3.5 h-3.5')}
                       </div>
-
-                      <p className="text-[11px] text-slate-400 font-mono pl-9 truncate">
-                        /{gc.slug || gc.id}
-                      </p>
+                      <h4 className="font-sans font-extrabold text-slate-900 group-hover:text-indigo-700 transition-colors text-sm leading-snug line-clamp-2">
+                        {gc.name}
+                      </h4>
                     </div>
-                  </div>
-
-                  {/* Card Footer */}
-                  <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs">
-                    <span className="inline-flex items-center gap-1 text-[10.5px] font-bold text-slate-500">
-                      {isDrive ? (
-                        <>
-                          <FileText className="w-3.5 h-3.5 text-rose-500" />
-                          <span>Google Drive</span>
-                        </>
-                      ) : (
-                        <>
-                          <Layers className="w-3.5 h-3.5 text-indigo-600" />
-                          <span>Modul</span>
-                        </>
-                      )}
-                    </span>
-
-                    <span className="inline-flex items-center gap-1 text-xs font-black text-indigo-600 group-hover:translate-x-0.5 transition-transform">
-                      <span>Buka Dokumen</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </span>
                   </div>
                 </div>
               );
