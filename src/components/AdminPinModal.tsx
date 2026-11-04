@@ -8,7 +8,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Lock, X, ShieldAlert, Loader2, Sparkles, ExternalLink, Copy, Check } from 'lucide-react';
+import { Lock, X, ShieldAlert, Loader2, ExternalLink, Copy, Check } from 'lucide-react';
 import { verifyGoogleAdmin, AUTHORIZED_ADMIN_EMAILS, createPreviewAdminSession } from '../utils/adminAuthService';
 import { signInWithGoogle, signOutAdmin } from '../config/firebase';
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -174,10 +174,6 @@ export const AdminPinModal: React.FC<AdminPinModalProps> = ({ isOpen, onClose, o
           </div>
 
           <div className="space-y-1">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-100 mb-2">
-              <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-              <span>Satu Kaedah Sahaja</span>
-            </div>
             <h3 className="text-xl font-extrabold text-slate-900 tracking-tight">
               Akses Master Administrator
             </h3>

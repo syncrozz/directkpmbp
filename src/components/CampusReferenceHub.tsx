@@ -41,6 +41,7 @@ import {
   getPortalSiteName
 } from '../services/portalService';
 import { AddEditPortalModal } from './AddEditPortalModal';
+import { TakwimViewer } from './TakwimViewer';
 
 interface CalendarEvent {
   id: string;
@@ -686,67 +687,60 @@ export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({
 
         {/* SECTION: Academic Calendar Events */}
         {activeRefTab === 'takwim' && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-indigo-50/60 border border-indigo-100/40 flex items-center justify-center text-indigo-700 font-extrabold">
-                <Calendar className="w-4 h-4" />
-              </div>
-              <h3 className="text-xs font-extrabold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
-                Takwim Akademik Sesi 2026/2027 ({filteredCalendar.length})
-              </h3>
-            </div>
+          <TakwimViewer
+            isAdminMode={isAdminMode}
+            fallback={
+              <div className="glass-panel rounded-[26px] overflow-hidden border border-white/55 shadow-sm">
+                <div className="divide-y divide-slate-100/80">
+                  {filteredCalendar.map((event) => {
+                    const borderLColor = event.type === 'akademik' 
+                      ? 'border-l-4 border-indigo-500' 
+                      : event.type === 'cuti' 
+                        ? 'border-l-4 border-rose-500' 
+                        : 'border-l-4 border-emerald-500';
 
-            <div className="glass-panel rounded-[26px] overflow-hidden border border-white/55 shadow-sm">
-              <div className="divide-y divide-slate-100/80">
-                {filteredCalendar.map((event) => {
-                  const borderLColor = event.type === 'akademik' 
-                    ? 'border-l-4 border-indigo-500' 
-                    : event.type === 'cuti' 
-                      ? 'border-l-4 border-rose-500' 
-                      : 'border-l-4 border-emerald-500';
-
-                  return (
-                    <div 
-                      key={event.id}
-                      className={`p-4 md:p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 hover:bg-white/50 transition-colors ${borderLColor}`}
-                    >
-                      <div className="flex items-start gap-3.5 text-left">
-                        <div className="p-2.5 rounded-xl bg-white/80 border border-slate-100 text-indigo-700 shadow-2xs">
-                          <Clock className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <h4 className="font-sans font-extrabold text-slate-900 text-[13px]">{event.title}</h4>
-                          <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-1 font-semibold">
-                            <Calendar className="w-3.5 h-3.5" />
-                            <span>{event.dateRange}</span>
+                    return (
+                      <div 
+                        key={event.id} 
+                        className={`p-4 md:p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 hover:bg-white/50 transition-colors ${borderLColor}`}
+                      >
+                        <div className="flex items-start gap-3.5 text-left">
+                          <div className="p-2.5 rounded-xl bg-white/80 border border-slate-100 text-indigo-700 shadow-2xs">
+                            <Clock className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <h4 className="font-sans font-extrabold text-slate-900 text-[13px]">{event.title}</h4>
+                            <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-1 font-semibold">
+                              <Calendar className="w-3.5 h-3.5" />
+                              <span>{event.dateRange}</span>
+                            </div>
                           </div>
                         </div>
+                        <div className="flex items-center gap-2 self-start sm:self-center">
+                          <span className={`px-2.5 py-0.5 text-[10px] font-extrabold rounded-md border ${
+                            event.type === 'akademik' 
+                              ? 'bg-blue-50 text-blue-800 border-blue-100' 
+                              : event.type === 'cuti' 
+                                ? 'bg-red-50 text-red-800 border-red-100' 
+                                : 'bg-emerald-50 text-emerald-800 border-emerald-100'
+                          }`}>
+                            {event.type.toUpperCase()}
+                          </span>
+                          <span className="px-2.5 py-0.5 text-[10px] font-extrabold rounded-md bg-white border border-slate-100 text-slate-600 flex items-center gap-1 shadow-2xs">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                            {event.status}
+                          </span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2 self-start sm:self-center">
-                        <span className={`px-2.5 py-0.5 text-[10px] font-extrabold rounded-md border ${
-                          event.type === 'akademik' 
-                            ? 'bg-blue-50 text-blue-800 border-blue-100' 
-                            : event.type === 'cuti' 
-                              ? 'bg-red-50 text-red-800 border-red-100' 
-                              : 'bg-emerald-50 text-emerald-800 border-emerald-100'
-                        }`}>
-                          {event.type.toUpperCase()}
-                        </span>
-                        <span className="px-2.5 py-0.5 text-[10px] font-extrabold rounded-md bg-white border border-slate-100 text-slate-600 flex items-center gap-1 shadow-2xs">
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                          {event.status}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-                {filteredCalendar.length === 0 && (
-                  <p className="p-6 text-xs text-gray-500">Tiada acara takwim yang sepadan dengan carian.</p>
-                )}
+                    );
+                  })}
+                  {filteredCalendar.length === 0 && (
+                    <p className="p-6 text-xs text-gray-500">Tiada acara takwim yang sepadan dengan carian.</p>
+                  )}
+                </div>
               </div>
-            </div>
-          </div>
+            }
+          />
         )}
 
         {/* SECTION: Rules & Student Guide */}
