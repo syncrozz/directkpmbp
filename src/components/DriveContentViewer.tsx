@@ -112,19 +112,9 @@ export const DriveContentViewer: React.FC<DriveContentViewerProps> = ({
             {renderNavIcon(item.icon, 'w-5 h-5')}
           </div>
           <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight leading-tight">
-                {title}
-              </h2>
-              {parsed && (
-                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 border border-violet-200">
-                  {parsed.kind === 'drive-folder' ? 'Folder Drive' : 'Dokumen PDF'}
-                </span>
-              )}
-            </div>
-            <p className="text-[11px] text-slate-500 font-medium">
-              Paparan dokumen langsung Google Drive Kolej Profesional MARA Bandar Penawar
-            </p>
+            <h2 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight leading-tight">
+              {title}
+            </h2>
           </div>
         </div>
 

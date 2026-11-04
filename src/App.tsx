@@ -20,7 +20,8 @@ import {
   Upload,
   ChevronDown,
   GraduationCap,
-  Layers
+  Layers,
+  LogOut
 } from 'lucide-react';
 import { Staff, DivisionType, StaffCommittee, AuthorizedAdmin, NavigationItem } from './types';
 import { INITIAL_STAFF_DATA } from './data/initialStaff';
@@ -235,6 +236,7 @@ export default function App() {
   const [currentAdmin, setCurrentAdmin] = useState<AuthorizedAdmin | null>(null);
   const [isAdminPinOpen, setIsAdminPinOpen] = useState(false);
   const [isAdminProfileOpen, setIsAdminProfileOpen] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const adminProfileRef = useRef<HTMLDivElement>(null);
 
   // Close admin profile dropdown when clicking outside
@@ -828,11 +830,11 @@ export default function App() {
                         type="button"
                         onClick={() => {
                           setIsAdminProfileOpen(false);
-                          handleToggleAdminMode();
+                          setShowLogoutConfirm(true);
                         }}
                         className="w-full px-2.5 py-2 text-xs font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition-all flex items-center gap-2 cursor-pointer"
                       >
-                        <Settings className="w-3.5 h-3.5 text-rose-500" />
+                        <LogOut className="w-3.5 h-3.5 text-rose-500" />
                         <span>Matikan Mod Admin (Log Keluar)</span>
                       </button>
                     </div>
@@ -841,18 +843,28 @@ export default function App() {
               </div>
             )}
 
-            {/* Quick Admin Mode Toggle Button (Gear Icon) */}
+            {/* Quick Admin Mode Exit / Login Button */}
             <button
-              onClick={handleToggleAdminMode}
-              title={isAdminMode ? (currentAdmin?.name ? `Matikan Admin Mode (${currentAdmin.email || currentAdmin.name})` : 'Matikan Admin Mode') : 'Aktifkan Admin Mode (Google Auth / Emel MARA / Master PIN)'}
-              aria-label={isAdminMode ? 'Matikan Admin Mode' : 'Aktifkan Admin Mode'}
+              onClick={() => {
+                if (isAdminMode) {
+                  setShowLogoutConfirm(true);
+                } else {
+                  handleToggleAdminMode();
+                }
+              }}
+              title={isAdminMode ? 'Keluar Mod Admin' : 'Aktifkan Admin Mode (Google Auth / Emel MARA / Master PIN)'}
+              aria-label={isAdminMode ? 'Keluar Mod Admin' : 'Aktifkan Admin Mode'}
               className={`p-2 sm:p-2.5 rounded-xl sm:rounded-2xl transition-all border cursor-pointer flex items-center justify-center shrink-0 ${
                 isAdminMode
-                  ? 'bg-amber-500 hover:bg-amber-600 text-white border-amber-400 shadow-md shadow-amber-200'
+                  ? 'bg-[#DC2626] hover:bg-[#B91C1C] active:bg-[#991B1B] text-white border-red-500 shadow-md shadow-red-500/25'
                   : 'bg-white/80 hover:bg-white text-slate-700 hover:text-indigo-600 border-slate-200/80 shadow-2xs'
               }`}
             >
-              <Settings className={`w-4 h-4 sm:w-5 sm:h-5 transition-transform duration-300 hover:rotate-90 ${isAdminMode ? 'text-white' : 'text-slate-600 hover:text-indigo-600'}`} />
+              {isAdminMode ? (
+                <LogOut className="w-4 h-4 sm:w-5 sm:h-5 text-[#FFFFFF]" />
+              ) : (
+                <Settings className="w-4 h-4 sm:w-5 sm:h-5 transition-transform duration-300 hover:rotate-90 text-slate-600 hover:text-indigo-600" />
+              )}
             </button>
 
             {/* Single Consolidated Database & CSV Management Settings Button (Hanya muncul semasa Admin Mode Aktif) */}
@@ -1268,7 +1280,7 @@ export default function App() {
                 </div>
                 <div className="bg-white/90 border border-slate-100 px-4 py-2.5 rounded-2xl text-center shadow-2xs">
                   <span className="text-xl font-extrabold text-indigo-600 block leading-tight">{academicStaff}</span>
-                  <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider">Pakar / Akademik</span>
+                  <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider">Pensyarah</span>
                 </div>
               </div>
             </div>
@@ -1367,6 +1379,55 @@ export default function App() {
         onItemsChange={setNavigationItems}
       />
 
+      {/* Confirmation Dialog for Exiting Admin Mode */}
+      {showLogoutConfirm && (
+        <div 
+          className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200"
+          onClick={() => setShowLogoutConfirm(false)}
+        >
+          <div 
+            className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-slate-100 max-w-sm w-full p-6 sm:p-7 text-center relative"
+            onClick={(e) => e.stopPropagation()}
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="logout-dialog-title"
+            aria-describedby="logout-dialog-description"
+          >
+            <div className="w-12 h-12 rounded-2xl bg-red-50 text-red-600 border border-red-100 mx-auto flex items-center justify-center mb-4 shadow-2xs">
+              <LogOut className="w-6 h-6 text-[#DC2626]" />
+            </div>
+
+            <h3 id="logout-dialog-title" className="text-base sm:text-lg font-black text-slate-900 mb-1.5">
+              Keluar Mod Admin
+            </h3>
+            
+            <p id="logout-dialog-description" className="text-sm text-slate-600 mb-6 leading-relaxed">
+              Adakah anda pasti mahu keluar daripada Mod Admin?
+            </p>
+
+            <div className="flex items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => setShowLogoutConfirm(false)}
+                className="flex-1 px-4 py-2.5 rounded-xl font-bold text-slate-700 hover:bg-slate-100 border border-slate-200 transition-colors text-sm cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowLogoutConfirm(false);
+                  handleToggleAdminMode();
+                }}
+                className="flex-1 px-4 py-2.5 rounded-xl font-bold text-white bg-[#DC2626] hover:bg-[#B91C1C] active:bg-[#991B1B] shadow-md shadow-red-500/25 transition-all text-sm cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <LogOut className="w-4 h-4 text-white" />
+                <span>Ya, Keluar</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
