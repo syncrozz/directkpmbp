@@ -17,9 +17,10 @@ service cloud.firestore {
       return isSignedIn() && request.auth.token.email_verified == true;
     }
 
-    // Official Master Administrator: Strictly verified via Google Auth
+    // Official Master Administrator: Strictly verified via Google Auth (V2 specific mapping)
     function isMasterAdmin() {
       return isEmailVerified() && (
+        request.auth.token.email == 'cgkhairi2u@gmail.com' ||
         request.auth.token.email == 'chegukay@gmail.com' ||
         request.auth.token.email == 'cikgukyee@gmail.com' ||
         request.auth.token.email == 'kpmbp2u@gmail.com' ||
@@ -39,7 +40,7 @@ service cloud.firestore {
 
     // --- Staff Collection ---
     // Public directory read allowed for general staff card & directory display
-    // Write strictly restricted to verified Master Admin (khaikerr@gmail.com)
+    // Write strictly restricted to verified V2 Master Admin
     match /staff/{staffId} {
       allow read: if true;
       allow write: if isAuthorizedAdmin() && isValidId(staffId);
@@ -47,7 +48,7 @@ service cloud.firestore {
 
     // --- Committees Collection ---
     // Public read allowed for official committee display
-    // Write strictly restricted to verified Master Admin (khaikerr@gmail.com)
+    // Write strictly restricted to verified V2 Master Admin
     match /committees/{committeeId} {
       allow read: if true;
       allow write: if isAuthorizedAdmin() && isValidId(committeeId);
@@ -55,16 +56,17 @@ service cloud.firestore {
 
     // --- System Cache Documents (staff_data, committee_data) ---
     // Public read allowed for fast batch directory sync
-    // Write strictly restricted to verified Master Admin (khaikerr@gmail.com)
+    // Write strictly restricted to verified V2 Master Admin
     match /system/{docId} {
       allow read: if true;
       allow write: if isAuthorizedAdmin() && isValidId(docId);
     }
 
     // --- Admins Collection ---
-    // Protected: Strictly restricted to verified Master Admin (kpmbp2u@gmail.com or khaikerr@gmail.com)
+    // Protected: Strictly restricted to verified V2 Master Admin
     match /admins/{adminId} {
-      allow read, write: if isMasterAdmin() && isValidId(adminId);
+      allow get, list: if isMasterAdmin();
+      allow write: if isMasterAdmin() && isValidId(adminId);
     }
 
     // --- Platform Isolated Namespace (SYNCROZZ Shared Platform - Portal Kolej) ---

@@ -6,3 +6,7 @@ coverage/
 *.log
 .env*
 !.env.example
+.dev-sync-snapshots/
+*.key.json
+service-account*.json
+credentials/

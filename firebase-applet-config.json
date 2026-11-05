@@ -1,12 +1,12 @@
 {
-  "projectId": "syncrozz-platform",
-  "appId": "1:165207391688:web:e33d816413e8a927c4d4fd",
-  "apiKey": "AIzaSyAILrcL4QlS-EwpitezwRKzxq9dK7B_Wvw",
-  "authDomain": "syncrozz-platform.firebaseapp.com",
-  "firestoreDatabaseId": "(default)",
-  "storageBucket": "syncrozz-platform.firebasestorage.app",
-  "messagingSenderId": "165207391688",
+  "projectId": "gen-lang-client-0964617130",
+  "appId": "1:448275469759:web:6dc1e8b1868d307cd17d0a",
+  "apiKey": "AIzaSyCqTu8cEWvHWKsMBC15C35-fdWI9Q9gjZY",
+  "authDomain": "gen-lang-client-0964617130.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-directkpmbp-9dda147a-639e-4dca-8ac6-d7476d1cde42",
+  "storageBucket": "gen-lang-client-0964617130.firebasestorage.app",
+  "messagingSenderId": "448275469759",
   "measurementId": "",
-  "oAuthClientId": "165207391688-2nf7t41aveba1p6benemt5uqkke7c21o.apps.googleusercontent.com",
+  "oAuthClientId": "448275469759-pljh2q665vsjfm4p00g4ahrmgkutakdg.apps.googleusercontent.com",
   "recaptchaSiteKey": ""
 }
