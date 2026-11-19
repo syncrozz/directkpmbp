@@ -39,6 +39,7 @@ import {
 } from 'lucide-react';
 
 export const LOCAL_STORAGE_NAV_KEY = 'kpmbp_navigation_items_v4';
+export const UPPK_GRADING_MIGRATED_KEY = 'kpmbp_uppk_grading_migrated_v1';
 
 /**
  * Default Initial Navigation Structure (SES v4.4 Section 2)
@@ -792,11 +793,16 @@ export function subscribeToNavigation(callback: (items: NavigationItem[]) => voi
   if (typeof window !== 'undefined') {
     try {
       const cached = localStorage.getItem(LOCAL_STORAGE_NAV_KEY);
+      const alreadyMigratedLocal = localStorage.getItem(UPPK_GRADING_MIGRATED_KEY) === '1';
       if (cached) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const migration = migrateUppkGradingIfNeeded(parsed);
-          initialItems = normalizeNavigationList(migration.items);
+          if (alreadyMigratedLocal) {
+            initialItems = normalizeNavigationList(parsed);
+          } else {
+            const migration = migrateUppkGradingIfNeeded(parsed);
+            initialItems = normalizeNavigationList(migration.items);
+          }
         }
       }
     } catch (_e) {
@@ -823,24 +829,34 @@ export function subscribeToNavigation(callback: (items: NavigationItem[]) => voi
       const rawItems = Array.isArray(data?.items) ? data.items : [];
 
       const isConfigured = Boolean(data?.isConfigured);
+      const alreadyMigratedRemote = Boolean(data?.uppkGradingMigrated);
       const baseItems = isConfigured
         ? rawItems
         : rawItems.length > 0
         ? rawItems
         : DEFAULT_NAVIGATION_ITEMS;
 
-      const migration = migrateUppkGradingIfNeeded(baseItems);
-      const normalizedItems = normalizeNavigationList(migration.items);
+      let normalizedItems: NavigationItem[];
 
-      if (migration.migrated) {
-        // Persist migrated UPPK container structure to Firestore in background
-        saveNavigationItems(normalizedItems).catch((err) => {
-          console.warn('[NavigationService] Background auto-migration persist notice:', err?.message || err);
-        });
+      if (alreadyMigratedRemote) {
+        normalizedItems = normalizeNavigationList(baseItems);
+      } else {
+        const migration = migrateUppkGradingIfNeeded(baseItems);
+        normalizedItems = normalizeNavigationList(migration.items);
+
+        if (migration.migrated) {
+          // Persist migrated UPPK container structure to Firestore in background once
+          saveNavigationItems(normalizedItems).catch((err) => {
+            console.warn('[NavigationService] Background auto-migration persist notice:', err?.message || err);
+          });
+        }
       }
 
       if (typeof window !== 'undefined') {
         localStorage.setItem(LOCAL_STORAGE_NAV_KEY, JSON.stringify(normalizedItems));
+        if (alreadyMigratedRemote) {
+          localStorage.setItem(UPPK_GRADING_MIGRATED_KEY, '1');
+        }
       }
 
       callback(normalizedItems);
@@ -873,6 +889,7 @@ export async function saveNavigationItems(items: NavigationItem[]): Promise<bool
     {
       items: normalized,
       isConfigured: true,
+      uppkGradingMigrated: true,
       updatedAt: new Date().toISOString(),
       updatedBy: auth.currentUser?.email || 'admin',
     },
@@ -881,6 +898,7 @@ export async function saveNavigationItems(items: NavigationItem[]): Promise<bool
 
   if (typeof window !== 'undefined') {
     localStorage.setItem(LOCAL_STORAGE_NAV_KEY, JSON.stringify(normalized));
+    localStorage.setItem(UPPK_GRADING_MIGRATED_KEY, '1');
   }
 
   return true;
