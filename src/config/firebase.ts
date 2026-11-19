@@ -28,12 +28,16 @@ import { getStorage } from 'firebase/storage';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { Staff, StaffCommittee } from '../types';
 
+// Authoritative Firebase configuration from firebase-applet-config.json (syncrozz4).
+// Prevents mismatched container-injected VITE_FIREBASE_API_KEY or FIREBASE_API_KEY overrides.
 export const effectiveFirebaseConfig = {
   ...firebaseConfig,
-  apiKey: 
-    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_API_KEY) || 
-    (typeof process !== 'undefined' && process.env?.FIREBASE_API_KEY) || 
-    firebaseConfig.apiKey,
+  apiKey: firebaseConfig.apiKey,
+  authDomain: firebaseConfig.authDomain,
+  projectId: firebaseConfig.projectId,
+  storageBucket: firebaseConfig.storageBucket,
+  messagingSenderId: firebaseConfig.messagingSenderId,
+  appId: firebaseConfig.appId,
 };
 
 // Initialize Firebase App

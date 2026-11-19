@@ -97,6 +97,11 @@
         "description": { "type": "string", "maxLength": 1000 },
         "logoUrl": { "type": "string", "maxLength": 2000 },
         "thumbnailUrl": { "type": "string", "maxLength": 2000 },
+        "thumbnailSource": {
+          "type": "string",
+          "enum": ["homepage_snapshot", "og_image", "favicon", "custom_upload", "placeholder"]
+        },
+        "thumbnailGeneratedAt": { "type": "string", "maxLength": 64 },
         "detectedMeta": { "type": "object" },
         "sortOrder": { "type": "number" },
         "isActive": { "type": "boolean" },

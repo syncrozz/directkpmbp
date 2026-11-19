@@ -33,6 +33,7 @@ import {
 import {
   PlatformLink,
   PlatformSubscriptionResult,
+  PlatformThumbnailSource,
 } from '../types';
 import {
   sanitizeFirestorePayload,
@@ -41,6 +42,15 @@ import {
 
 const PLATFORMS_PATH = 'platforms/directkpmbp/platformLinks';
 const PLATFORM_ASSETS_PREFIX = 'platforms/directkpmbp/platform_assets/';
+const PLATFORM_SNAPSHOT_PREFIX = 'platforms/directkpmbp/thumbnails/platform_snapshot_';
+const VALID_THUMBNAIL_SOURCES: PlatformThumbnailSource[] = [
+  'homepage_snapshot',
+  'og_image',
+  'favicon',
+  'custom_upload',
+  'placeholder',
+];
+const snapshotUrlCache = new Map<string, string>();
 const ALLOWED_IMAGE_MIME_TYPES = [
   'image/png',
   'image/jpeg',
@@ -87,7 +97,9 @@ export function normalizePlatformUrl(raw: string): string {
 
 /**
  * Extracts a Firebase Storage object path from a download URL ONLY when it
- * belongs to this project's bucket and is scoped under platform_assets/.
+ * belongs to this project's bucket and is scoped under platform_assets/ or
+ * platform-owned thumbnails/platform_snapshot_*.
+ * (Never touches PDF thumbnails under thumbnails/{fileId}.{ext}.)
  */
 export function extractPlatformStoragePath(url?: string): string | null {
   const trimmed = (url || '').trim();
@@ -103,7 +115,10 @@ export function extractPlatformStoragePath(url?: string): string | null {
       const encodedPath = parsed.pathname.split(`/v0/b/${bucket}/o/`)[1];
       if (!encodedPath) return null;
       const decodedPath = decodeURIComponent(encodedPath);
-      if (decodedPath.startsWith(PLATFORM_ASSETS_PREFIX)) {
+      if (
+        decodedPath.startsWith(PLATFORM_ASSETS_PREFIX) ||
+        decodedPath.startsWith(PLATFORM_SNAPSHOT_PREFIX)
+      ) {
         return decodedPath;
       }
     }
@@ -163,12 +178,25 @@ async function deleteUnusedPlatformAssets(
 
     try {
       await deleteObject(ref(storage, storagePath));
+      snapshotUrlCache.delete(storagePath);
     } catch (delErr: any) {
       if (delErr?.code !== 'storage/object-not-found') {
         console.warn(`[PlatformService] Storage asset deletion notice for "${storagePath}":`, delErr);
       }
     }
   }
+}
+
+/**
+ * Safely deletes a single temporary session-uploaded platform asset if no
+ * platform record in Firestore references it.
+ */
+export async function cleanupOrphanPlatformAssetUrl(
+  assetUrl: string,
+  excludedPlatformId = ''
+): Promise<void> {
+  if (!auth.currentUser || !assetUrl) return;
+  await deleteUnusedPlatformAssets(excludedPlatformId, [assetUrl]);
 }
 
 /**
@@ -298,6 +326,15 @@ export async function savePlatformLink(platform: PlatformLink): Promise<boolean>
     const existingData = existingSnap.exists() ? (existingSnap.data() as Partial<PlatformLink>) : null;
     const nowIso = new Date().toISOString();
 
+    const validThumbSource =
+      platform.thumbnailSource && VALID_THUMBNAIL_SOURCES.includes(platform.thumbnailSource)
+        ? platform.thumbnailSource
+        : undefined;
+    const cleanThumbGeneratedAt =
+      typeof platform.thumbnailGeneratedAt === 'string' && platform.thumbnailGeneratedAt.trim()
+        ? platform.thumbnailGeneratedAt.trim().slice(0, 64)
+        : undefined;
+
     const payload: Record<string, any> = {
       id: docId,
       name: cleanName,
@@ -305,6 +342,8 @@ export async function savePlatformLink(platform: PlatformLink): Promise<boolean>
       description: cleanDescription,
       logoUrl: cleanLogoUrl,
       thumbnailUrl: cleanThumbnailUrl,
+      ...(validThumbSource ? { thumbnailSource: validThumbSource } : {}),
+      ...(cleanThumbGeneratedAt ? { thumbnailGeneratedAt: cleanThumbGeneratedAt } : {}),
       sortOrder: Math.min(9999, Math.max(0, Number.isFinite(Number(platform.sortOrder)) ? Number(platform.sortOrder) : 1)),
       isActive: platform.isActive !== false,
       createdAt: existingData?.createdAt || platform.createdAt || nowIso,
@@ -472,23 +511,253 @@ export async function uploadPlatformAsset(
   }
 }
 
+export interface HomepageSnapshotUploadSuccess {
+  ok: true;
+  thumbnailUrl: string;
+  thumbnailSource: 'homepage_snapshot';
+  thumbnailGeneratedAt: string;
+  storagePath: string;
+  width: number;
+  height: number;
+  sizeBytes: number;
+  sha256: string;
+  reusedExisting: boolean;
+}
+
+export interface HomepageSnapshotUploadFailure {
+  ok: false;
+  code: string;
+  error: string;
+}
+
+export type HomepageSnapshotUploadResult =
+  | HomepageSnapshotUploadSuccess
+  | HomepageSnapshotUploadFailure;
+
+/**
+ * Requests a server-side first-viewport homepage screenshot (1440x810 -> 640x360 WebP)
+ * using the Master Admin Firebase ID token, then uploads the optimized WebP directly
+ * to Firebase Storage under platforms/directkpmbp/thumbnails/ while avoiding duplicates.
+ */
+export async function requestPlatformHomepageSnapshot(
+  targetUrl: string,
+  existingThumbnailUrl?: string
+): Promise<HomepageSnapshotUploadResult> {
+  if (!auth.currentUser) {
+    return {
+      ok: false,
+      code: 'UNAUTHENTICATED',
+      error: 'Pengesahan pentadbir Firebase Auth diperlukan sebelum menjana snapshot.',
+    };
+  }
+
+  let idToken: string;
+  try {
+    idToken = await auth.currentUser.getIdToken(true);
+  } catch (err: any) {
+    return {
+      ok: false,
+      code: 'AUTH_TOKEN_ERROR',
+      error: err?.message || 'Gagal mendapatkan token pengesahan Firebase.',
+    };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
+
+  let json: any;
+  try {
+    const res = await fetch('/api/platform/snapshot', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+      },
+      body: JSON.stringify({ url: normalizePlatformUrl(targetUrl) }),
+      signal: controller.signal,
+    });
+    json = await res.json().catch(() => null);
+    if (!res.ok || !json?.success || !json?.data?.imageBase64) {
+      return {
+        ok: false,
+        code: json?.code || `HTTP_${res.status}`,
+        error: json?.error || `Penjanaan snapshot gagal (HTTP ${res.status}).`,
+      };
+    }
+  } catch (err: any) {
+    return {
+      ok: false,
+      code: err?.name === 'AbortError' ? 'TIMEOUT' : 'NETWORK_ERROR',
+      error:
+        err?.name === 'AbortError'
+          ? 'Masa menunggu tamat semasa menjana snapshot halaman utama.'
+          : err?.message || 'Gagal menghubungi perkhidmatan snapshot pelayan.',
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  const snap = json.data as {
+    mimeType: string;
+    width: number;
+    height: number;
+    sizeBytes: number;
+    sha256: string;
+    imageBase64: string;
+    finalUrl: string;
+  };
+
+  if (snap.mimeType !== 'image/webp' || snap.width !== 640 || snap.height !== 360) {
+    return {
+      ok: false,
+      code: 'INVALID_OUTPUT',
+      error: 'Output snapshot tidak memenuhi spesifikasi WebP 640x360.',
+    };
+  }
+
+  // Decode base64 WebP bytes cleanly
+  const binaryString = atob(snap.imageBase64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  if (bytes.length === 0 || bytes.length > 5 * 1024 * 1024) {
+    return {
+      ok: false,
+      code: 'INVALID_SIZE',
+      error: 'Saiz fail WebP snapshot melebihi had 5MB Firebase Storage.',
+    };
+  }
+
+  let hostSlug = 'platform';
+  try {
+    const parsedHost = new URL(snap.finalUrl || targetUrl).hostname.replace(/^www\./i, '');
+    hostSlug = parsedHost.replace(/[^a-zA-Z0-9-]/g, '_').slice(0, 48) || 'platform';
+  } catch {
+    hostSlug = 'platform';
+  }
+
+  const shaPrefix = (snap.sha256 || '').replace(/[^a-f0-9]/gi, '').slice(0, 16) || String(Date.now());
+  const subPath = `thumbnails/platform_snapshot_${hostSlug}_${shaPrefix}.webp`;
+  const fullPath = getPlatformStoragePath(subPath);
+  const generatedAt = new Date().toISOString();
+
+  // Avoid duplicate uploads when identical content hash already matches existing or cached URL
+  const existingPath = extractPlatformStoragePath(existingThumbnailUrl);
+  if (existingPath === fullPath && existingThumbnailUrl) {
+    snapshotUrlCache.set(fullPath, existingThumbnailUrl);
+    return {
+      ok: true,
+      thumbnailUrl: existingThumbnailUrl,
+      thumbnailSource: 'homepage_snapshot',
+      thumbnailGeneratedAt: generatedAt,
+      storagePath: fullPath,
+      width: snap.width,
+      height: snap.height,
+      sizeBytes: bytes.length,
+      sha256: snap.sha256,
+      reusedExisting: true,
+    };
+  }
+
+  const cachedUrl = snapshotUrlCache.get(fullPath);
+  if (cachedUrl) {
+    return {
+      ok: true,
+      thumbnailUrl: cachedUrl,
+      thumbnailSource: 'homepage_snapshot',
+      thumbnailGeneratedAt: generatedAt,
+      storagePath: fullPath,
+      width: snap.width,
+      height: snap.height,
+      sizeBytes: bytes.length,
+      sha256: snap.sha256,
+      reusedExisting: true,
+    };
+  }
+
+  const webpBlob = new Blob([bytes], { type: 'image/webp' });
+  const storageRef = ref(storage, fullPath);
+  const metadata = {
+    contentType: 'image/webp',
+    customMetadata: {
+      uploadedBy: auth.currentUser.email || 'admin',
+      uploadedAt: generatedAt,
+      sourceUrl: (snap.finalUrl || targetUrl).slice(0, 500),
+      sha256: snap.sha256,
+      dimensions: '640x360',
+    },
+  };
+
+  try {
+    const uploadPromise = async () => {
+      const uploadedSnap = await uploadBytes(storageRef, webpBlob, metadata);
+      return await getDownloadURL(uploadedSnap.ref);
+    };
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('storage/timeout: Masa tamat menghubungi Firebase Storage.')), 12000);
+    });
+
+    const downloadUrl = await Promise.race([uploadPromise(), timeoutPromise]);
+    snapshotUrlCache.set(fullPath, downloadUrl);
+
+    return {
+      ok: true,
+      thumbnailUrl: downloadUrl,
+      thumbnailSource: 'homepage_snapshot',
+      thumbnailGeneratedAt: generatedAt,
+      storagePath: fullPath,
+      width: snap.width,
+      height: snap.height,
+      sizeBytes: bytes.length,
+      sha256: snap.sha256,
+      reusedExisting: false,
+    };
+  } catch (err: any) {
+    const code = err?.code || 'STORAGE_UPLOAD_FAILED';
+    const msg = String(err?.message || '');
+    if (code === 'storage/unauthorized') {
+      return {
+        ok: false,
+        code,
+        error: 'Muat naik snapshot ditolak oleh Storage Rules (storage/unauthorized).',
+      };
+    }
+    return {
+      ok: false,
+      code,
+      error: msg || 'Gagal menyimpan snapshot ke Firebase Storage.',
+    };
+  }
+}
+
 export interface ResolvedPlatformVisual {
   thumbnail?: string;
   logo?: string;
-  source: 'custom_thumbnail' | 'og_image' | 'custom_logo' | 'pwa_icon' | 'favicon' | 'placeholder';
+  source:
+    | 'homepage_snapshot'
+    | 'custom_upload'
+    | 'custom_thumbnail'
+    | 'og_image'
+    | 'custom_logo'
+    | 'pwa_icon'
+    | 'favicon'
+    | 'placeholder';
 }
 
 export function resolvePlatformVisual(platform: {
   url: string;
   logoUrl?: string;
   thumbnailUrl?: string;
+  thumbnailSource?: PlatformThumbnailSource;
   detectedMeta?: {
     ogImage?: string;
     favicon?: string;
     pwaIcon?: string;
   };
 }): ResolvedPlatformVisual {
-  const customThumb = platform.thumbnailUrl?.trim();
+  const savedThumb = platform.thumbnailUrl?.trim();
   const ogImage = platform.detectedMeta?.ogImage?.trim();
   const customLogo = platform.logoUrl?.trim();
   const pwaIcon = platform.detectedMeta?.pwaIcon?.trim();
@@ -504,11 +773,27 @@ export function resolvePlatformVisual(platform: {
     // ignore invalid url
   }
 
-  const thumbnail = customThumb || ogImage || undefined;
   const logo = customLogo || pwaIcon || favicon || googleFav || undefined;
 
+  if (platform.thumbnailSource === 'custom_upload' && savedThumb) {
+    return { thumbnail: savedThumb, logo, source: 'custom_upload' };
+  }
+  if (platform.thumbnailSource === 'homepage_snapshot' && savedThumb) {
+    return { thumbnail: savedThumb, logo, source: 'homepage_snapshot' };
+  }
+  if (platform.thumbnailSource === 'og_image' && (savedThumb || ogImage)) {
+    return { thumbnail: savedThumb || ogImage, logo, source: 'og_image' };
+  }
+  if (platform.thumbnailSource === 'favicon') {
+    return { thumbnail: undefined, logo, source: 'favicon' };
+  }
+  if (platform.thumbnailSource === 'placeholder') {
+    return { thumbnail: undefined, logo: customLogo || pwaIcon || favicon || undefined, source: 'placeholder' };
+  }
+
+  const thumbnail = savedThumb || ogImage || undefined;
   let source: ResolvedPlatformVisual['source'] = 'placeholder';
-  if (customThumb) source = 'custom_thumbnail';
+  if (savedThumb) source = 'custom_thumbnail';
   else if (ogImage) source = 'og_image';
   else if (customLogo) source = 'custom_logo';
   else if (pwaIcon) source = 'pwa_icon';

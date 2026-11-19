@@ -3,6 +3,8 @@ import path from 'path';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import { detectUrlMetadata } from './src/services/serverMetadata.ts';
+import { verifyMasterAdminRequest } from './src/services/serverFirebaseAuth.ts';
+import { captureHomepageSnapshot } from './src/services/serverSnapshot.ts';
 
 async function startServer() {
   const app = express();
@@ -14,7 +16,7 @@ async function startServer() {
   // CORS headers middleware
   app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
     next();
   });
 
@@ -123,6 +125,51 @@ async function startServer() {
         success: false,
         error: err?.message || 'Gagal mengesan maklumat secara automatik.',
         data: { url: url.trim() },
+      });
+    }
+  });
+
+  // Homepage Visual Snapshot Engine endpoint (Master Admin only, SSRF-hardened Playwright -> 640x360 WebP)
+  app.post('/api/platform/snapshot', async (req, res) => {
+    const authResult = await verifyMasterAdminRequest(req);
+    if (!authResult.authorized) {
+      return res.status(authResult.status).json({
+        success: false,
+        code: authResult.status === 401 ? 'UNAUTHENTICATED' : 'FORBIDDEN',
+        error: authResult.error || 'Akses ditolak.',
+      });
+    }
+
+    const { url } = req.body || {};
+    if (!url || typeof url !== 'string' || !url.trim()) {
+      return res.status(400).json({
+        success: false,
+        code: 'INVALID_URL',
+        error: 'Sila berikan URL platform yang sah.',
+      });
+    }
+
+    try {
+      const result = await captureHomepageSnapshot(url.trim());
+      if ('error' in result) {
+        console.warn(`[PlatformSnapshot] Capture notice (${result.code}) for "${url.trim()}": ${result.error}`);
+        return res.status(result.statusCode).json({
+          success: false,
+          code: result.code,
+          error: result.error,
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        data: result,
+      });
+    } catch (err: any) {
+      console.error('[PlatformSnapshot] Unexpected error:', err?.message || err);
+      return res.status(500).json({
+        success: false,
+        code: 'CAPTURE_FAILED',
+        error: 'Ralat dalaman pelayan semasa menjana snapshot halaman utama.',
       });
     }
   });

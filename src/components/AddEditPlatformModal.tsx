@@ -28,11 +28,15 @@ import {
   Eye,
   EyeOff,
   ArrowUpDown,
+  Camera,
+  RefreshCw,
 } from 'lucide-react';
-import { PlatformLink, PortalMetadata } from '../types';
+import { PlatformLink, PlatformThumbnailSource, PortalMetadata } from '../types';
 import { requestUrlMetadata } from '../services/portalService';
 import {
   uploadPlatformAsset,
+  requestPlatformHomepageSnapshot,
+  cleanupOrphanPlatformAssetUrl,
   resolvePlatformVisual,
   normalizePlatformUrl,
 } from '../services/platformService';
@@ -59,14 +63,19 @@ export const AddEditPlatformModal: React.FC<AddEditPlatformModalProps> = ({
   const [description, setDescription] = useState('');
   const [logoUrl, setLogoUrl] = useState('');
   const [thumbnailUrl, setThumbnailUrl] = useState('');
+  const [thumbnailSource, setThumbnailSource] = useState<PlatformThumbnailSource>('placeholder');
+  const [thumbnailGeneratedAt, setThumbnailGeneratedAt] = useState<string | undefined>(undefined);
   const [sortOrder, setSortOrder] = useState(1);
   const [isActive, setIsActive] = useState(true);
 
   const [detectedMeta, setDetectedMeta] = useState<PortalMetadata | null>(null);
   const [isDetecting, setIsDetecting] = useState(false);
+  const [isGeneratingSnapshot, setIsGeneratingSnapshot] = useState(false);
   const [detectState, setDetectState] = useState<'idle' | 'loading' | 'success' | 'partial' | 'error'>('idle');
   const [detectStatus, setDetectStatus] = useState<string | null>(null);
   const [detectError, setDetectError] = useState<string | null>(null);
+  const [snapshotFailedFallbackApplied, setSnapshotFailedFallbackApplied] = useState(false);
+  const [snapshotNotice, setSnapshotNotice] = useState<string | null>(null);
 
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [isUploadingThumbnail, setIsUploadingThumbnail] = useState(false);
@@ -86,12 +95,28 @@ export const AddEditPlatformModal: React.FC<AddEditPlatformModalProps> = ({
   const logoFileInputRef = useRef<HTMLInputElement>(null);
   const thumbFileInputRef = useRef<HTMLInputElement>(null);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sessionUploadedUrlsRef = useRef<Set<string>>(new Set());
+  const snapshotInFlightRef = useRef<string | null>(null);
 
   useEffect(() => {
     return () => {
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
     };
   }, []);
+
+  const handleCloseSafely = () => {
+    const initialThumb = platform?.thumbnailUrl?.trim();
+    const pendingToClean = Array.from(sessionUploadedUrlsRef.current).filter(
+      (uploaded) => uploaded && uploaded !== initialThumb
+    );
+    sessionUploadedUrlsRef.current.clear();
+    if (pendingToClean.length > 0) {
+      Promise.all(
+        pendingToClean.map((assetUrl) => cleanupOrphanPlatformAssetUrl(assetUrl, platform?.id || ''))
+      ).catch(() => {});
+    }
+    onClose();
+  };
 
   // Body scroll lock & Escape close
   useEffect(() => {
@@ -101,7 +126,7 @@ export const AddEditPlatformModal: React.FC<AddEditPlatformModalProps> = ({
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && !isSaving) {
-        onClose();
+        handleCloseSafely();
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -109,10 +134,13 @@ export const AddEditPlatformModal: React.FC<AddEditPlatformModalProps> = ({
       document.body.style.overflow = originalOverflow;
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [isOpen, isSaving, onClose]);
+  }, [isOpen, isSaving]);
 
   useEffect(() => {
     if (!isOpen) return;
+
+    sessionUploadedUrlsRef.current.clear();
+    snapshotInFlightRef.current = null;
 
     if (platform) {
       setUrl(platform.url || '');
@@ -120,6 +148,19 @@ export const AddEditPlatformModal: React.FC<AddEditPlatformModalProps> = ({
       setDescription(platform.description || '');
       setLogoUrl(platform.logoUrl || '');
       setThumbnailUrl(platform.thumbnailUrl || '');
+      const inferredSource: PlatformThumbnailSource =
+        platform.thumbnailSource ||
+        (platform.thumbnailUrl
+          ? platform.detectedMeta?.ogImage === platform.thumbnailUrl
+            ? 'og_image'
+            : 'custom_upload'
+          : platform.detectedMeta?.ogImage
+            ? 'og_image'
+            : platform.logoUrl || platform.detectedMeta?.favicon || platform.detectedMeta?.pwaIcon
+              ? 'favicon'
+              : 'placeholder');
+      setThumbnailSource(inferredSource);
+      setThumbnailGeneratedAt(platform.thumbnailGeneratedAt);
       setSortOrder(platform.sortOrder ?? existingCount + 1);
       setIsActive(platform.isActive !== false);
 
@@ -144,7 +185,7 @@ export const AddEditPlatformModal: React.FC<AddEditPlatformModalProps> = ({
         name: true,
         description: true,
         logoUrl: Boolean(platform.logoUrl),
-        thumbnailUrl: Boolean(platform.thumbnailUrl),
+        thumbnailUrl: Boolean(platform.thumbnailUrl && inferredSource === 'custom_upload'),
       });
     } else {
       setUrl('');
@@ -152,6 +193,8 @@ export const AddEditPlatformModal: React.FC<AddEditPlatformModalProps> = ({
       setDescription('');
       setLogoUrl('');
       setThumbnailUrl('');
+      setThumbnailSource('placeholder');
+      setThumbnailGeneratedAt(undefined);
       setSortOrder(existingCount + 1);
       setIsActive(true);
       setDetectedMeta(null);
@@ -166,6 +209,9 @@ export const AddEditPlatformModal: React.FC<AddEditPlatformModalProps> = ({
     setDetectState('idle');
     setDetectStatus(null);
     setDetectError(null);
+    setIsGeneratingSnapshot(false);
+    setSnapshotFailedFallbackApplied(false);
+    setSnapshotNotice(null);
     setErrorMessage(null);
     setConfirmingDelete(false);
     setPreviewThumbFailed(false);
@@ -174,7 +220,34 @@ export const AddEditPlatformModal: React.FC<AddEditPlatformModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleDetectMetadata = async (targetUrl?: string) => {
+  const applyFallbackThumbnail = (
+    meta: PortalMetadata | null,
+    failureReason: string,
+    currentLogo: string
+  ) => {
+    const ogImg = meta?.ogImage?.trim();
+    const fav = meta?.manifestIcons?.[0]?.src || meta?.favicon || currentLogo.trim();
+
+    if (ogImg) {
+      setThumbnailUrl(ogImg);
+      setThumbnailSource('og_image');
+    } else if (fav) {
+      setThumbnailUrl('');
+      setThumbnailSource('favicon');
+    } else {
+      setThumbnailUrl('');
+      setThumbnailSource('placeholder');
+    }
+    setThumbnailGeneratedAt(undefined);
+    setSnapshotFailedFallbackApplied(true);
+    setSnapshotNotice(failureReason);
+    setPreviewThumbFailed(false);
+  };
+
+  const handleDetectMetadata = async (
+    targetUrl?: string,
+    options: { captureSnapshot?: boolean; forceSnapshot?: boolean } = { captureSnapshot: true }
+  ) => {
     const raw = (targetUrl ?? url).trim();
     if (!raw) {
       setDetectState('error');
@@ -185,51 +258,172 @@ export const AddEditPlatformModal: React.FC<AddEditPlatformModalProps> = ({
     const formattedUrl = normalizePlatformUrl(raw);
     setUrl(formattedUrl);
 
+    const shouldCaptureSnapshot =
+      Boolean(options.forceSnapshot) ||
+      (options.captureSnapshot !== false && !manuallyModified.thumbnailUrl);
+
+    if (shouldCaptureSnapshot && snapshotInFlightRef.current === formattedUrl) {
+      return;
+    }
+
     try {
       setIsDetecting(true);
       setDetectState('loading');
-      setDetectStatus('Sedang menganalisis metadata platform...');
+      setDetectStatus(
+        shouldCaptureSnapshot
+          ? 'Mengesan metadata & menangkap paparan halaman utama (1440x810)...'
+          : 'Sedang menganalisis metadata platform...'
+      );
       setDetectError(null);
 
-      const { status, data: meta } = await requestUrlMetadata(formattedUrl);
-      setDetectedMeta(meta);
-
-      if (!manuallyModified.name || !name.trim()) {
-        const detectedName = meta.ogTitle || meta.title || meta.manifestName || meta.ogSiteName;
-        if (detectedName) setName(detectedName.slice(0, 200));
+      if (shouldCaptureSnapshot) {
+        setIsGeneratingSnapshot(true);
+        snapshotInFlightRef.current = formattedUrl;
       }
 
-      if (!manuallyModified.description || !description.trim()) {
-        const detectedDesc = meta.ogDescription || meta.description;
-        if (detectedDesc) setDescription(detectedDesc.slice(0, 1000));
-      }
+      const [metaOutcome, snapOutcome] = await Promise.all([
+        requestUrlMetadata(formattedUrl)
+          .then((res) => ({ ok: true as const, res }))
+          .catch((err) => ({ ok: false as const, err })),
+        shouldCaptureSnapshot
+          ? requestPlatformHomepageSnapshot(formattedUrl, thumbnailUrl)
+          : Promise.resolve(null),
+      ]);
 
-      if (!manuallyModified.thumbnailUrl && !thumbnailUrl.trim() && meta.ogImage) {
-        setThumbnailUrl(meta.ogImage);
-        setPreviewThumbFailed(false);
-      }
+      let latestMeta: PortalMetadata | null = detectedMeta;
+      let resolvedLogo = logoUrl;
 
-      if (!manuallyModified.logoUrl && !logoUrl.trim()) {
-        const iconCandidate = meta.manifestIcons?.[0]?.src || meta.favicon;
-        if (iconCandidate) {
-          setLogoUrl(iconCandidate);
-          setPreviewLogoFailed(false);
+      if (metaOutcome.ok) {
+        const { data: meta } = metaOutcome.res;
+        latestMeta = meta;
+        setDetectedMeta(meta);
+
+        if (!manuallyModified.name || !name.trim()) {
+          const detectedName = meta.ogTitle || meta.title || meta.manifestName || meta.ogSiteName;
+          if (detectedName) setName(detectedName.slice(0, 200));
+        }
+
+        if (!manuallyModified.description || !description.trim()) {
+          const detectedDesc = meta.ogDescription || meta.description;
+          if (detectedDesc) setDescription(detectedDesc.slice(0, 1000));
+        }
+
+        if (!manuallyModified.logoUrl && !logoUrl.trim()) {
+          const iconCandidate = meta.manifestIcons?.[0]?.src || meta.favicon;
+          if (iconCandidate) {
+            resolvedLogo = iconCandidate;
+            setLogoUrl(iconCandidate);
+            setPreviewLogoFailed(false);
+          }
         }
       }
 
-      if (status === 'success') {
-        setDetectState('success');
-        setDetectStatus('Metadata platform berjaya dikesan secara automatik.');
-      } else {
-        setDetectState('partial');
-        setDetectStatus('Metadata separa dikesan. Anda boleh melengkapkan maklumat secara manual.');
+      if (snapOutcome) {
+        if (snapOutcome.ok) {
+          if (!snapOutcome.reusedExisting) {
+            sessionUploadedUrlsRef.current.add(snapOutcome.thumbnailUrl);
+          }
+          setThumbnailUrl(snapOutcome.thumbnailUrl);
+          setThumbnailSource('homepage_snapshot');
+          setThumbnailGeneratedAt(snapOutcome.thumbnailGeneratedAt);
+          setSnapshotFailedFallbackApplied(false);
+          setSnapshotNotice(null);
+          setPreviewThumbFailed(false);
+          setManuallyModified((prev) => ({ ...prev, thumbnailUrl: false }));
+        } else {
+          console.warn('[PlatformSnapshot] Fallback applied:', snapOutcome.code, snapOutcome.error);
+          if (!manuallyModified.thumbnailUrl) {
+            applyFallbackThumbnail(latestMeta, snapOutcome.error, resolvedLogo);
+          } else {
+            setSnapshotFailedFallbackApplied(true);
+            setSnapshotNotice(snapOutcome.error);
+          }
+        }
+      } else if (metaOutcome.ok && !manuallyModified.thumbnailUrl && !thumbnailUrl.trim()) {
+        // Lightweight debounce metadata detection before snapshot click
+        const meta = metaOutcome.res.data;
+        if (meta.ogImage) {
+          setThumbnailUrl(meta.ogImage);
+          setThumbnailSource('og_image');
+        } else if (meta.manifestIcons?.[0]?.src || meta.favicon) {
+          setThumbnailSource('favicon');
+        } else {
+          setThumbnailSource('placeholder');
+        }
       }
-    } catch (err: any) {
-      setDetectState('error');
-      setDetectStatus(null);
-      setDetectError(err?.message || 'Pengesanan automatik gagal. Sila isi maklumat secara manual.');
+
+      if (metaOutcome.ok && (!snapOutcome || snapOutcome.ok)) {
+        const status = metaOutcome.res.status;
+        if (status === 'success') {
+          setDetectState('success');
+          setDetectStatus(
+            snapOutcome?.ok
+              ? 'Metadata & snapshot halaman utama (WebP 640x360) berjaya dijana.'
+              : 'Metadata platform berjaya dikesan secara automatik.'
+          );
+        } else {
+          setDetectState('partial');
+          setDetectStatus(
+            snapOutcome?.ok
+              ? 'Snapshot halaman utama berjaya dijana. Maklumat teks separa dikesan.'
+              : 'Metadata separa dikesan. Anda boleh melengkapkan maklumat secara manual.'
+          );
+        }
+      } else if (snapOutcome && 'thumbnailUrl' in snapOutcome) {
+        setDetectState('partial');
+        setDetectStatus('Snapshot halaman utama berjaya dijana. Sila semak nama & deskripsi.');
+      } else if ('err' in metaOutcome) {
+        // Do not block registration if both metadata and snapshot fail
+        setDetectState('partial');
+        setDetectStatus(null);
+        setDetectError(
+          metaOutcome.err?.message ||
+            'Pengesanan automatik terhad. Fallback digunakan dan anda masih boleh mengisi maklumat secara manual.'
+        );
+      }
     } finally {
+      snapshotInFlightRef.current = null;
+      setIsGeneratingSnapshot(false);
       setIsDetecting(false);
+    }
+  };
+
+  const handleRegenerateSnapshot = async () => {
+    const raw = url.trim();
+    if (!raw) {
+      setErrorMessage('Sila masukkan URL platform sebelum menjana semula snapshot.');
+      return;
+    }
+
+    const formattedUrl = normalizePlatformUrl(raw);
+    setUrl(formattedUrl);
+    if (snapshotInFlightRef.current === formattedUrl) return;
+
+    try {
+      setIsGeneratingSnapshot(true);
+      snapshotInFlightRef.current = formattedUrl;
+      setErrorMessage(null);
+      setSnapshotNotice(null);
+
+      const snapOutcome = await requestPlatformHomepageSnapshot(formattedUrl, thumbnailUrl);
+      if ('thumbnailUrl' in snapOutcome) {
+        if (!snapOutcome.reusedExisting) {
+          sessionUploadedUrlsRef.current.add(snapOutcome.thumbnailUrl);
+        }
+        setThumbnailUrl(snapOutcome.thumbnailUrl);
+        setThumbnailSource('homepage_snapshot');
+        setThumbnailGeneratedAt(snapOutcome.thumbnailGeneratedAt);
+        setSnapshotFailedFallbackApplied(false);
+        setSnapshotNotice(null);
+        setPreviewThumbFailed(false);
+        setManuallyModified((prev) => ({ ...prev, thumbnailUrl: false }));
+      } else {
+        console.warn('[PlatformSnapshot] Regenerate failed, applying fallback:', snapOutcome.code, snapOutcome.error);
+        applyFallbackThumbnail(detectedMeta, snapOutcome.error, logoUrl);
+      }
+    } finally {
+      snapshotInFlightRef.current = null;
+      setIsGeneratingSnapshot(false);
     }
   };
 
@@ -250,7 +444,7 @@ export const AddEditPlatformModal: React.FC<AddEditPlatformModalProps> = ({
       (trimmed.startsWith('http://') || trimmed.startsWith('https://') || (trimmed.includes('.') && !trimmed.endsWith('.')))
     ) {
       debounceTimerRef.current = setTimeout(() => {
-        handleDetectMetadata(trimmed);
+        handleDetectMetadata(trimmed, { captureSnapshot: false });
       }, 700);
     }
   };
@@ -280,7 +474,12 @@ export const AddEditPlatformModal: React.FC<AddEditPlatformModalProps> = ({
       setIsUploadingThumbnail(true);
       setErrorMessage(null);
       const uploaded = await uploadPlatformAsset(file, 'thumbnail');
+      sessionUploadedUrlsRef.current.add(uploaded);
       setThumbnailUrl(uploaded);
+      setThumbnailSource('custom_upload');
+      setThumbnailGeneratedAt(new Date().toISOString());
+      setSnapshotFailedFallbackApplied(false);
+      setSnapshotNotice(null);
       setManuallyModified((prev) => ({ ...prev, thumbnailUrl: true }));
       setPreviewThumbFailed(false);
     } catch (err: any) {
@@ -324,6 +523,14 @@ export const AddEditPlatformModal: React.FC<AddEditPlatformModalProps> = ({
       if (detectedMeta.manifestName) detectedData.manifestName = detectedMeta.manifestName;
     }
 
+    const resolvedEffectiveSource: PlatformThumbnailSource = thumbnailUrl.trim()
+      ? thumbnailSource === 'homepage_snapshot' || thumbnailSource === 'custom_upload' || thumbnailSource === 'og_image'
+        ? thumbnailSource
+        : 'custom_upload'
+      : logoUrl.trim() || detectedMeta?.favicon || detectedMeta?.manifestIcons?.[0]?.src
+        ? 'favicon'
+        : 'placeholder';
+
     const payload: PlatformLink = {
       id: platform?.id || `platform_${Date.now()}`,
       name: name.trim().slice(0, 200),
@@ -331,6 +538,8 @@ export const AddEditPlatformModal: React.FC<AddEditPlatformModalProps> = ({
       description: description.trim().slice(0, 1000),
       logoUrl: logoUrl.trim(),
       thumbnailUrl: thumbnailUrl.trim(),
+      thumbnailSource: resolvedEffectiveSource,
+      ...(thumbnailGeneratedAt ? { thumbnailGeneratedAt } : {}),
       sortOrder: Number.isFinite(Number(sortOrder)) && Number(sortOrder) >= 0 ? Number(sortOrder) : existingCount + 1,
       isActive,
       createdAt: platform?.createdAt || new Date().toISOString(),
@@ -345,6 +554,19 @@ export const AddEditPlatformModal: React.FC<AddEditPlatformModalProps> = ({
       setIsSaving(true);
       setErrorMessage(null);
       await onSave(payload);
+
+      // Clean up any temporary session-uploaded snapshots/assets discarded before final save
+      const initialThumb = platform?.thumbnailUrl?.trim();
+      const discardedUploads = Array.from(sessionUploadedUrlsRef.current).filter(
+        (uploaded) => uploaded && uploaded !== payload.thumbnailUrl && uploaded !== initialThumb
+      );
+      sessionUploadedUrlsRef.current.clear();
+      if (discardedUploads.length > 0) {
+        Promise.all(
+          discardedUploads.map((assetUrl) => cleanupOrphanPlatformAssetUrl(assetUrl, payload.id))
+        ).catch(() => {});
+      }
+
       onClose();
     } catch (err: any) {
       setErrorMessage(err?.message || 'Ralat semasa menyimpan platform ke Firestore.');
@@ -359,6 +581,7 @@ export const AddEditPlatformModal: React.FC<AddEditPlatformModalProps> = ({
       setIsSaving(true);
       setErrorMessage(null);
       await onDelete(platform.id);
+      sessionUploadedUrlsRef.current.clear();
       onClose();
     } catch (err: any) {
       setErrorMessage(err?.message || 'Ralat semasa memadam platform.');
@@ -371,12 +594,35 @@ export const AddEditPlatformModal: React.FC<AddEditPlatformModalProps> = ({
     url: url.trim() || 'https://bpenawar.kpm.edu.my/',
     logoUrl,
     thumbnailUrl,
+    thumbnailSource,
     detectedMeta: {
       ogImage: detectedMeta?.ogImage,
       favicon: detectedMeta?.favicon,
       pwaIcon: detectedMeta?.manifestIcons?.[0]?.src,
     },
   });
+
+  const getThumbnailStatusLabel = (): { label: string; tone: string } => {
+    if (previewThumbFailed && thumbnailSource === 'og_image') {
+      return logoUrl.trim() || detectedMeta?.favicon
+        ? { label: 'Favicon Used', tone: 'bg-amber-50 text-amber-800 border-amber-200' }
+        : { label: 'Default Placeholder Used', tone: 'bg-slate-100 text-slate-700 border-slate-200' };
+    }
+    switch (thumbnailSource) {
+      case 'homepage_snapshot':
+        return { label: 'Homepage Snapshot Generated', tone: 'bg-emerald-50 text-emerald-800 border-emerald-200' };
+      case 'og_image':
+        return { label: 'OG Image Used', tone: 'bg-indigo-50 text-indigo-800 border-indigo-200' };
+      case 'favicon':
+        return { label: 'Favicon Used', tone: 'bg-amber-50 text-amber-800 border-amber-200' };
+      case 'custom_upload':
+        return { label: 'Custom Image Used', tone: 'bg-violet-50 text-violet-800 border-violet-200' };
+      default:
+        return { label: 'Default Placeholder Used', tone: 'bg-slate-100 text-slate-700 border-slate-200' };
+    }
+  };
+
+  const thumbBadge = getThumbnailStatusLabel();
 
   const domainDisplay = (url.trim() || 'https://contoh-platform.edu.my')
     .replace(/^https?:\/\//i, '')
@@ -390,7 +636,7 @@ export const AddEditPlatformModal: React.FC<AddEditPlatformModalProps> = ({
       aria-modal="true"
       aria-labelledby="platform-modal-title"
       onClick={(e) => {
-        if (e.target === e.currentTarget && !isSaving) onClose();
+        if (e.target === e.currentTarget && !isSaving) handleCloseSafely();
       }}
     >
       <div
@@ -414,7 +660,7 @@ export const AddEditPlatformModal: React.FC<AddEditPlatformModalProps> = ({
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleCloseSafely}
             disabled={isSaving}
             className="p-2 text-slate-400 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-full transition-colors cursor-pointer disabled:opacity-50"
             aria-label="Tutup"
@@ -439,7 +685,10 @@ export const AddEditPlatformModal: React.FC<AddEditPlatformModalProps> = ({
                   <Layers className="w-3.5 h-3.5 text-emerald-600" />
                   Pratonton Kad Platform
                 </span>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${thumbBadge.tone}`}>
+                    {thumbBadge.label}
+                  </span>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
                     Susunan #{sortOrder}
                   </span>
@@ -456,15 +705,20 @@ export const AddEditPlatformModal: React.FC<AddEditPlatformModalProps> = ({
               </div>
 
               <div className={`glass-card rounded-[22px] border border-slate-200 shadow-sm overflow-hidden flex flex-col ${!isActive ? 'opacity-60' : ''}`}>
-                {visual.thumbnail && !previewThumbFailed ? (
-                  <div className="relative w-full aspect-[2.2/1] bg-slate-100 overflow-hidden border-b border-slate-100">
+                {isGeneratingSnapshot ? (
+                  <div className="relative w-full aspect-video bg-slate-100 border-b border-slate-100 flex flex-col items-center justify-center gap-2 text-slate-600">
+                    <Loader2 className="w-6 h-6 animate-spin text-emerald-600" />
+                    <span className="text-xs font-bold">Menangkap paparan halaman utama (1440×810 → WebP 640×360)...</span>
+                  </div>
+                ) : visual.thumbnail && !previewThumbFailed ? (
+                  <div className="relative w-full aspect-video bg-slate-100 overflow-hidden border-b border-slate-100">
                     <img
                       src={visual.thumbnail}
                       alt={name || 'Pratonton Platform'}
                       onError={() => setPreviewThumbFailed(true)}
                       className="w-full h-full object-cover"
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950/35 via-transparent to-transparent" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950/30 via-transparent to-transparent" />
                   </div>
                 ) : (
                   <div className="p-4 bg-gradient-to-r from-emerald-50/90 via-white to-teal-50/70 border-b border-emerald-100/70 flex items-center gap-3">
@@ -677,36 +931,63 @@ export const AddEditPlatformModal: React.FC<AddEditPlatformModalProps> = ({
                 </button>
               </div>
 
-              {/* Thumbnail */}
-              <div className="space-y-2 p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80">
-                <div className="flex items-center justify-between">
+              {/* Thumbnail & Homepage Snapshot Controls */}
+              <div className="space-y-2.5 p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
                   <label className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5">
-                    <ImageIcon className="w-3.5 h-3.5 text-indigo-600" />
-                    <span>5. Thumbnail Kad</span>
+                    <Camera className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>5. Thumbnail Kad (16:9)</span>
                   </label>
-                  {thumbnailUrl && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setThumbnailUrl('');
-                        setManuallyModified((prev) => ({ ...prev, thumbnailUrl: false }));
-                        setPreviewThumbFailed(false);
-                      }}
-                      className="text-[10px] text-rose-600 hover:text-rose-800 font-bold cursor-pointer"
-                    >
-                      Padam
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${thumbBadge.tone}`}>
+                      {thumbBadge.label}
+                    </span>
+                    {thumbnailUrl && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setThumbnailUrl('');
+                          setThumbnailSource(
+                            logoUrl.trim() || detectedMeta?.favicon ? 'favicon' : 'placeholder'
+                          );
+                          setThumbnailGeneratedAt(undefined);
+                          setSnapshotFailedFallbackApplied(false);
+                          setSnapshotNotice(null);
+                          setManuallyModified((prev) => ({ ...prev, thumbnailUrl: false }));
+                          setPreviewThumbFailed(false);
+                        }}
+                        className="text-[10px] text-rose-600 hover:text-rose-800 font-bold cursor-pointer"
+                      >
+                        Padam
+                      </button>
+                    )}
+                  </div>
                 </div>
+
+                {snapshotFailedFallbackApplied && (
+                  <div className="p-2 bg-amber-50 border border-amber-200 rounded-xl text-[11px] font-semibold text-amber-900 space-y-0.5">
+                    <div className="flex items-center gap-1.5 font-extrabold">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                      <span>Snapshot Failed — Fallback Applied</span>
+                    </div>
+                    {snapshotNotice && (
+                      <p className="text-[10px] text-amber-800 leading-snug">{snapshotNotice}</p>
+                    )}
+                  </div>
+                )}
+
                 <input
                   type="text"
                   value={thumbnailUrl}
                   onChange={(e) => {
-                    setThumbnailUrl(e.target.value);
-                    setManuallyModified((prev) => ({ ...prev, thumbnailUrl: true }));
+                    const nextVal = e.target.value;
+                    setThumbnailUrl(nextVal);
+                    setThumbnailSource(nextVal.trim() ? 'custom_upload' : logoUrl.trim() ? 'favicon' : 'placeholder');
+                    setSnapshotFailedFallbackApplied(false);
+                    setManuallyModified((prev) => ({ ...prev, thumbnailUrl: Boolean(nextVal.trim()) }));
                     setPreviewThumbFailed(false);
                   }}
-                  placeholder="https://.../thumbnail.png atau muat naik"
+                  placeholder="Snapshot automatik atau URL imej 16:9"
                   className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                 />
                 <input
@@ -716,15 +997,36 @@ export const AddEditPlatformModal: React.FC<AddEditPlatformModalProps> = ({
                   className="hidden"
                   onChange={handleThumbnailUpload}
                 />
-                <button
-                  type="button"
-                  onClick={() => thumbFileInputRef.current?.click()}
-                  disabled={isUploadingThumbnail}
-                  className="w-full px-3 py-2 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
-                >
-                  {isUploadingThumbnail ? <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600" /> : <Upload className="w-3.5 h-3.5 text-indigo-600" />}
-                  <span>Muat Naik Thumbnail</span>
-                </button>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={handleRegenerateSnapshot}
+                    disabled={isGeneratingSnapshot || isDetecting || !url.trim()}
+                    className="w-full px-3 py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    {isGeneratingSnapshot ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-700" />
+                    ) : (
+                      <RefreshCw className="w-3.5 h-3.5 text-emerald-700" />
+                    )}
+                    <span>Jana Semula Snapshot</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => thumbFileInputRef.current?.click()}
+                    disabled={isUploadingThumbnail || isGeneratingSnapshot}
+                    className="w-full px-3 py-2 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    {isUploadingThumbnail ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600" />
+                    ) : (
+                      <Upload className="w-3.5 h-3.5 text-indigo-600" />
+                    )}
+                    <span>Guna Imej Sendiri</span>
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -827,7 +1129,7 @@ export const AddEditPlatformModal: React.FC<AddEditPlatformModalProps> = ({
             <div className="flex items-center gap-2 ml-auto">
               <button
                 type="button"
-                onClick={onClose}
+                onClick={handleCloseSafely}
                 disabled={isSaving}
                 className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 transition-all cursor-pointer disabled:opacity-50"
               >

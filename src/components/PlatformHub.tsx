@@ -134,7 +134,7 @@ const PlatformCard: React.FC<PlatformCardProps> = ({
 
       {/* Visual Thumbnail or Header */}
       {hasThumbnail ? (
-        <div className="relative w-full aspect-[2/1] bg-slate-100 overflow-hidden border-b border-slate-100/80">
+        <div className="relative w-full aspect-video bg-slate-100 overflow-hidden border-b border-slate-100/80">
           <img
             src={visual.thumbnail}
             alt={platform.name}

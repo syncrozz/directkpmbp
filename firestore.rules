@@ -90,6 +90,8 @@ service cloud.firestore {
           'description',
           'logoUrl',
           'thumbnailUrl',
+          'thumbnailSource',
+          'thumbnailGeneratedAt',
           'detectedMeta',
           'sortOrder',
           'isActive',
@@ -106,6 +108,8 @@ service cloud.firestore {
         && (!('description' in data) || (data.description is string && data.description.size() <= 1000))
         && (!('logoUrl' in data) || isValidOptionalHttpUrl(data.logoUrl))
         && (!('thumbnailUrl' in data) || isValidOptionalHttpUrl(data.thumbnailUrl))
+        && (!('thumbnailSource' in data) || (data.thumbnailSource is string && data.thumbnailSource in ['homepage_snapshot', 'og_image', 'favicon', 'custom_upload', 'placeholder']))
+        && (!('thumbnailGeneratedAt' in data) || (data.thumbnailGeneratedAt is string && data.thumbnailGeneratedAt.size() <= 64))
         && (!('detectedMeta' in data) || isValidPlatformDetectedMeta(data.detectedMeta))
         && data.sortOrder is number
         && data.sortOrder >= 0
@@ -172,6 +176,8 @@ service cloud.firestore {
           'description',
           'logoUrl',
           'thumbnailUrl',
+          'thumbnailSource',
+          'thumbnailGeneratedAt',
           'detectedMeta',
           'sortOrder',
           'isActive',

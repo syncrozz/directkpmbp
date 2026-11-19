@@ -134,6 +134,13 @@ export interface PortalSubscriptionResult {
   source: 'firestore' | 'fallback';
 }
 
+export type PlatformThumbnailSource =
+  | 'homepage_snapshot'
+  | 'og_image'
+  | 'favicon'
+  | 'custom_upload'
+  | 'placeholder';
+
 export interface PlatformLink {
   id: string;
   name: string;
@@ -141,6 +148,8 @@ export interface PlatformLink {
   description: string;
   logoUrl?: string;
   thumbnailUrl?: string;
+  thumbnailSource?: PlatformThumbnailSource;
+  thumbnailGeneratedAt?: string;
   detectedMeta?: {
     title?: string;
     description?: string;
