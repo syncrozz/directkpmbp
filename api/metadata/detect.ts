@@ -31,35 +31,59 @@ export interface ExtractedPortalMetadata {
 /**
  * Checks whether an IP address belongs to private, loopback, or reserved networks.
  */
-function isPrivateOrReservedIP(ip: string): boolean {
-  if (ip.startsWith('::ffff:')) {
+export function isPrivateOrReservedIP(ip: string): boolean {
+  // Normalize IPv6 mapped IPv4 e.g. "::ffff:127.0.0.1"
+  if (ip.toLowerCase().startsWith('::ffff:')) {
     ip = ip.substring(7);
   }
 
   // IPv4 Checks
   if (ip.includes('.')) {
-    const parts = ip.split('.').map((p) => parseInt(p, 10));
-    if (parts.length !== 4 || parts.some(isNaN)) {
-      return true;
+    const parts = ip.split('.').map((p) => Number(p));
+    if (parts.length !== 4 || parts.some((p) => !Number.isInteger(p) || p < 0 || p > 255)) {
+      return true; // malformed treated as unsafe
     }
 
-    const [a, b] = parts;
-    if (a === 0 || a === 10 || a === 127) return true;
+    const [a, b, c] = parts;
+
+    // 0.0.0.0/8 ("This network")
+    if (a === 0) return true;
+    // 10.0.0.0/8 (RFC1918 Private)
+    if (a === 10) return true;
+    // 100.64.0.0/10 (Carrier-Grade NAT / Internal Shared Address Space)
+    if (a === 100 && b >= 64 && b <= 127) return true;
+    // 127.0.0.0/8 (Loopback)
+    if (a === 127) return true;
+    // 169.254.0.0/16 (Link-Local / Cloud Metadata)
     if (a === 169 && b === 254) return true;
+    // 172.16.0.0/12 (RFC1918 Private)
     if (a === 172 && b >= 16 && b <= 31) return true;
+    // 192.0.0.0/24 & 192.0.2.0/24
+    if (a === 192 && b === 0 && (c === 0 || c === 2)) return true;
+    // 192.168.0.0/16 (RFC1918 Private)
     if (a === 192 && b === 168) return true;
+    // 198.18.0.0/15 (Benchmarking) & 198.51.100.0/24
+    if (a === 198 && (b === 18 || b === 19 || (b === 51 && c === 100))) return true;
+    // 203.0.113.0/24 (Documentation)
+    if (a === 203 && b === 0 && c === 113) return true;
+    // Multicast & Reserved (224.0.0.0/4 and 240.0.0.0/4 incl. 255.255.255.255)
     if (a >= 224) return true;
+
     return false;
   }
 
   // IPv6 Checks
-  const normalized = ip.toLowerCase();
+  const normalized = ip.toLowerCase().split('%')[0];
   if (
     normalized === '::1' ||
     normalized === '::' ||
-    normalized.startsWith('fe80:') ||
-    normalized.startsWith('fc') ||
-    normalized.startsWith('fd')
+    /^0{0,4}(:0{0,4}){6,7}:0{0,3}[01]$/.test(normalized) ||
+    /^fe[89ab][0-9a-f]:/.test(normalized) || // fe80::/10 Link-Local
+    /^f[cd][0-9a-f]{2}:/.test(normalized) || // fc00::/7 Unique Local
+    /^ff[0-9a-f]{2}:/.test(normalized) || // ff00::/8 Multicast
+    normalized.startsWith('64:ff9b:') || // NAT64
+    normalized.startsWith('100::') || // Discard
+    normalized.startsWith('2001:db8:') // Documentation
   ) {
     return true;
   }
@@ -70,7 +94,7 @@ function isPrivateOrReservedIP(ip: string): boolean {
 /**
  * Validates a target URL against SSRF attacks (private IPs, loopback, cloud metadata).
  */
-async function validateSafeUrl(urlString: string): Promise<{ safe: boolean; error?: string; url?: URL }> {
+export async function validateSafeUrl(urlString: string): Promise<{ safe: boolean; error?: string; url?: URL }> {
   try {
     const url = new URL(urlString.trim());
 
@@ -78,20 +102,41 @@ async function validateSafeUrl(urlString: string): Promise<{ safe: boolean; erro
       return { safe: false, error: 'Protokol URL tidak sah. Hanya http:// dan https:// dibenarkan.' };
     }
 
-    const hostname = url.hostname.toLowerCase();
+    if (url.username || url.password) {
+      return { safe: false, error: 'URL yang mengandungi kelayakan terbina dalam tidak dibenarkan (SSRF Guard).' };
+    }
 
+    const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+
+    // Block internal, loopback, link-local, and cloud metadata hostnames
     if (
+      !hostname ||
       hostname === 'localhost' ||
       hostname.endsWith('.localhost') ||
+      hostname.endsWith('.local') ||
+      hostname.endsWith('.internal') ||
+      hostname.endsWith('.arpa') ||
       hostname === '127.0.0.1' ||
       hostname === '0.0.0.0' ||
       hostname === '::1' ||
+      hostname === '::' ||
+      hostname === 'metadata' ||
       hostname === 'metadata.google.internal' ||
-      hostname === '169.254.169.254'
+      hostname === 'metadata.goog' ||
+      hostname.startsWith('169.254.') ||
+      !hostname.includes('.')
     ) {
       return { safe: false, error: 'Akses ke hos tempatan/persendirian disekat (SSRF Guard).' };
     }
 
+    // Direct IP literal guard (IPv4 or IPv6)
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(hostname) || hostname.includes(':')) {
+      if (isPrivateOrReservedIP(hostname)) {
+        return { safe: false, error: `Akses ke alamat IP rangkaian persendirian (${hostname}) disekat demi keselamatan.` };
+      }
+    }
+
+    // Resolve DNS and test every returned IP
     try {
       const addresses = await dns.promises.lookup(hostname, { all: true });
       if (!addresses || addresses.length === 0) {
@@ -191,7 +236,7 @@ async function detectUrlMetadataInternal(inputUrl: string): Promise<ExtractedPor
 
       clearTimeout(timeoutId);
 
-      // Handle Redirects
+      // Handle Redirects with explicit SSRF validation on every redirect target
       if ([301, 302, 303, 307, 308].includes(response.status)) {
         const location = response.headers.get('location');
         if (!location) {
@@ -199,8 +244,25 @@ async function detectUrlMetadataInternal(inputUrl: string): Promise<ExtractedPor
           (err as any).statusCode = 502;
           throw err;
         }
-        currentUrl = resolveUrl(location, currentUrl) || location;
+        const nextUrl = resolveUrl(location, currentUrl);
+        if (!nextUrl) {
+          const err = new Error('URL destinasi lencongan tidak sah.');
+          (err as any).statusCode = 400;
+          throw err;
+        }
+        const redirectSafety = await validateSafeUrl(nextUrl);
+        if (!redirectSafety.safe || !redirectSafety.url) {
+          const err = new Error(redirectSafety.error || 'Destinasi lencongan disekat oleh perlindungan SSRF.');
+          (err as any).statusCode = 400;
+          throw err;
+        }
+        currentUrl = redirectSafety.url.href;
         redirects++;
+        if (redirects > maxRedirects) {
+          const err = new Error('Terlalu banyak lencongan (redirect) URL melebihi had keselamatan.');
+          (err as any).statusCode = 502;
+          throw err;
+        }
         continue;
       }
 

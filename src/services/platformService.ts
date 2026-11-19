@@ -61,6 +61,78 @@ const ALLOWED_IMAGE_MIME_TYPES = [
   'image/gif',
 ];
 
+const DETECTED_META_MAX_LENGTHS = {
+  title: 300,
+  description: 1000,
+  ogTitle: 300,
+  ogDescription: 1000,
+  ogImage: 2000,
+  ogUrl: 2000,
+  ogSiteName: 200,
+  favicon: 2000,
+  pwaIcon: 2000,
+  manifestName: 200,
+} as const;
+
+type AllowedDetectedMetaKey = keyof typeof DETECTED_META_MAX_LENGTHS;
+
+function truncateToMaxLength(value: string, maxLen: number): string {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+
+  // Ensure both JS UTF-16 code unit length and UTF-8 byte length stay within maxLen
+  // so Firestore security rules (.size()) never reject multi-byte strings.
+  const encoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
+  if (!encoder) {
+    return Array.from(trimmed).slice(0, maxLen).join('');
+  }
+
+  if (trimmed.length <= maxLen && encoder.encode(trimmed).length <= maxLen) {
+    return trimmed;
+  }
+
+  let result = '';
+  let byteCount = 0;
+  let charCount = 0;
+  for (const ch of trimmed) {
+    const chBytes = encoder.encode(ch).length;
+    if (charCount + ch.length > maxLen || byteCount + chBytes > maxLen) {
+      break;
+    }
+    result += ch;
+    charCount += ch.length;
+    byteCount += chBytes;
+  }
+  return result.trimEnd();
+}
+
+/**
+ * Sanitizes platform detectedMeta strictly against the allowlisted keys and
+ * maximum field lengths declared in firestore.rules and firebase-blueprint.json.
+ */
+export function sanitizeDetectedMeta(
+  meta: unknown
+): PlatformLink['detectedMeta'] | undefined {
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) {
+    return undefined;
+  }
+
+  const raw = meta as Record<string, unknown>;
+  const sanitized: NonNullable<PlatformLink['detectedMeta']> = {};
+
+  (Object.keys(DETECTED_META_MAX_LENGTHS) as AllowedDetectedMetaKey[]).forEach((key) => {
+    const val = raw[key];
+    if (typeof val === 'string') {
+      const clean = truncateToMaxLength(val, DETECTED_META_MAX_LENGTHS[key]);
+      if (clean.length > 0) {
+        sanitized[key] = clean;
+      }
+    }
+  });
+
+  return Object.keys(sanitized).length > 0 ? sanitized : undefined;
+}
+
 async function ensureFreshAuthToken(): Promise<void> {
   if (auth.currentUser) {
     try {
@@ -335,6 +407,8 @@ export async function savePlatformLink(platform: PlatformLink): Promise<boolean>
         ? platform.thumbnailGeneratedAt.trim().slice(0, 64)
         : undefined;
 
+    const sanitizedDetectedMeta = sanitizeDetectedMeta(platform.detectedMeta);
+
     const payload: Record<string, any> = {
       id: docId,
       name: cleanName,
@@ -349,7 +423,7 @@ export async function savePlatformLink(platform: PlatformLink): Promise<boolean>
       createdAt: existingData?.createdAt || platform.createdAt || nowIso,
       updatedAt: nowIso,
       updatedBy: auth.currentUser?.email || 'admin',
-      ...(platform.detectedMeta ? { detectedMeta: platform.detectedMeta } : {}),
+      ...(sanitizedDetectedMeta ? { detectedMeta: sanitizedDetectedMeta } : {}),
     };
 
     const safeData = sanitizeFirestorePayload(payload);
@@ -535,6 +609,36 @@ export type HomepageSnapshotUploadResult =
   | HomepageSnapshotUploadFailure;
 
 /**
+ * Resolves the snapshot backend endpoint URL cleanly.
+ * Uses VITE_SNAPSHOT_API_BASE_URL in split deployments (e.g. Vercel -> Cloud Run),
+ * and preserves same-origin '/api/platform/snapshot' when unset.
+ */
+export function resolveSnapshotEndpointUrl(overrideBaseUrl?: string): string {
+  const rawBase =
+    overrideBaseUrl !== undefined
+      ? overrideBaseUrl
+      : ((import.meta as any).env?.VITE_SNAPSHOT_API_BASE_URL ?? '');
+
+  const trimmed = String(rawBase).trim();
+  if (!trimmed) {
+    return '/api/platform/snapshot';
+  }
+
+  const normalized = trimmed.replace(/\/+$/, '');
+  if (!/^https?:\/\/[^/\s]+/i.test(normalized)) {
+    throw new Error(
+      'Konfigurasi VITE_SNAPSHOT_API_BASE_URL tidak sah. Mestilah bermula dengan https:// atau http://.'
+    );
+  }
+
+  if (normalized.endsWith('/api/platform/snapshot')) {
+    return normalized;
+  }
+
+  return `${normalized}/api/platform/snapshot`;
+}
+
+/**
  * Requests a server-side first-viewport homepage screenshot (1440x810 -> 640x360 WebP)
  * using the Master Admin Firebase ID token, then uploads the optimized WebP directly
  * to Firebase Storage under platforms/directkpmbp/thumbnails/ while avoiding duplicates.
@@ -551,6 +655,17 @@ export async function requestPlatformHomepageSnapshot(
     };
   }
 
+  let snapshotEndpoint: string;
+  try {
+    snapshotEndpoint = resolveSnapshotEndpointUrl();
+  } catch (cfgErr: any) {
+    return {
+      ok: false,
+      code: 'INVALID_ENDPOINT_CONFIG',
+      error: cfgErr?.message || 'Konfigurasi endpoint snapshot tidak sah.',
+    };
+  }
+
   let idToken: string;
   try {
     idToken = await auth.currentUser.getIdToken(true);
@@ -563,11 +678,11 @@ export async function requestPlatformHomepageSnapshot(
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 20000);
+  const timeout = setTimeout(() => controller.abort(), 25000);
 
   let json: any;
   try {
-    const res = await fetch('/api/platform/snapshot', {
+    const res = await fetch(snapshotEndpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

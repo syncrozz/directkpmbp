@@ -1,24 +1,20 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
-import { createServer as createViteServer } from 'vite';
 import { detectUrlMetadata } from './src/services/serverMetadata.ts';
 import { verifyMasterAdminRequest } from './src/services/serverFirebaseAuth.ts';
 import { captureHomepageSnapshot } from './src/services/serverSnapshot.ts';
+import { createCorsMiddleware } from './src/services/serverCors.ts';
 
 async function startServer() {
   const app = express();
   const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
+  // Strict origin-allowlist CORS middleware (handles OPTIONS 204 preflight, no wildcard '*')
+  app.use(createCorsMiddleware());
+
   // JSON body parser
   app.use(express.json());
-
-  // CORS headers middleware
-  app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-    next();
-  });
 
   // Health check endpoint
   app.get('/api/health', (req, res) => {
@@ -118,7 +114,11 @@ async function startServer() {
       return res.status(200).json({ success: true, data: metadata });
     } catch (err: any) {
       console.warn('[MetadataDetect] Notice:', err?.message || err);
-      const isValidationOrSsrf = err?.message?.includes('SSRF') || err?.message?.includes('tidak sah');
+      const isValidationOrSsrf =
+        err?.message?.includes('SSRF') ||
+        err?.message?.includes('tidak sah') ||
+        err?.message?.includes('disekat') ||
+        err?.message?.includes('persendirian');
       const isTimeout = err?.message?.includes('tamat');
       const statusCode = isValidationOrSsrf ? 400 : isTimeout ? 504 : 502;
       return res.status(statusCode).json({
@@ -288,7 +288,6 @@ async function startServer() {
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Length', pdfBuffer.length);
       res.setHeader('Cache-Control', 'public, max-age=86400');
-      res.setHeader('Access-Control-Allow-Origin', '*');
       return res.send(pdfBuffer);
     } catch (err: any) {
       clearTimeout(timeout);
@@ -370,7 +369,6 @@ async function startServer() {
       res.setHeader('Content-Type', contentType);
       res.setHeader('Content-Length', imageBuffer.length);
       res.setHeader('Cache-Control', 'public, max-age=86400');
-      res.setHeader('Access-Control-Allow-Origin', '*');
       return res.send(imageBuffer);
     } catch (err: any) {
       clearTimeout(timeout);
@@ -414,8 +412,9 @@ async function startServer() {
     }
   );
 
-  // Vite middleware for development
+  // Vite middleware for development (dynamically imported so production Cloud Run omits devDependencies)
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
@@ -423,11 +422,35 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
+    const indexHtmlPath = path.join(distPath, 'index.html');
+    if (fs.existsSync(indexHtmlPath)) {
+      app.use(express.static(distPath));
+      app.get('*', (req, res) => {
+        res.sendFile(indexHtmlPath);
+      });
+    } else {
+      app.use((req, res) => {
+        res.status(404).json({
+          success: false,
+          code: 'NOT_FOUND',
+          error: 'Laluan API tidak ditemui.',
+        });
+      });
+    }
   }
+
+  // Final JSON error handler (preserves CORS headers already applied by createCorsMiddleware)
+  app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    const isBodySyntaxError = err?.type === 'entity.parse.failed' || err instanceof SyntaxError;
+    const status = isBodySyntaxError ? 400 : Number(err?.status || err?.statusCode || 500);
+    res.status(status).json({
+      success: false,
+      code: isBodySyntaxError ? 'INVALID_JSON' : 'INTERNAL_ERROR',
+      error: isBodySyntaxError
+        ? 'Muatan JSON permintaan tidak sah.'
+        : 'Ralat dalaman pelayan.',
+    });
+  });
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://0.0.0.0:${PORT}`);
