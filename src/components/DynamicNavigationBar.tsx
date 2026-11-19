@@ -214,6 +214,7 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
       case 'directory':
         return 'bg-gradient-to-r from-indigo-600 via-indigo-600 to-indigo-700 text-white shadow-md shadow-indigo-300/60 ring-2 ring-indigo-400/30 border-indigo-600';
       case 'rujukan':
+      case 'platform':
         return 'bg-gradient-to-r from-emerald-600 via-emerald-600 to-teal-700 text-white shadow-md shadow-emerald-300/60 ring-2 ring-emerald-400/30 border-emerald-600';
       case 'jadual':
       case 'jadual-pensyarah':
@@ -232,6 +233,7 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
       case 'directory':
         return 'bg-gradient-to-r from-indigo-50/80 via-white/70 to-indigo-50/40 border-indigo-100/90';
       case 'rujukan':
+      case 'platform':
         return 'bg-gradient-to-r from-emerald-50/80 via-white/70 to-emerald-50/40 border-emerald-100/90';
       case 'jadual':
       case 'jadual-pensyarah':

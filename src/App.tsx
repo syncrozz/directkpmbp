@@ -34,6 +34,7 @@ import { CommitteeModal } from './components/CommitteeModal';
 import { SyncSettings } from './components/SyncSettings';
 import { AddEditStaffModal } from './components/AddEditStaffModal';
 import { CampusReferenceHub } from './components/CampusReferenceHub';
+import { PlatformHub } from './components/PlatformHub';
 import { AdminPinModal } from './components/AdminPinModal';
 import { SelfRegistrationPage } from './components/SelfRegistrationPage';
 import { StudentTimetableHub } from './components/StudentTimetableHub';
@@ -53,6 +54,7 @@ import {
 } from './services/navigationService';
 import { verifyGoogleAdmin, clearLegacyAdminState } from './utils/adminAuthService';
 import { 
+  auth,
   fetchStaffListFromFirestore, 
   fetchCommitteesFromFirestore, 
   saveStaffListToFirestore, 
@@ -67,11 +69,32 @@ import {
 } from './services/pdfThumbnailService';
 
 export default function App() {
-  // Navigation State ('directory' | 'rujukan' | 'jadual' | 'jadual-pensyarah' | 'daftar' | custom item ID)
+  // Navigation State ('directory' | 'platform' | 'rujukan' | 'jadual' | 'jadual-pensyarah' | 'daftar' | custom item ID)
+  const resolveLeafItem = (item: NavigationItem, allItems: NavigationItem[]): NavigationItem => {
+    let target = item;
+    if (target.type === 'parent') {
+      const children = allItems
+        .filter((i) => i.type === 'child' && i.parentId === target.id && i.isActive)
+        .sort((a, b) => a.order - b.order);
+      if (children.length > 0) {
+        target = children[0];
+      }
+    }
+    if (target.type === 'child' && target.displayType !== 'empty_page' && !target.driveUrl) {
+      const gcs = allItems
+        .filter((i) => i.type === 'grandchild' && i.parentId === target.id && i.isActive)
+        .sort((a, b) => a.order - b.order);
+      if (gcs.length > 0) {
+        target = gcs[0];
+      }
+    }
+    return target;
+  };
+
   const [activeHub, setActiveHub] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       const res = resolveNavigationFromUrl(DEFAULT_NAVIGATION_ITEMS);
-      if (res.matchedItem) return res.matchedItem.id;
+      if (res.matchedItem) return resolveLeafItem(res.matchedItem, DEFAULT_NAVIGATION_ITEMS).id;
       if (res.activeNavId) return res.activeNavId;
       if (res.resolvedDestination) return res.resolvedDestination;
     }
@@ -95,15 +118,7 @@ export default function App() {
     // 1. Direct match by ID
     const byId = navigationItems.find((item) => item.id === activeHub);
     if (byId) {
-      if (byId.type === 'child' && byId.displayType !== 'empty_page' && !byId.driveUrl) {
-        const childGrandchildren = navigationItems.filter(
-          (item) => item.type === 'grandchild' && item.parentId === byId.id && item.isActive
-        );
-        if (childGrandchildren.length > 0 && byId.destination === byId.id) {
-          return childGrandchildren[0];
-        }
-      }
-      return byId;
+      return resolveLeafItem(byId, navigationItems);
     }
 
     // 2. Match by exact hierarchical slug (e.g. "borang/bayaran_penceramah")
@@ -185,16 +200,7 @@ export default function App() {
     );
 
     if (matchedItem) {
-      let targetItem = matchedItem;
-      // If child in container mode (and NOT empty_page and not driveUrl), navigate to first grandchild
-      if (matchedItem.type === 'child' && matchedItem.displayType !== 'empty_page' && !matchedItem.driveUrl) {
-        const gcs = navigationItems.filter(
-          (i) => i.type === 'grandchild' && i.parentId === matchedItem.id && i.isActive
-        );
-        if (gcs.length > 0) {
-          targetItem = gcs[0];
-        }
-      }
+      const targetItem = resolveLeafItem(matchedItem, navigationItems);
 
       // Set unique item ID as internal active navigation identity (Section 2, 3)
       setActiveHub(targetItem.id);
@@ -385,15 +391,7 @@ export default function App() {
     const handleUrlChange = () => {
       const res = resolveNavigationFromUrl(navigationItems);
       if (res.matchedItem) {
-        let itemToActivate = res.matchedItem;
-        if (itemToActivate.type === 'child' && itemToActivate.displayType !== 'empty_page' && !itemToActivate.driveUrl) {
-          const gcs = navigationItems.filter(
-            (i) => i.type === 'grandchild' && i.parentId === itemToActivate.id && i.isActive
-          );
-          if (gcs.length > 0) {
-            itemToActivate = gcs[0];
-          }
-        }
+        const itemToActivate = resolveLeafItem(res.matchedItem, navigationItems);
         setActiveHub(itemToActivate.id);
 
         // Canonical Hierarchical URL Synchronization & Legacy Slug Redirect
@@ -718,7 +716,7 @@ export default function App() {
       
       {/* Dynamic Ambient Background Blobs */}
       <div className={`mesh-blob blob-1 transition-all duration-700 ${
-        resolvedDestination === 'rujukan'
+        resolvedDestination === 'rujukan' || resolvedDestination === 'platform'
           ? '!bg-[radial-gradient(circle,rgba(16,185,129,0.18)_0%,rgba(20,184,166,0.06)_100%)]'
           : resolvedDestination === 'jadual'
           ? '!bg-[radial-gradient(circle,rgba(245,158,11,0.18)_0%,rgba(249,115,22,0.06)_100%)]'
@@ -1225,6 +1223,10 @@ export default function App() {
               setSelectedStaff(staff);
             }}
           />
+        ) : resolvedDestination === 'platform' ? (
+          <div className="glass-panel rounded-3xl p-6 md:p-8 border border-white/55 shadow-sm">
+            <PlatformHub isAdminMode={isAdminMode} />
+          </div>
         ) : resolvedDestination === 'rujukan' ? (
           <div className="glass-panel rounded-3xl p-6 md:p-8 border border-white/55 shadow-sm">
             <CampusReferenceHub 
@@ -1377,8 +1379,13 @@ export default function App() {
         isOpen={isAdminPinOpen}
         onClose={() => setIsAdminPinOpen(false)}
         onSuccess={(admin) => {
-          setIsAdminMode(true);
-          setCurrentAdmin(admin || null);
+          if (auth.currentUser && admin) {
+            setIsAdminMode(true);
+            setCurrentAdmin(admin);
+          } else {
+            setIsAdminMode(false);
+            setCurrentAdmin(null);
+          }
           setIsAdminPinOpen(false);
         }}
       />

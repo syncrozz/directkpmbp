@@ -134,6 +134,45 @@ export interface PortalSubscriptionResult {
   source: 'firestore' | 'fallback';
 }
 
+export interface PlatformLink {
+  id: string;
+  name: string;
+  url: string;
+  description: string;
+  logoUrl?: string;
+  thumbnailUrl?: string;
+  detectedMeta?: {
+    title?: string;
+    description?: string;
+    ogTitle?: string;
+    ogDescription?: string;
+    ogImage?: string;
+    ogUrl?: string;
+    ogSiteName?: string;
+    favicon?: string;
+    pwaIcon?: string;
+    manifestName?: string;
+  };
+  sortOrder: number;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+export type PlatformSyncStatus =
+  | 'loading'
+  | 'ready_empty'
+  | 'ready_migrated'
+  | 'permission_denied'
+  | 'error_network';
+
+export interface PlatformSubscriptionResult {
+  platforms: PlatformLink[];
+  status: PlatformSyncStatus;
+  errorMessage?: string;
+}
+
 export type NavigationType = 'parent' | 'child' | 'grandchild';
 export type NavigationDisplayType = 'module' | 'drive' | 'empty_page';
 

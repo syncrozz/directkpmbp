@@ -49,6 +49,13 @@ export const UPPK_GRADING_MIGRATED_KEY = 'kpmbp_uppk_grading_migrated_v1';
  * 2. Rujukan Kolej (destination: 'rujukan')
  * 3. Jadual (destination: 'jadual')
  * 
+ * CHILD NAVIGATION — RUJUKAN KOLEJ
+ * 1. Platform (destination: 'platform')
+ * 2. Portal Kolej (destination: 'rujukan')
+ * 3. Borang (destination: 'nav_rujukan_borang')
+ * 4. Procedure (destination: 'nav_rujukan_procedure')
+ * 5. UPPK2 (destination: 'nav_rujukan_uppk2')
+ *
  * CHILD NAVIGATION — JADUAL
  * 1. Jadual Pelajar (destination: 'jadual')
  * 2. Jadual Pensyarah (destination: 'jadual-pensyarah')
@@ -74,6 +81,76 @@ export const DEFAULT_NAVIGATION_ITEMS: NavigationItem[] = [
     destination: 'rujukan',
     slug: 'rujukan',
     order: 1,
+    isActive: true,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  },
+  {
+    id: 'nav_rujukan_platform',
+    name: 'Platform',
+    icon: 'Layers',
+    type: 'child',
+    parentId: 'nav_rujukan',
+    destination: 'platform',
+    slug: 'platform',
+    displayType: 'module',
+    order: 0,
+    isActive: true,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  },
+  {
+    id: 'nav_rujukan_portal',
+    name: 'Portal Kolej',
+    icon: 'Link',
+    type: 'child',
+    parentId: 'nav_rujukan',
+    destination: 'rujukan',
+    slug: 'portal_kolej',
+    displayType: 'module',
+    order: 1,
+    isActive: true,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  },
+  {
+    id: 'nav_rujukan_borang',
+    name: 'Borang',
+    icon: 'FileText',
+    type: 'child',
+    parentId: 'nav_rujukan',
+    destination: 'nav_rujukan_borang',
+    slug: 'borang',
+    displayType: 'empty_page',
+    order: 2,
+    isActive: true,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  },
+  {
+    id: 'nav_rujukan_procedure',
+    name: 'Procedure',
+    icon: 'BookOpen',
+    type: 'child',
+    parentId: 'nav_rujukan',
+    destination: 'nav_rujukan_procedure',
+    slug: 'procedure',
+    displayType: 'empty_page',
+    order: 3,
+    isActive: true,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  },
+  {
+    id: 'nav_rujukan_uppk2',
+    name: 'UPPK2',
+    icon: 'Award',
+    type: 'child',
+    parentId: 'nav_rujukan',
+    destination: 'nav_rujukan_uppk2',
+    slug: 'uppk2',
+    displayType: 'empty_page',
+    order: 4,
     isActive: true,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
@@ -123,7 +200,8 @@ export const DEFAULT_NAVIGATION_ITEMS: NavigationItem[] = [
  */
 export const KNOWN_MODULE_DESTINATIONS = [
   { id: 'directory', name: 'Directory Staff (Direktori Kakitangan)' },
-  { id: 'rujukan', name: 'Rujukan Kolej (Portal, Takwim, Panduan)' },
+  { id: 'platform', name: 'Platform (Hab Platform Luar & Aplikasi)' },
+  { id: 'rujukan', name: 'Portal Kolej / Rujukan Kolej (Portal, Takwim, Panduan)' },
   { id: 'jadual', name: 'Jadual Pelajar (Jadual Waktu Kelas)' },
   { id: 'jadual-pensyarah', name: 'Jadual Pensyarah (Jadual Waktu Pensyarah)' },
   { id: 'daftar', name: 'Pendaftaran Staf Baharu' },
@@ -218,7 +296,7 @@ export function validateNavigationDestination(dest: string, displayType?: string
 
   return {
     valid: false,
-    error: `Destinasi "${trimmed}" tidak sah. Pilih modul sedia ada (directory, rujukan, jadual, jadual-pensyarah, daftar) atau pautan sah (https://..., #...).`,
+    error: `Destinasi "${trimmed}" tidak sah. Pilih modul sedia ada (directory, platform, rujukan, jadual, jadual-pensyarah, daftar) atau pautan sah (https://..., #...).`,
   };
 }
 
@@ -629,9 +707,15 @@ export function resolveNavigationFromUrl(
     return createResult(jadualItem, 'nav_jadual_pelajar', 'jadual');
   }
 
-  if (cleanToken === 'rujukan') {
-    const rujukanItem = items.find((i) => i.destination === 'rujukan');
-    return createResult(rujukanItem, 'nav_rujukan', 'rujukan');
+  if (cleanToken === 'platform') {
+    const platformItem = items.find((i) => i.destination === 'platform');
+    return createResult(platformItem, 'nav_rujukan_platform', 'platform');
+  }
+
+  if (cleanToken === 'rujukan' || cleanToken === 'portal_kolej' || cleanToken === 'portal-kolej') {
+    const rujukanChild = items.find((i) => i.destination === 'rujukan' && i.type === 'child');
+    const rujukanItem = rujukanChild || items.find((i) => i.destination === 'rujukan');
+    return createResult(rujukanItem, rujukanItem?.id || 'nav_rujukan', 'rujukan');
   }
 
   if (cleanToken === 'daftar') {
@@ -778,6 +862,71 @@ export function migrateUppkGradingIfNeeded(items: NavigationItem[]): { items: Na
 }
 
 /**
+ * Non-destructive in-memory helper ensuring Rujukan Kolej includes the dedicated
+ * independent Platform tab (and default Rujukan tabs on legacy 5-item caches)
+ * without automatically writing or overwriting Firestore documents.
+ */
+export function ensureRujukanPlatformNavigation(items: NavigationItem[]): NavigationItem[] {
+  const rujukanParent = items.find(
+    (i) => i.type === 'parent' && (i.id === 'nav_rujukan' || i.destination === 'rujukan' || i.slug === 'rujukan')
+  );
+  if (!rujukanParent) {
+    return items;
+  }
+
+  const existingChildren = items.filter(
+    (i) => i.type === 'child' && i.parentId === rujukanParent.id
+  );
+
+  // If Rujukan Kolej had 0 children (e.g. legacy 5-item default cache), populate the 5 default tabs in memory
+  if (existingChildren.length === 0) {
+    const defaultRujukanChildren = DEFAULT_NAVIGATION_ITEMS.filter(
+      (d) => d.type === 'child' && d.parentId === 'nav_rujukan'
+    ).map((d) => ({
+      ...d,
+      parentId: rujukanParent.id,
+    }));
+
+    const existingIds = new Set(items.map((i) => i.id));
+    const missing = defaultRujukanChildren.filter((d) => !existingIds.has(d.id));
+    return [...items, ...missing];
+  }
+
+  // Otherwise check whether any Platform entry already exists (including explicitly hidden ones)
+  const hasPlatformItem = items.some(
+    (i) =>
+      i.id === 'nav_rujukan_platform' ||
+      i.destination === 'platform' ||
+      (i.slug && i.slug.toLowerCase() === 'platform')
+  );
+
+  if (hasPlatformItem) {
+    return items;
+  }
+
+  const defaultPlatform = DEFAULT_NAVIGATION_ITEMS.find((d) => d.id === 'nav_rujukan_platform');
+  if (!defaultPlatform) {
+    return items;
+  }
+
+  // Prepend Platform as the first child of Rujukan Kolej in memory
+  const shiftedItems = items.map((i) =>
+    i.type === 'child' && i.parentId === rujukanParent.id
+      ? { ...i, order: i.order + 1 }
+      : i
+  );
+
+  return [
+    ...shiftedItems,
+    {
+      ...defaultPlatform,
+      parentId: rujukanParent.id,
+      order: 0,
+    },
+  ];
+}
+
+/**
  * Reference to Firestore navigation configuration document
  * Path: /platforms/directkpmbp/config/navigation
  * Covered by rule: match /platforms/directkpmbp/{document=**} { allow read: if true; allow write: if isAuthorizedAdmin(); }
@@ -789,7 +938,7 @@ export const navigationDocRef = () => doc(db, 'platforms', 'directkpmbp', 'confi
  */
 export function subscribeToNavigation(callback: (items: NavigationItem[]) => void): () => void {
   // 1. Immediately emit cached data if available for zero-flicker UI
-  let initialItems = DEFAULT_NAVIGATION_ITEMS;
+  let initialItems = normalizeNavigationList(ensureRujukanPlatformNavigation(DEFAULT_NAVIGATION_ITEMS));
   if (typeof window !== 'undefined') {
     try {
       const cached = localStorage.getItem(LOCAL_STORAGE_NAV_KEY);
@@ -798,10 +947,10 @@ export function subscribeToNavigation(callback: (items: NavigationItem[]) => voi
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) {
           if (alreadyMigratedLocal) {
-            initialItems = normalizeNavigationList(parsed);
+            initialItems = normalizeNavigationList(ensureRujukanPlatformNavigation(parsed));
           } else {
             const migration = migrateUppkGradingIfNeeded(parsed);
-            initialItems = normalizeNavigationList(migration.items);
+            initialItems = normalizeNavigationList(ensureRujukanPlatformNavigation(migration.items));
           }
         }
       }
@@ -817,7 +966,7 @@ export function subscribeToNavigation(callback: (items: NavigationItem[]) => voi
     (snapshot) => {
       if (!snapshot.exists()) {
         const migration = migrateUppkGradingIfNeeded(DEFAULT_NAVIGATION_ITEMS);
-        const defaults = normalizeNavigationList(migration.items);
+        const defaults = normalizeNavigationList(ensureRujukanPlatformNavigation(migration.items));
         if (typeof window !== 'undefined') {
           localStorage.setItem(LOCAL_STORAGE_NAV_KEY, JSON.stringify(defaults));
         }
@@ -839,10 +988,10 @@ export function subscribeToNavigation(callback: (items: NavigationItem[]) => voi
       let normalizedItems: NavigationItem[];
 
       if (alreadyMigratedRemote) {
-        normalizedItems = normalizeNavigationList(baseItems);
+        normalizedItems = normalizeNavigationList(ensureRujukanPlatformNavigation(baseItems));
       } else {
         const migration = migrateUppkGradingIfNeeded(baseItems);
-        normalizedItems = normalizeNavigationList(migration.items);
+        normalizedItems = normalizeNavigationList(ensureRujukanPlatformNavigation(migration.items));
 
         if (migration.migrated) {
           // Persist migrated UPPK container structure to Firestore in background once

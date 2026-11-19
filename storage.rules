@@ -19,6 +19,7 @@ service firebase.storage {
     // DIRECTKPMBP Authorized Master Administrators
     function isDirectKpmbpAdmin() {
       return isEmailVerified() && (
+        request.auth.token.email == 'cgkhairi2u@gmail.com' ||
         request.auth.token.email == 'chegukay@gmail.com' ||
         request.auth.token.email == 'cikgukyee@gmail.com' ||
         request.auth.token.email == 'kpmbp2u@gmail.com' ||
@@ -28,23 +29,41 @@ service firebase.storage {
       );
     }
 
-    // Helper: Enforce max 5MB file size and image content type for platform assets
+    // Enforce max 5MB file size and explicit safe image MIME types for create/update
     function isValidImage() {
-      return request.resource.size < 5 * 1024 * 1024
-        && request.resource.contentType.matches('image/.*');
+      return request.resource != null
+        && request.resource.size > 0
+        && request.resource.size <= 5 * 1024 * 1024
+        && request.resource.contentType in [
+          'image/png',
+          'image/jpeg',
+          'image/webp',
+          'image/svg+xml',
+          'image/x-icon',
+          'image/vnd.microsoft.icon',
+          'image/gif'
+        ];
     }
 
-    // --- DIRECTKPMBP Isolated Platform Namespace ---
-    // Thumbnails: Public read, upload permitted for valid document thumbnail images (<5MB, image/*)
-    match /platforms/directkpmbp/thumbnails/{allPaths=**} {
+    // --- Platform Module Assets (Logo & Thumbnail uploads) ---
+    match /platforms/directkpmbp/platform_assets/{assetFile} {
       allow read: if true;
-      allow write: if isValidImage();
+      allow create, update: if isDirectKpmbpAdmin() && isValidImage();
+      allow delete: if isDirectKpmbpAdmin();
     }
 
-    // General platform assets (avatars, staff photos, branding): Restricted to Master Admins
-    match /platforms/directkpmbp/{allPaths=**} {
+    // --- PDF Document Thumbnails ---
+    match /platforms/directkpmbp/thumbnails/{thumbFile} {
       allow read: if true;
-      allow write: if isDirectKpmbpAdmin() && isValidImage();
+      allow create, update: if isDirectKpmbpAdmin() && isValidImage();
+      allow delete: if isDirectKpmbpAdmin();
+    }
+
+    // --- Portal Assets (if uploaded by Admin) ---
+    match /platforms/directkpmbp/portal_assets/{assetFile} {
+      allow read: if true;
+      allow create, update: if isDirectKpmbpAdmin() && isValidImage();
+      allow delete: if isDirectKpmbpAdmin();
     }
   }
 }

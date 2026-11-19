@@ -20,10 +20,21 @@ import {
   serverTimestamp,
   onSnapshot
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, auth, storage, getPlatformStoragePath } from '../config/firebase';
+import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { db, auth, storage, effectiveFirebaseConfig, getPlatformStoragePath } from '../config/firebase';
 import { PortalLink, PortalMetadata, PortalSyncStatus, PortalSubscriptionResult } from '../types';
 import { AUTHORIZED_ADMIN_EMAILS } from '../utils/adminAuthService';
+
+const PORTAL_ASSETS_PREFIX = 'platforms/directkpmbp/portal_assets/';
+const ALLOWED_PORTAL_IMAGE_MIME_TYPES = [
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/svg+xml',
+  'image/x-icon',
+  'image/vnd.microsoft.icon',
+  'image/gif',
+];
 
 export enum OperationType {
   CREATE = 'create',
@@ -141,6 +152,92 @@ export const DEFAULT_PORTAL_LINKS: PortalLink[] = [
 ];
 
 const PORTALS_PATH = 'platforms/directkpmbp/portalLinks';
+
+/**
+ * Extracts a Firebase Storage object path from a download URL ONLY when it
+ * belongs to this project's bucket and is scoped under portal_assets/.
+ * Safely ignores legacy DataURLs, external URLs, and legacy non-writable paths.
+ */
+export function extractPortalStoragePath(url?: string): string | null {
+  const trimmed = (url || '').trim();
+  if (!trimmed || trimmed.startsWith('data:')) return null;
+
+  try {
+    const parsed = new URL(trimmed);
+    const bucket = effectiveFirebaseConfig.storageBucket;
+    if (
+      parsed.hostname === 'firebasestorage.googleapis.com' &&
+      parsed.pathname.includes(`/v0/b/${bucket}/o/`)
+    ) {
+      const encodedPath = parsed.pathname.split(`/v0/b/${bucket}/o/`)[1];
+      if (!encodedPath) return null;
+      const decodedPath = decodeURIComponent(encodedPath);
+      if (decodedPath.startsWith(PORTAL_ASSETS_PREFIX)) {
+        return decodedPath;
+      }
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+/**
+ * Safely deletes Firebase Storage portal_assets ONLY if they are not
+ * referenced by any remaining document in /platforms/directkpmbp/portalLinks.
+ */
+async function deleteUnusedPortalAssets(
+  excludedPortalId: string,
+  candidateUrls: Array<string | undefined>
+): Promise<void> {
+  const uniquePaths = new Map<string, string>();
+  for (const url of candidateUrls) {
+    if (!url) continue;
+    const path = extractPortalStoragePath(url);
+    if (path) {
+      uniquePaths.set(url.trim(), path);
+    }
+  }
+
+  if (uniquePaths.size === 0) return;
+
+  const remainingReferencedUrls = new Set<string>();
+  const remainingReferencedPaths = new Set<string>();
+  try {
+    const colRef = collection(db, 'platforms', 'directkpmbp', 'portalLinks');
+    const snap = await getDocs(colRef);
+    snap.forEach((docSnap) => {
+      if (docSnap.id === excludedPortalId) return;
+      const data = docSnap.data() as Partial<PortalLink>;
+      [data.imageUrl, data.iconUrl, data.faviconUrl].forEach((refUrl) => {
+        if (!refUrl) return;
+        const cleanRefUrl = refUrl.trim();
+        remainingReferencedUrls.add(cleanRefUrl);
+        const refPath = extractPortalStoragePath(cleanRefUrl);
+        if (refPath) remainingReferencedPaths.add(refPath);
+      });
+    });
+  } catch (scanErr) {
+    // Fail-safe: do NOT delete assets if reference verification failed
+    console.warn('[PortalService] Aborting asset cleanup because reference check failed:', scanErr);
+    return;
+  }
+
+  for (const [assetUrl, storagePath] of uniquePaths.entries()) {
+    if (remainingReferencedUrls.has(assetUrl) || remainingReferencedPaths.has(storagePath)) {
+      continue;
+    }
+
+    try {
+      await deleteObject(ref(storage, storagePath));
+    } catch (delErr: any) {
+      if (delErr?.code !== 'storage/object-not-found') {
+        console.warn(`[PortalService] Storage asset deletion notice for "${storagePath}":`, delErr);
+      }
+    }
+  }
+}
 
 /**
  * Fetch all portal records from Firestore with explicit 4-state categorization.
@@ -334,6 +431,9 @@ export async function savePortalLink(portal: PortalLink): Promise<boolean> {
 
   try {
     const docRef = doc(db, 'platforms', 'directkpmbp', 'portalLinks', docId);
+    const existingSnap = await getDoc(docRef);
+    const existingData = existingSnap.exists() ? (existingSnap.data() as Partial<PortalLink>) : null;
+
     let cleanUrl = (portal.url || '').trim();
     if (cleanUrl.length > 8 && cleanUrl.length % 2 === 0) {
       const half = cleanUrl.length / 2;
@@ -346,22 +446,40 @@ export async function savePortalLink(portal: PortalLink): Promise<boolean> {
       cleanUrl = urlMatches[0];
     }
 
+    const cleanImageUrl = (portal.imageUrl || '').trim();
+    const cleanIconUrl = (portal.iconUrl || '').trim();
+    const nowIso = new Date().toISOString();
+
     const cleanPortal: Record<string, any> = {
       ...portal,
       id: docId,
       url: cleanUrl,
-      updatedAt: new Date().toISOString(),
+      imageUrl: cleanImageUrl,
+      iconUrl: cleanIconUrl,
+      createdAt: existingData?.createdAt || portal.createdAt || nowIso,
+      updatedAt: nowIso,
       updatedBy: auth.currentUser?.email || 'admin',
     };
-
-    if (!cleanPortal.createdAt) {
-      cleanPortal.createdAt = new Date().toISOString();
-    }
 
     // Sanitize payload deeply to eliminate any undefined fields before writing
     const safeData = sanitizeFirestorePayload(cleanPortal);
 
     await setDoc(docRef, safeData, { merge: true });
+
+    // Clean up replaced/cleared portal_assets in Firebase Storage if unreferenced elsewhere
+    if (existingData) {
+      const replacedAssets: string[] = [];
+      if (existingData.imageUrl && existingData.imageUrl.trim() !== cleanImageUrl) {
+        replacedAssets.push(existingData.imageUrl);
+      }
+      if (existingData.iconUrl && existingData.iconUrl.trim() !== cleanIconUrl) {
+        replacedAssets.push(existingData.iconUrl);
+      }
+      if (replacedAssets.length > 0) {
+        await deleteUnusedPortalAssets(docId, replacedAssets);
+      }
+    }
+
     return true;
   } catch (error) {
     handleFirestoreError(error, OperationType.WRITE, docPath);
@@ -418,7 +536,17 @@ export async function deletePortalLink(portalId: string): Promise<boolean> {
 
     // Normal deletion of existing document in Firestore
     const docRef = doc(db, 'platforms', 'directkpmbp', 'portalLinks', portalId);
+    const existingDocSnap = await getDoc(docRef);
+    const existingData = existingDocSnap.exists() ? (existingDocSnap.data() as Partial<PortalLink>) : null;
+
     await deleteDoc(docRef);
+
+    if (existingData) {
+      await deleteUnusedPortalAssets(portalId, [
+        existingData.imageUrl,
+        existingData.iconUrl,
+      ]);
+    }
 
     // Ensure config/portalMeta is permanently marked initialized
     try {
@@ -731,62 +859,100 @@ export async function requestUrlMetadata(url: string): Promise<MetadataDetection
 }
 
 /**
- * High-speed image and icon asset uploader.
- * 1. Pre-compresses image immediately on client in ~25ms down to ~25KB-40KB WebP.
- * 2. Attempts Firebase Storage upload of the lightweight compressed blob with a strict 2.0s timeout.
- * 3. Immediately returns the optimized Data URL if Storage hangs, is blocked by CORS, or times out.
- * Result: Upload is instantaneous (<100ms - 2s max) without any freezing.
+ * Optimized Portal Kolej asset uploader directly to Firebase Storage:
+ * 1. Verifies active Firebase Auth administrator session & refreshes token.
+ * 2. Validates MIME type and pre-compresses image on client (~25KB-40KB WebP).
+ * 3. Uploads directly to platforms/directkpmbp/portal_assets/ matching storage.rules.
+ * 4. Fails explicitly on unauthenticated sessions or Storage errors — never masks failures with DataURLs.
  */
 export async function uploadPortalAsset(file: File, type: 'image' | 'icon'): Promise<string> {
-  const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml', 'image/x-icon', 'image/vnd.microsoft.icon', 'image/gif'];
-  if (!allowed.includes(file.type) && !file.name.match(/\.(jpg|jpeg|png|webp|svg|ico|gif)$/i)) {
-    throw new Error('Format fail tidak sah. Sila pilih fail imej (PNG, JPG, WebP, SVG, atau ICO).');
+  if (!auth.currentUser) {
+    throw new Error('Pengesahan pentadbir Firebase Auth diperlukan sebelum memuat naik imej ke Firebase Storage.');
+  }
+
+  await ensureFreshAuthToken();
+
+  const isAllowedMime = ALLOWED_PORTAL_IMAGE_MIME_TYPES.includes(file.type);
+  const isAllowedExt = Boolean(file.name.match(/\.(jpg|jpeg|png|webp|svg|ico|gif)$/i));
+  if (!isAllowedMime && !isAllowedExt) {
+    throw new Error('Format fail tidak sah. Sila pilih fail imej (PNG, JPG, WebP, SVG, ICO, atau GIF).');
   }
 
   if (file.size > 15 * 1024 * 1024) {
     throw new Error('Saiz fail melebihi had 15MB. Sila pilih imej yang lebih kecil.');
   }
 
-  // 1. Ultra-fast client-side compression (<35ms)
   const maxWidth = type === 'icon' ? 128 : 800;
   const maxHeight = type === 'icon' ? 128 : 500;
-  const { dataUrl: optimizedDataUrl, blob: optimizedBlob } = await optimizeImageFile(
+  const { blob: optimizedBlob } = await optimizeImageFile(
     file,
     maxWidth,
     maxHeight,
     type === 'icon' ? 0.85 : 0.82
   );
 
-  // 2. Try Firebase Storage with lightweight blob and strict 2-second timeout
-  const cleanName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_').replace(/\.[^.]+$/, '');
-  const ext = file.type === 'image/svg+xml' ? 'svg' : 'webp';
-  const subPath = `portals/${type}_${Date.now()}_${cleanName}.${ext}`;
+  if (optimizedBlob.size <= 0 || optimizedBlob.size > 5 * 1024 * 1024) {
+    throw new Error('Saiz imej selepas pemampatan melebihi had 5MB yang dibenarkan oleh peraturan Firebase Storage.');
+  }
+
+  const resolvedMime =
+    optimizedBlob.type && ALLOWED_PORTAL_IMAGE_MIME_TYPES.includes(optimizedBlob.type)
+      ? optimizedBlob.type
+      : isAllowedMime
+        ? file.type
+        : 'image/webp';
+
+  const cleanName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_').replace(/\.[^.]+$/, '') || 'asset';
+  const ext =
+    resolvedMime === 'image/svg+xml'
+      ? 'svg'
+      : resolvedMime === 'image/png'
+        ? 'png'
+        : resolvedMime === 'image/jpeg'
+          ? 'jpg'
+          : resolvedMime === 'image/gif'
+            ? 'gif'
+            : resolvedMime === 'image/x-icon' || resolvedMime === 'image/vnd.microsoft.icon'
+              ? 'ico'
+              : 'webp';
+  const subPath = `portal_assets/${type}_${Date.now()}_${cleanName}.${ext}`;
   const fullPath = getPlatformStoragePath(subPath);
 
-  try {
-    const storageRef = ref(storage, fullPath);
-    const metadata = {
-      contentType: optimizedBlob.type || (file.type === 'image/svg+xml' ? 'image/svg+xml' : 'image/webp'),
-      customMetadata: {
-        uploadedBy: auth.currentUser?.email || 'admin',
-        uploadedAt: new Date().toISOString(),
-      },
-    };
+  const storageRef = ref(storage, fullPath);
+  const metadata = {
+    contentType: resolvedMime,
+    customMetadata: {
+      uploadedBy: auth.currentUser.email || 'admin',
+      uploadedAt: new Date().toISOString(),
+    },
+  };
 
+  try {
     const uploadPromise = async () => {
       const snap = await uploadBytes(storageRef, optimizedBlob, metadata);
       return await getDownloadURL(snap.ref);
     };
 
     const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error('Firebase Storage timeout')), 2000);
+      setTimeout(() => reject(new Error('storage/timeout: Masa tamat menghubungi Firebase Storage.')), 12000);
     });
 
-    const downloadUrl = await Promise.race([uploadPromise(), timeoutPromise]);
-    return downloadUrl;
-  } catch (_storageErr) {
-    // Instantaneous fallback: the optimized data URL is ~25KB-40KB, safely stored in Firestore
-    return optimizedDataUrl;
+    return await Promise.race([uploadPromise(), timeoutPromise]);
+  } catch (err: any) {
+    const code = err?.code || '';
+    const msg = String(err?.message || '');
+    if (code === 'storage/unauthorized') {
+      throw new Error('Muat naik ditolak oleh Storage Rules (storage/unauthorized). Pastikan akaun pentadbir disahkan.');
+    }
+    if (
+      code === 'storage/bucket-not-found' ||
+      code === 'storage/project-not-found' ||
+      msg.includes('404') ||
+      msg.includes('Not Found')
+    ) {
+      throw new Error(`Bucket Firebase Storage (${effectiveFirebaseConfig.storageBucket}) tidak ditemui (404).`);
+    }
+    throw new Error(msg || 'Gagal memuat naik aset Portal Kolej ke Firebase Storage.');
   }
 }
 

@@ -85,6 +85,26 @@
         "updatedBy": { "type": "string" }
       },
       "required": ["id", "title", "url", "audience"]
+    },
+    "platformLink": {
+      "title": "PlatformLink",
+      "description": "Rekod pautan platform luar khas di bawah tab Platform Rujukan Kolej",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-\\.]+$" },
+        "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "url": { "type": "string", "minLength": 8, "maxLength": 2000, "pattern": "^https?://.+" },
+        "description": { "type": "string", "maxLength": 1000 },
+        "logoUrl": { "type": "string", "maxLength": 2000 },
+        "thumbnailUrl": { "type": "string", "maxLength": 2000 },
+        "detectedMeta": { "type": "object" },
+        "sortOrder": { "type": "number" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 },
+        "updatedBy": { "type": "string", "maxLength": 200 }
+      },
+      "required": ["id", "name", "url", "sortOrder", "isActive"]
     }
   },
   "firestore": {
@@ -104,13 +124,17 @@
       "schema": "admin",
       "description": "Koleksi pentadbir diotorisasi yang dikawal selia oleh Master Admin"
     },
-    "/platforms/directkpmbp/{documentId}": {
+    "/platforms/directkpmbp/config/{configId}": {
       "schema": "systemData",
-      "description": "Ruang nama storan data terasing bagi DIRECTKPMBP di platform SYNCROZZ"
+      "description": "Konfigurasi terasing DIRECTKPMBP (navigation, takwim, portalMeta)"
     },
     "/platforms/directkpmbp/portalLinks/{portalId}": {
       "schema": "portalLink",
       "description": "Koleksi pautan portal dinamik KPMBP di platform SYNCROZZ"
+    },
+    "/platforms/directkpmbp/platformLinks/{platformId}": {
+      "schema": "platformLink",
+      "description": "Koleksi terasing pautan platform luar bagi tab Platform di bawah Rujukan Kolej"
     }
   }
 }

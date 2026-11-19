@@ -2,7 +2,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Default Deny All Catch-all: Closes unrestricted access
+    // Default Deny All Catch-all: Closes unrestricted access across all collections
     match /{document=**} {
       allow read, write: if false;
     }
@@ -17,7 +17,7 @@ service cloud.firestore {
       return isSignedIn() && request.auth.token.email_verified == true;
     }
 
-    // Official Master Administrator: Strictly verified via Google Auth (V2 specific mapping)
+    // Official Master Administrator: Strictly verified via Google Auth
     function isMasterAdmin() {
       return isEmailVerified() && (
         request.auth.token.email == 'cgkhairi2u@gmail.com' ||
@@ -35,50 +35,161 @@ service cloud.firestore {
     }
 
     function isValidId(id) {
-      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-\\.]+$');
+      return id is string
+        && id.size() > 0
+        && id.size() <= 128
+        && id.matches('^[a-zA-Z0-9_\\-\\.]+$');
+    }
+
+    function isValidHttpUrl(val) {
+      return val is string
+        && val.size() >= 8
+        && val.size() <= 2000
+        && val.matches('^https?://.+');
+    }
+
+    function isValidOptionalHttpUrl(val) {
+      return val is string
+        && val.size() <= 2000
+        && (val == '' || val.matches('^https?://.+'));
+    }
+
+    // --- PlatformLink Blueprint Validation ---
+    function isValidPlatformDetectedMeta(meta) {
+      return meta is map
+        && meta.keys().hasOnly([
+          'title',
+          'description',
+          'ogTitle',
+          'ogDescription',
+          'ogImage',
+          'ogUrl',
+          'ogSiteName',
+          'favicon',
+          'pwaIcon',
+          'manifestName'
+        ])
+        && (!('title' in meta) || (meta.title is string && meta.title.size() <= 300))
+        && (!('description' in meta) || (meta.description is string && meta.description.size() <= 1000))
+        && (!('ogTitle' in meta) || (meta.ogTitle is string && meta.ogTitle.size() <= 300))
+        && (!('ogDescription' in meta) || (meta.ogDescription is string && meta.ogDescription.size() <= 1000))
+        && (!('ogImage' in meta) || (meta.ogImage is string && meta.ogImage.size() <= 2000))
+        && (!('ogUrl' in meta) || (meta.ogUrl is string && meta.ogUrl.size() <= 2000))
+        && (!('ogSiteName' in meta) || (meta.ogSiteName is string && meta.ogSiteName.size() <= 200))
+        && (!('favicon' in meta) || (meta.favicon is string && meta.favicon.size() <= 2000))
+        && (!('pwaIcon' in meta) || (meta.pwaIcon is string && meta.pwaIcon.size() <= 2000))
+        && (!('manifestName' in meta) || (meta.manifestName is string && meta.manifestName.size() <= 200));
+    }
+
+    function isValidPlatformLink(data, platformId) {
+      return data.keys().hasAll(['id', 'name', 'url', 'sortOrder', 'isActive'])
+        && data.keys().hasOnly([
+          'id',
+          'name',
+          'url',
+          'description',
+          'logoUrl',
+          'thumbnailUrl',
+          'detectedMeta',
+          'sortOrder',
+          'isActive',
+          'createdAt',
+          'updatedAt',
+          'updatedBy'
+        ])
+        && data.id is string
+        && data.id == platformId
+        && data.name is string
+        && data.name.size() >= 1
+        && data.name.size() <= 200
+        && isValidHttpUrl(data.url)
+        && (!('description' in data) || (data.description is string && data.description.size() <= 1000))
+        && (!('logoUrl' in data) || isValidOptionalHttpUrl(data.logoUrl))
+        && (!('thumbnailUrl' in data) || isValidOptionalHttpUrl(data.thumbnailUrl))
+        && (!('detectedMeta' in data) || isValidPlatformDetectedMeta(data.detectedMeta))
+        && data.sortOrder is number
+        && data.sortOrder >= 0
+        && data.sortOrder <= 9999
+        && data.isActive is bool
+        && (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 64))
+        && (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64))
+        && (!('updatedBy' in data) || (data.updatedBy is string && data.updatedBy.size() <= 200));
     }
 
     // --- Staff Collection ---
-    // Public directory read allowed for general staff card & directory display
-    // Write strictly restricted to verified V2 Master Admin
     match /staff/{staffId} {
-      allow read: if true;
-      allow write: if isAuthorizedAdmin() && isValidId(staffId);
+      allow get, list: if true;
+      allow create, update: if isAuthorizedAdmin() && isValidId(staffId);
+      allow delete: if isAuthorizedAdmin() && isValidId(staffId);
     }
 
     // --- Committees Collection ---
-    // Public read allowed for official committee display
-    // Write strictly restricted to verified V2 Master Admin
     match /committees/{committeeId} {
-      allow read: if true;
-      allow write: if isAuthorizedAdmin() && isValidId(committeeId);
+      allow get, list: if true;
+      allow create, update: if isAuthorizedAdmin() && isValidId(committeeId);
+      allow delete: if isAuthorizedAdmin() && isValidId(committeeId);
     }
 
-    // --- System Cache Documents (staff_data, committee_data) ---
-    // Public read allowed for fast batch directory sync
-    // Write strictly restricted to verified V2 Master Admin
+    // --- System Batch Cache Documents (staff_data, committee_data only) ---
     match /system/{docId} {
-      allow read: if true;
-      allow write: if isAuthorizedAdmin() && isValidId(docId);
+      allow get, list: if docId in ['staff_data', 'committee_data'];
+      allow create, update: if isAuthorizedAdmin()
+        && isValidId(docId)
+        && docId in ['staff_data', 'committee_data'];
+      allow delete: if isAuthorizedAdmin()
+        && isValidId(docId)
+        && docId in ['staff_data', 'committee_data'];
     }
 
     // --- Admins Collection ---
-    // Protected: Strictly restricted to verified V2 Master Admin
     match /admins/{adminId} {
       allow get, list: if isMasterAdmin();
-      allow write: if isMasterAdmin() && isValidId(adminId);
+      allow create, update: if isMasterAdmin() && isValidId(adminId);
+      allow delete: if isMasterAdmin() && isValidId(adminId);
     }
 
-    // --- Platform Isolated Namespace (SYNCROZZ Shared Platform - Portal Kolej) ---
+    // --- Portal Kolej Collection (Strictly isolated from Platform) ---
     match /platforms/directkpmbp/portalLinks/{portalId} {
-      allow read: if true;
-      allow write: if isAuthorizedAdmin() && isValidId(portalId);
+      allow get, list: if true;
+      allow create, update: if isAuthorizedAdmin() && isValidId(portalId);
+      allow delete: if isAuthorizedAdmin() && isValidId(portalId);
     }
 
-    // --- Platform Isolated Namespace Catch-all ---
-    match /platforms/directkpmbp/{document=**} {
-      allow read: if true;
-      allow write: if isAuthorizedAdmin();
+    // --- Platform Links Collection (Tab Platform - Rujukan Kolej) ---
+    match /platforms/directkpmbp/platformLinks/{platformId} {
+      allow get, list: if true;
+      allow create: if isAuthorizedAdmin()
+        && isValidId(platformId)
+        && isValidPlatformLink(request.resource.data, platformId);
+      allow update: if isAuthorizedAdmin()
+        && isValidId(platformId)
+        && isValidPlatformLink(request.resource.data, platformId)
+        && request.resource.data.id == resource.data.id
+        && (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'name',
+          'url',
+          'description',
+          'logoUrl',
+          'thumbnailUrl',
+          'detectedMeta',
+          'sortOrder',
+          'isActive',
+          'updatedAt',
+          'updatedBy'
+        ]);
+      allow delete: if isAuthorizedAdmin() && isValidId(platformId);
+    }
+
+    // --- Explicit Platform Configuration Documents (navigation, takwim, portalMeta only) ---
+    match /platforms/directkpmbp/config/{configId} {
+      allow get, list: if configId in ['navigation', 'takwim', 'portalMeta'];
+      allow create, update: if isAuthorizedAdmin()
+        && isValidId(configId)
+        && configId in ['navigation', 'takwim', 'portalMeta'];
+      allow delete: if isAuthorizedAdmin()
+        && isValidId(configId)
+        && configId in ['navigation', 'takwim', 'portalMeta'];
     }
   }
 }

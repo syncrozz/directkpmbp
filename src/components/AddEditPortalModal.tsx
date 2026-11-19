@@ -125,7 +125,7 @@ export const AddEditPortalModal: React.FC<AddEditPortalModalProps> = ({
       }
     } catch {}
 
-    const initialFav = detectedMeta?.favicon || iconUrl || googleFallbackFav;
+    const initialFav = iconUrl || detectedMeta?.favicon || googleFallbackFav;
     setActivePreviewFav(initialFav);
     setPreviewFavFailed(false);
   }, [url, detectedMeta?.favicon, iconUrl]);

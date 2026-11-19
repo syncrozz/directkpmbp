@@ -543,62 +543,13 @@ export const fetchCommitteesFromFirestore = async (): Promise<StaffCommittee[]> 
           committees.push(doc.data() as StaffCommittee);
         });
         return dedupeCommitteesList(committees);
-      } catch (error) {
-        console.warn('Notice reading committee data from Firebase:', error);
-        return [];
-      }
-    })(),
-    3000,
-    []
+    } catch (error) {
+      console.warn('Notice reading committee data from Firebase:', error);
+      return [];
+    }
+  })(),
+  3000,
+  []
   );
 };
 
-/**
- * Secret Master Admin PIN Verification & Storage in Firestore
- * Stored securely in Firestore under collection 'platforms/directkpmbp/config/admin_auth' or 'system/auth_config'
- */
-export const getAdminPinFromFirestore = async (): Promise<string> => {
-  try {
-    const configRef = doc(db, 'platforms', 'directkpmbp', 'config', 'admin_auth');
-    const snap = await getDoc(configRef);
-    if (snap.exists() && snap.data()?.pin) {
-      return String(snap.data().pin).trim();
-    }
-  } catch (_err) {
-    // Fallback to system collection if platform namespace error
-  }
-
-  try {
-    const sysRef = doc(db, 'system', 'auth_config');
-    const snap = await getDoc(sysRef);
-    if (snap.exists() && snap.data()?.pin) {
-      return String(snap.data().pin).trim();
-    }
-  } catch (_err) {
-    // Ignore error
-  }
-
-  return '5313';
-};
-
-export const saveAdminPinToFirestore = async (pin: string = '5313'): Promise<boolean> => {
-  try {
-    const configRef = doc(db, 'platforms', 'directkpmbp', 'config', 'admin_auth');
-    await setDoc(configRef, {
-      pin,
-      updatedAt: new Date().toISOString(),
-    }, { merge: true });
-    return true;
-  } catch (_e) {
-    try {
-      const sysRef = doc(db, 'system', 'auth_config');
-      await setDoc(sysRef, {
-        pin,
-        updatedAt: new Date().toISOString(),
-      }, { merge: true });
-      return true;
-    } catch (_err) {
-      return false;
-    }
-  }
-};

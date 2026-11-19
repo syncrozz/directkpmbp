@@ -48,7 +48,7 @@ interface SmartPortalCardProps {
 const SmartPortalCard: React.FC<SmartPortalCardProps> = ({ link, isAdminMode, onEdit }) => {
   const visual = resolvePortalVisual(link);
   const siteName = getPortalSiteName(link);
-  const primaryFav = link.detectedMeta?.favicon || link.faviconUrl;
+  const primaryFav = link.iconUrl || link.detectedMeta?.favicon || link.faviconUrl;
   let googleFallbackFav = '';
   try {
     const host = new URL(link.url).hostname;

@@ -1815,7 +1815,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                             />
                           )}
                           <p className="text-[10px] text-slate-400">
-                            Modul sasaran dalam aplikasi: <code>directory</code>, <code>rujukan</code>, <code>jadual</code>, <code>jadual-pensyarah</code>, <code>daftar</code>.
+                            Modul sasaran dalam aplikasi: <code>directory</code>, <code>platform</code>, <code>rujukan</code>, <code>jadual</code>, <code>jadual-pensyarah</code>, <code>daftar</code>.
                           </p>
                         </div>
                       )}
