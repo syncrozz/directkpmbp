@@ -9,9 +9,9 @@ ENV NODE_ENV=production \
 
 WORKDIR /app
 
-# Install runtime dependencies only (excludes Vite, TypeScript, tsx, Tailwind)
-COPY package.json ./
-RUN npm install --omit=dev && npm cache clean --force
+# Install only the locked production dependency tree.
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev && npm cache clean --force
 
 # Install Playwright Chromium & headless shell plus required Debian system libraries
 RUN npx playwright-core install chromium --with-deps \
@@ -19,7 +19,7 @@ RUN npx playwright-core install chromium --with-deps \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy minimal server runtime files
-COPY tsconfig.json firebase-applet-config.json server.ts ./
+COPY firebase-applet-config.json server.ts ./
 COPY src/services/serverCors.ts ./src/services/serverCors.ts
 COPY src/services/serverMetadata.ts ./src/services/serverMetadata.ts
 COPY src/services/serverFirebaseAuth.ts ./src/services/serverFirebaseAuth.ts

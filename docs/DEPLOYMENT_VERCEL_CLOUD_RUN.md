@@ -18,7 +18,8 @@
 
 ### Runtime Specifications
 - **Base Image:** `node:22-bookworm-slim` (defined in `Dockerfile`)
-- **Entrypoint:** `node server.ts` (Node.js 22 native TypeScript type-stripping; runs statelessly without Vite dev dependencies)
+- **Entrypoint:** `node server.ts` (Node.js 22.18+ native TypeScript type-stripping; runs statelessly without Vite dev dependencies)
+- **Dependencies:** `npm ci --omit=dev` from the committed `package-lock.json`; the Cloud Run image omits Vite and other development tooling while retaining the shared Vercel frontend dependencies declared for the project.
 - **Memory:** `2 GiB` (`--memory 2Gi`) — recommended headroom for concurrent headless Chromium pages + `sharp` WebP encoding
 - **CPU:** `1` or `2` vCPU (`--cpu 2` recommended for crisp <4s captures)
 - **Request Timeout:** `60s` (`--timeout 60`, safely above internal 16s Playwright capture deadline)
