@@ -234,35 +234,24 @@ export const SelfRegistrationPage: React.FC<SelfRegistrationPageProps> = ({
   };
 
   return (
-    <div className="min-h-screen py-6 px-4 sm:px-6 lg:px-8 relative z-20">
-      <div className="max-w-4xl mx-auto space-y-6">
+    <div className="relative z-20">
+      <div className="max-w-4xl mx-auto space-y-4 sm:space-y-5">
 
-        {/* Top Header Card */}
-        <div className="glass-panel rounded-3xl p-6 sm:p-8 border border-white/70 shadow-sm relative overflow-hidden text-left">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            
-            <div className="flex items-center gap-4">
-              <img
-                src="https://raw.githubusercontent.com/syncrozz/syncrozz-assets/main/logo/KPMBPSmartHub/favicon.svg"
-                alt="Logo KPMBP"
-                className="w-14 h-14 object-contain drop-shadow-md rounded-2xl shrink-0 bg-white/80 p-1.5 border border-indigo-100"
-              />
-              <div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-800 border border-indigo-200">
-                    Borang Rasmi Kendiri
-                  </span>
-                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-200">
-                    Kakitangan & Pensyarah Baharu
-                  </span>
-                </div>
-                <h1 className="text-xl sm:text-2xl font-black text-slate-900 mt-1 tracking-tight">
-                  Pendaftaran Kendiri Kakitangan KPMBP
-                </h1>
-                <p className="text-xs text-slate-500 font-medium">
-                  Kolej Profesional MARA Bandar Penawar • Terus dimuatkan ke dalam platform direktori
-                </p>
+        {/* Top Context Header Card */}
+        <div className="glass-panel rounded-2xl sm:rounded-3xl p-4 sm:p-5 border border-white/70 shadow-xs relative overflow-hidden text-left">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-800 border border-indigo-200">
+                  Borang Rasmi Kendiri
+                </span>
               </div>
+              <h2 className="text-lg sm:text-xl font-black text-slate-900 mt-1 tracking-tight">
+                Pendaftaran Kendiri Kakitangan KPMBP
+              </h2>
+              <p className="text-xs text-slate-500 font-medium">
+                Kakitangan & Pensyarah Baharu • Disimpan terus ke direktori
+              </p>
             </div>
 
             <div className="flex items-center gap-2 shrink-0">

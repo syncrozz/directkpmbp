@@ -3,12 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  * 
  * DIRECTKPMBP — DYNAMIC NAVIGATION MANAGEMENT MODAL
- * SES v4.4 Specification (3-Level Architecture: Parent → Child → Grandchild)
+ * SES v4.5 Specification (4-Level Architecture: Alfa → Bravo → Charlie → Delta)
  * 
  * Provides Admin with hierarchical CRUD for:
- * - Level 1: Parent Navigation
- * - Level 2: Child Navigation (Direct content or Container)
- * - Level 3: Grandchild Navigation
+ * - Level 1: Parent Navigation (Alfa)
+ * - Level 2: Child Navigation (Bravo — Direct content or Container)
+ * - Level 3: Grandchild Navigation (Charlie — Direct content or Container)
+ * - Level 4: Delta Navigation (Delta — Documents, Forms & Links inside Charlie Containers)
  * Safe deletion barriers, destination route validation,
  * visual icon pickers, clean slug editing, and reordering capabilities.
  */
@@ -47,6 +48,7 @@ import {
   validateDriveUrl,
   canDeleteParent,
   canDeleteChild,
+  canDeleteGrandchild,
   generateNavId,
   saveNavigationItems,
   resetNavigationToDefault,
@@ -65,8 +67,9 @@ import {
 } from '../services/pdfThumbnailService';
 
 export interface NavigationManagerContext {
-  mode: 'contextual-charlie';
-  bravoParentId: string;
+  mode: 'contextual-charlie' | 'contextual-delta';
+  bravoParentId?: string;
+  charlieParentId?: string;
   autoOpenAdd?: boolean;
 }
 
@@ -103,7 +106,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
   onItemsChange,
   initialContext = null,
 }) => {
-  const [activeTab, setActiveTab] = useState<'parents' | 'children' | 'grandchildren'>('parents');
+  const [activeTab, setActiveTab] = useState<'parents' | 'children' | 'grandchildren' | 'deltas'>('parents');
   const [isSaving, setIsSaving] = useState(false);
   const [notice, setNotice] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
   const prevIsOpenRef = useRef(false);
@@ -140,7 +143,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
   // Reset confirmation state
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
-  // Segregate Parents, Children, and Grandchildren
+  // Segregate Parents, Children, Grandchildren, and Deltas
   const parents = useMemo(
     () => items.filter((i) => i.type === 'parent').sort((a, b) => a.order - b.order),
     [items]
@@ -153,6 +156,11 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
 
   const grandchildren = useMemo(
     () => items.filter((i) => i.type === 'grandchild').sort((a, b) => a.order - b.order),
+    [items]
+  );
+
+  const deltas = useMemo(
+    () => items.filter((i) => i.type === 'delta').sort((a, b) => a.order - b.order),
     [items]
   );
 
@@ -190,6 +198,30 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
     return map;
   }, [children, grandchildren]);
 
+  // Group deltas by grandchild (Charlie container)
+  const deltasByGrandchild = useMemo(() => {
+    const map = new Map<string, NavigationItem[]>();
+    grandchildren.forEach((gc) => map.set(gc.id, []));
+    map.set('orphans', []);
+
+    deltas.forEach((d) => {
+      if (d.parentId && map.has(d.parentId)) {
+        map.get(d.parentId)!.push(d);
+      } else {
+        map.get('orphans')!.push(d);
+      }
+    });
+
+    return map;
+  }, [grandchildren, deltas]);
+
+  // Charlie containers & Charlies that contain Delta items (displayed in Delta tab)
+  const charlieContainersForDeltas = useMemo(() => {
+    return grandchildren.filter(
+      (gc) => gc.displayType === 'empty_page' || (deltasByGrandchild.get(gc.id)?.length || 0) > 0
+    );
+  }, [grandchildren, deltasByGrandchild]);
+
   const contextualBravoItem = useMemo(() => {
     if (initialContext?.mode !== 'contextual-charlie' || !initialContext.bravoParentId) return null;
     return children.find((c) => c.id === initialContext.bravoParentId) || null;
@@ -200,7 +232,24 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
     return parents.find((p) => p.id === contextualBravoItem.parentId) || null;
   }, [contextualBravoItem, parents]);
 
+  const contextualCharlieItem = useMemo(() => {
+    if (initialContext?.mode !== 'contextual-delta' || !initialContext.charlieParentId) return null;
+    return grandchildren.find((gc) => gc.id === initialContext.charlieParentId) || null;
+  }, [initialContext, grandchildren]);
+
+  const contextualBravoForDelta = useMemo(() => {
+    if (!contextualCharlieItem?.parentId) return null;
+    return children.find((c) => c.id === contextualCharlieItem.parentId) || null;
+  }, [contextualCharlieItem, children]);
+
+  const contextualAlfaForDelta = useMemo(() => {
+    if (!contextualBravoForDelta?.parentId) return null;
+    return parents.find((p) => p.id === contextualBravoForDelta.parentId) || null;
+  }, [contextualBravoForDelta, parents]);
+
   const isContextualCharlieMode = Boolean(contextualBravoItem);
+  const isContextualDeltaMode = Boolean(contextualCharlieItem);
+  const isContextualMode = isContextualCharlieMode || isContextualDeltaMode;
 
   const liveDriveParsed = useMemo(
     () => parseTakwimLink(formState.driveUrl),
@@ -226,11 +275,14 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
     );
 
   const eligiblePdfItems = useMemo(() => {
+    if (contextualCharlieItem) {
+      return (deltasByGrandchild.get(contextualCharlieItem.id) || []).filter(isEligibleDrivePdf);
+    }
     if (contextualBravoItem) {
       return (grandchildrenByChild.get(contextualBravoItem.id) || []).filter(isEligibleDrivePdf);
     }
     return items.filter(isEligibleDrivePdf);
-  }, [items, contextualBravoItem, grandchildrenByChild]);
+  }, [items, contextualBravoItem, contextualCharlieItem, grandchildrenByChild, deltasByGrandchild]);
   const readyThumbnailsCount = useMemo(
     () => eligiblePdfItems.filter((i) => i.thumbnailUrl && (i.thumbnailStatus === 'generated' || i.thumbnailStatus === 'ready')).length,
     [eligiblePdfItems]
@@ -331,6 +383,20 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
     return children.filter((c) => c.parentId === formState.parentFilterId);
   }, [children, formState.parentFilterId]);
 
+  // Available grandchildren filtered by Bravo filter (used in Delta Form)
+  const grandchildrenForDeltaForm = useMemo(() => {
+    const filtered = !formState.parentFilterId
+      ? grandchildren
+      : grandchildren.filter((gc) => gc.parentId === formState.parentFilterId);
+    // Prioritize Charlie items configured as containers first
+    return [...filtered].sort((a, b) => {
+      const aIsContainer = a.displayType === 'empty_page' ? 0 : 1;
+      const bIsContainer = b.displayType === 'empty_page' ? 0 : 1;
+      if (aIsContainer !== bIsContainer) return aIsContainer - bIsContainer;
+      return a.order - b.order;
+    });
+  }, [grandchildren, formState.parentFilterId]);
+
   // Open Form for Adding New Item
   const handleAddNew = (type: NavigationType, defaultParentId?: string) => {
     setEditingItem(null);
@@ -340,7 +406,6 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
     if (type === 'child') {
       initialParentId = defaultParentId || (parents[0]?.id || '');
     } else if (type === 'grandchild') {
-      // For grandchild, parentId must be a child container
       if (defaultParentId) {
         initialParentId = defaultParentId;
         const matchingChild = children.find((c) => c.id === defaultParentId);
@@ -350,17 +415,33 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
         initialParentId = firstChild?.id || '';
         initialParentFilterId = firstChild?.parentId || parents[0]?.id || '';
       }
+    } else if (type === 'delta') {
+      if (defaultParentId) {
+        initialParentId = defaultParentId;
+        const matchingGc = grandchildren.find((gc) => gc.id === defaultParentId);
+        initialParentFilterId = matchingGc?.parentId || children[0]?.id || '';
+      } else {
+        const defaultGc =
+          charlieContainersForDeltas[0] || grandchildren[0];
+        initialParentId = defaultGc?.id || '';
+        initialParentFilterId = defaultGc?.parentId || children[0]?.id || '';
+      }
     }
 
     setFormState({
       name: '',
       slug: '',
       isSlugCustomized: false,
-      icon: type === 'parent' ? 'Layers' : type === 'grandchild' ? 'FileText' : 'Folder',
+      icon:
+        type === 'parent'
+          ? 'Layers'
+          : type === 'grandchild' || type === 'delta'
+          ? 'FileText'
+          : 'Folder',
       type,
       parentId: initialParentId,
       parentFilterId: initialParentFilterId,
-      displayType: type === 'grandchild' ? 'drive' : 'module',
+      displayType: type === 'grandchild' || type === 'delta' ? 'drive' : 'module',
       driveUrl: '',
       displayTitle: '',
       destination: 'directory',
@@ -379,7 +460,14 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
       setItemToDelete(null);
       setShowResetConfirm(false);
 
-      if (contextualBravoItem) {
+      if (contextualCharlieItem) {
+        setActiveTab('deltas');
+        if (initialContext?.autoOpenAdd) {
+          handleAddNew('delta', contextualCharlieItem.id);
+        } else {
+          setIsEditorOpen(false);
+        }
+      } else if (contextualBravoItem) {
         setActiveTab('grandchildren');
         if (initialContext?.autoOpenAdd) {
           handleAddNew('grandchild', contextualBravoItem.id);
@@ -392,7 +480,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
       }
     }
     prevIsOpenRef.current = isOpen;
-  }, [isOpen, contextualBravoItem, initialContext]);
+  }, [isOpen, contextualBravoItem, contextualCharlieItem, initialContext]);
 
   // Open Form for Editing Existing Item
   const handleEdit = (item: NavigationItem) => {
@@ -405,6 +493,9 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
     if (item.type === 'grandchild') {
       const immediateChild = children.find((c) => c.id === item.parentId);
       initialParentFilterId = immediateChild?.parentId || parents[0]?.id || '';
+    } else if (item.type === 'delta') {
+      const immediateGc = grandchildren.find((gc) => gc.id === item.parentId);
+      initialParentFilterId = immediateGc?.parentId || children[0]?.id || '';
     }
 
     setFormState({
@@ -421,7 +512,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
       displayTitle: item.displayTitle || '',
       destination: isParentEmptyPage ? 'empty_page' : isStandardModule ? item.destination : 'custom',
       customDestination: isParentEmptyPage || isStandardModule ? '' : item.destination,
-      useCustomDestination: !isParentEmptyPage && !isStandardModule && itemDisplayType !== 'drive',
+      useCustomDestination: !isParentEmptyPage && !isStandardModule && itemDisplayType !== 'drive' && itemDisplayType !== 'empty_page',
       isActive: item.isActive,
     });
     setNotice(null);
@@ -447,7 +538,12 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
       return;
     }
 
-    // Validate Slug (SES v4.4 Clean URL Architecture)
+    if (formState.type === 'delta' && !formState.parentId) {
+      setNotice({ type: 'error', text: 'Navigasi delta wajib dikaitkan dengan satu Navigasi Charlie.' });
+      return;
+    }
+
+    // Validate Slug (SES v4.5 Clean Hierarchical URL Architecture)
     const targetSlug = (formState.slug.trim() || slugify(formState.name)).toLowerCase();
     const slugCheck = validateNavigationSlug(targetSlug, editingItem?.id, items, formState.parentId, formState.type);
     if (!slugCheck.valid) {
@@ -455,7 +551,9 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
       return;
     }
 
-    const isDriveDisplay = (formState.type === 'child' || formState.type === 'grandchild') && formState.displayType === 'drive';
+    const isDriveDisplay =
+      (formState.type === 'child' || formState.type === 'grandchild' || formState.type === 'delta') &&
+      formState.displayType === 'drive';
     const isParentEmptyPage = formState.type === 'parent' && !formState.useCustomDestination && formState.destination === 'empty_page';
     const isEmptyPageDisplay =
       isParentEmptyPage ||
@@ -563,7 +661,9 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
           ? parents
           : formState.type === 'child'
           ? children.filter((c) => c.parentId === formState.parentId)
-          : grandchildren.filter((gc) => gc.parentId === formState.parentId);
+          : formState.type === 'grandchild'
+          ? grandchildren.filter((gc) => gc.parentId === formState.parentId)
+          : deltas.filter((d) => d.parentId === formState.parentId);
         const nextOrder = siblings.length;
 
         if (isDrivePdfCandidate) {
@@ -654,8 +754,10 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
         group = [...parents];
       } else if (item.type === 'child') {
         group = children.filter((c) => c.parentId === item.parentId);
-      } else {
+      } else if (item.type === 'grandchild') {
         group = grandchildren.filter((gc) => gc.parentId === item.parentId);
+      } else {
+        group = deltas.filter((d) => d.parentId === item.parentId);
       }
 
       const currentIndex = group.findIndex((i) => i.id === item.id);
@@ -712,7 +814,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
     }
   };
 
-  // Safe Deletion Trigger (SES v4.4 Section 6B & 6C + 3-Level Guards)
+  // Safe Deletion Trigger (SES v4.5 Section 6B & 6C + 4-Level Guards)
   const handleDeletePrompt = (item: NavigationItem) => {
     setDeleteWarning(null);
 
@@ -728,6 +830,13 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
       if (!checkChild.canDelete) {
         setDeleteWarning(
           `Navigasi Bravo ini mengandungi ${checkChild.grandchildrenCount} navigasi charlie (${checkChild.grandchildrenNames.join(', ')}). Sila padam atau pindahkan navigasi charlie terlebih dahulu sebelum memadam navigasi bravo ini.`
+        );
+      }
+    } else if (item.type === 'grandchild') {
+      const checkGrandchild = canDeleteGrandchild(item.id, items);
+      if (!checkGrandchild.canDelete) {
+        setDeleteWarning(
+          `Navigasi Charlie ini mengandungi ${checkGrandchild.deltasCount} navigasi delta (${checkGrandchild.deltasNames.join(', ')}). Sila padam atau pindahkan navigasi delta terlebih dahulu sebelum memadam navigasi charlie ini.`
         );
       }
     }
@@ -755,6 +864,16 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
         setNotice({
           type: 'error',
           text: 'Pemadaman disekat kerana masih terdapat navigasi charlie di bawah bravo ini.'
+        });
+        setItemToDelete(null);
+        return;
+      }
+    } else if (itemToDelete.type === 'grandchild') {
+      const checkGrandchild = canDeleteGrandchild(itemToDelete.id, items);
+      if (!checkGrandchild.canDelete) {
+        setNotice({
+          type: 'error',
+          text: 'Pemadaman disekat kerana masih terdapat navigasi delta di bawah charlie ini.'
         });
         setItemToDelete(null);
         return;
@@ -814,18 +933,28 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
               <div>
                 <h3 className="font-sans font-extrabold text-slate-900 text-base sm:text-lg leading-tight flex items-center gap-2 flex-wrap">
                   <span>
-                    {isContextualCharlieMode && contextualBravoItem
+                    {isContextualDeltaMode && contextualCharlieItem
+                      ? `Urus Delta — ${contextualCharlieItem.name}`
+                      : isContextualCharlieMode && contextualBravoItem
                       ? `Urus Charlie — ${contextualBravoItem.name}`
                       : 'Pengurusan Navigasi Dinamik'}
                   </span>
                   <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
-                    {isContextualCharlieMode ? 'SES v4.5 • Mod Konteks Charlie' : 'SES v4.4 (3 Peringkat)'}
+                    {isContextualDeltaMode
+                      ? 'SES v4.5 • Mod Konteks Delta'
+                      : isContextualCharlieMode
+                      ? 'SES v4.5 • Mod Konteks Charlie'
+                      : 'SES v4.5 (4 Peringkat)'}
                   </span>
                 </h3>
                 <p className="text-xs text-slate-500 font-medium">
-                  {isContextualCharlieMode && contextualBravoItem
+                  {isContextualDeltaMode && contextualCharlieItem
+                    ? `Delta di bawah: ${contextualCharlieItem.name}${
+                        contextualBravoForDelta ? ` (${contextualBravoForDelta.name}${contextualAlfaForDelta ? ` • ${contextualAlfaForDelta.name}` : ''})` : ''
+                      }`
+                    : isContextualCharlieMode && contextualBravoItem
                     ? `Charlie di bawah: ${contextualBravoItem.name}${contextualAlfaItem ? ` (${contextualAlfaItem.name})` : ''}`
-                    : 'Urus hierarki Alfa → Bravo → Charlie secara dinamik dengan storan masa nyata Firestore'}
+                    : 'Urus hierarki Alfa → Bravo → Charlie → Delta secara dinamik dengan storan masa nyata Firestore'}
                 </p>
               </div>
             </div>
@@ -915,8 +1044,45 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
             </div>
           )}
 
-          {/* Contextual Charlie Header Bar OR Full Hierarchical Stepped Tree Tabs */}
-          {isContextualCharlieMode && contextualBravoItem ? (
+          {/* Contextual Delta / Charlie Header Bar OR Full Hierarchical Stepped Tree Tabs */}
+          {isContextualDeltaMode && contextualCharlieItem ? (
+            <div
+              data-contextual-delta-parent={contextualCharlieItem.id}
+              className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-4 border-b border-teal-100 pb-3.5 shrink-0 bg-teal-50/60 px-3.5 py-3 rounded-2xl border"
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-xl bg-teal-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  {renderNavIcon(contextualCharlieItem.icon, 'w-4 h-4')}
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs sm:text-sm font-black text-slate-900 truncate">
+                      Delta di bawah: <span className="text-teal-700">{contextualCharlieItem.name}</span>
+                    </span>
+                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-white text-teal-700 border border-teal-200 shrink-0">
+                      {(deltasByGrandchild.get(contextualCharlieItem.id) || []).length} Delta
+                    </span>
+                  </div>
+                  {contextualBravoForDelta && (
+                    <p className="text-[11px] text-slate-500 font-medium truncate">
+                      Induk: <span className="font-bold text-slate-700">
+                        {contextualAlfaForDelta ? `${contextualAlfaForDelta.name} → ` : ''}{contextualBravoForDelta.name}
+                      </span>
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleAddNew('delta', contextualCharlieItem.id)}
+                className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-extrabold shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-95 shrink-0 self-start sm:self-auto"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Tambah Delta</span>
+              </button>
+            </div>
+          ) : isContextualCharlieMode && contextualBravoItem ? (
             <div
               data-contextual-charlie-parent={contextualBravoItem.id}
               className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-4 border-b border-violet-100 pb-3.5 shrink-0 bg-violet-50/60 px-3.5 py-3 rounded-2xl border"
@@ -1034,13 +1200,48 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                     </button>
                   </div>
                 </div>
+
+                {/* Level 4: Delta — Indented Further Right Relative to Charlie */}
+                <div className="flex items-center pl-12 sm:pl-20 min-w-0">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span
+                      aria-hidden="true"
+                      className={`inline-flex items-center justify-center shrink-0 transition-colors ${
+                        activeTab === 'deltas' ? 'text-teal-500' : 'text-slate-300'
+                      }`}
+                    >
+                      <CornerDownRight className="w-3.5 h-3.5" />
+                    </span>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={activeTab === 'deltas'}
+                      data-nav-level="delta"
+                      onClick={() => setActiveTab('deltas')}
+                      className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 max-w-full ${
+                        activeTab === 'deltas'
+                          ? 'bg-teal-600 text-white shadow-xs'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                      }`}
+                    >
+                      <FileText className="w-3.5 h-3.5 shrink-0" />
+                      <span className="truncate">Navigasi Delta ({deltas.length})</span>
+                    </button>
+                  </div>
+                </div>
               </div>
 
               <button
                 type="button"
                 onClick={() =>
                   handleAddNew(
-                    activeTab === 'parents' ? 'parent' : activeTab === 'children' ? 'child' : 'grandchild'
+                    activeTab === 'parents'
+                      ? 'parent'
+                      : activeTab === 'children'
+                      ? 'child'
+                      : activeTab === 'grandchildren'
+                      ? 'grandchild'
+                      : 'delta'
                   )
                 }
                 className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-extrabold shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-95 shrink-0 self-start sm:self-end"
@@ -1051,7 +1252,9 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                     ? 'Tambah Alfa'
                     : activeTab === 'children'
                     ? 'Tambah Bravo'
-                    : 'Tambah Charlie'}
+                    : activeTab === 'grandchildren'
+                    ? 'Tambah Charlie'
+                    : 'Tambah Delta'}
                 </span>
               </button>
             </div>
@@ -1060,7 +1263,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
           {/* Main Scrollable Content Area */}
           <div className="flex-1 overflow-y-auto py-3 space-y-4 pr-1">
             {/* SECTION A: PARENT NAVIGATION LIST */}
-            {!isContextualCharlieMode && activeTab === 'parents' && (
+            {!isContextualMode && activeTab === 'parents' && (
               <div className="space-y-2.5">
                 {parents.map((p, idx) => {
                   const childCount = (childrenByParent.get(p.id) || []).length;
@@ -1186,7 +1389,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
             )}
 
             {/* SECTION B: CHILD NAVIGATION LIST (Grouped by Parent) */}
-            {!isContextualCharlieMode && activeTab === 'children' && (
+            {!isContextualMode && activeTab === 'children' && (
               <div className="space-y-5">
                 {parents.map((p) => {
                   const pChildren = (childrenByParent.get(p.id) || []).sort((a, b) => a.order - b.order);
@@ -1404,7 +1607,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
             )}
 
             {/* SECTION C: GRANDCHILD NAVIGATION LIST (Grouped by Child container) */}
-            {(isContextualCharlieMode || activeTab === 'grandchildren') && (
+            {(isContextualCharlieMode || (!isContextualDeltaMode && activeTab === 'grandchildren')) && (
               <div className="space-y-5">
                 {(contextualBravoItem ? [contextualBravoItem] : children).map((c) => {
                   const parentOfChild = parents.find((p) => p.id === c.parentId);
@@ -1442,7 +1645,11 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                       </div>
 
                       <div className="space-y-2">
-                        {cGrandchildren.map((gc, gcIdx) => (
+                        {cGrandchildren.map((gc, gcIdx) => {
+                          const gcDeltas = deltasByGrandchild.get(gc.id) || [];
+                          const isGcContainer = gc.displayType === 'empty_page';
+
+                          return (
                           <div
                             key={gc.id}
                             className={`p-3 rounded-xl border bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 ${
@@ -1483,7 +1690,17 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                                   <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-slate-100 text-slate-600">
                                     #{gc.order + 1}
                                   </span>
-                                  {gc.displayType === 'drive' || gc.driveUrl ? (
+                                  {isGcContainer ? (
+                                    <span className="text-[9.5px] font-extrabold px-2 py-0.2 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
+                                      <Layout className="w-2.5 h-2.5" />
+                                      <span>Pages Kosong ({gcDeltas.length} Delta)</span>
+                                    </span>
+                                  ) : gcDeltas.length > 0 ? (
+                                    <span className="text-[9.5px] font-extrabold px-2 py-0.2 rounded-full bg-teal-100 text-teal-800 border border-teal-200 flex items-center gap-1">
+                                      <FolderTree className="w-2.5 h-2.5" />
+                                      <span>Bekas ({gcDeltas.length} Delta)</span>
+                                    </span>
+                                  ) : gc.displayType === 'drive' || gc.driveUrl ? (
                                     <span className="text-[9.5px] font-extrabold px-2 py-0.2 rounded-full bg-violet-100 text-violet-800 border border-violet-200 flex items-center gap-1">
                                       <FileText className="w-2.5 h-2.5" />
                                       <span>Google Drive</span>
@@ -1496,7 +1713,9 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                                   )}
                                 </div>
                                 <div className="text-[10px] text-slate-500 font-mono mt-0.5 truncate max-w-xs sm:max-w-md flex items-center gap-2 flex-wrap">
-                                  {gc.displayType === 'drive' || gc.driveUrl ? (
+                                  {isGcContainer ? (
+                                    <>Container: <span className="font-semibold text-emerald-700">Pages Kosong ({gcDeltas.length} Delta)</span></>
+                                  ) : gc.displayType === 'drive' || gc.driveUrl ? (
                                     <>Drive URL: <span className="font-semibold text-violet-700">{gc.driveUrl || 'Belum diisi'}</span></>
                                   ) : (
                                     <>Destinasi: <span className="font-semibold text-slate-700">{gc.destination}</span></>
@@ -1557,6 +1776,17 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                             </div>
 
                             <div className="flex items-center gap-1.5 self-end sm:self-center">
+                              {(isGcContainer || gcDeltas.length > 0) && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleAddNew('delta', gc.id)}
+                                  title="Tambah Navigasi Delta di bawah bekas Charlie ini"
+                                  className="px-2 py-1 rounded-lg text-[11px] font-extrabold bg-teal-50 hover:bg-teal-100 text-teal-700 border border-teal-200 flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Plus className="w-3 h-3" />
+                                  <span>+ Delta</span>
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => handleToggleActive(gc)}
@@ -1588,11 +1818,12 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                               </button>
                             </div>
                           </div>
-                        ))}
+                          );
+                        })}
 
                         {cGrandchildren.length === 0 && (
                           <p className="text-[11px] text-slate-400 italic py-2 pl-2">
-                            Tiada navigasi charlie di bawah bravo ini. Klik "+ Charlie" untuk menambah dokumen fail Drive atau pautan di bawah bravo ini.
+                            Tiada navigasi charlie di bawah bravo ini. Klik "+ Charlie" untuk menambah dokumen fail Drive, pautan atau bekas Charlie di bawah bravo ini.
                           </p>
                         )}
                       </div>
@@ -1608,11 +1839,229 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                 )}
               </div>
             )}
+
+            {/* SECTION D: DELTA NAVIGATION LIST (Grouped by Charlie container) */}
+            {(isContextualDeltaMode || (!isContextualCharlieMode && activeTab === 'deltas')) && (
+              <div className="space-y-5">
+                {(contextualCharlieItem ? [contextualCharlieItem] : charlieContainersForDeltas).map((gc) => {
+                  const bravoOfGc = children.find((c) => c.id === gc.parentId);
+                  const alfaOfGc = bravoOfGc?.parentId ? parents.find((p) => p.id === bravoOfGc.parentId) : undefined;
+                  const gcDeltas = (deltasByGrandchild.get(gc.id) || []).sort((a, b) => a.order - b.order);
+
+                  return (
+                    <div
+                      key={gc.id}
+                      className="p-4 bg-teal-50/50 rounded-2xl border border-teal-100 space-y-3"
+                    >
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="w-6 h-6 rounded-lg bg-teal-100 text-teal-700 flex items-center justify-center shrink-0">
+                            {renderNavIcon(gc.icon, 'w-3 h-3')}
+                          </div>
+                          <span className="text-xs font-extrabold text-slate-900 truncate">
+                            Bekas Charlie: <span className="text-teal-700">{gc.name}</span>
+                            {bravoOfGc && (
+                              <span className="text-slate-400 font-normal ml-1">
+                                ({alfaOfGc ? `${alfaOfGc.name} → ` : ''}{bravoOfGc.name})
+                              </span>
+                            )}
+                          </span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white text-teal-700 border border-teal-200 shrink-0">
+                            {gcDeltas.length} Delta
+                          </span>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleAddNew('delta', gc.id)}
+                          className="px-2.5 py-1 bg-white hover:bg-teal-100 border border-teal-200 text-teal-700 rounded-xl text-[11px] font-extrabold transition-all cursor-pointer flex items-center gap-1 shrink-0"
+                        >
+                          <Plus className="w-3 h-3" />
+                          <span>Tambah Delta</span>
+                        </button>
+                      </div>
+
+                      <div className="space-y-2">
+                        {gcDeltas.map((d, dIdx) => (
+                          <div
+                            key={d.id}
+                            className={`p-3 rounded-xl border bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 ${
+                              d.isActive ? 'border-slate-200 shadow-2xs' : 'border-slate-200/50 opacity-60'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5">
+                              <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => handleMoveOrder(d, 'up')}
+                                  disabled={dIdx === 0 || isSaving}
+                                  title="Pindah ke atas"
+                                  className="p-1 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer"
+                                >
+                                  <ArrowUp className="w-3 h-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleMoveOrder(d, 'down')}
+                                  disabled={dIdx === gcDeltas.length - 1 || isSaving}
+                                  title="Pindah ke bawah"
+                                  className="p-1 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-700 disabled:opacity-30 cursor-pointer"
+                                >
+                                  <ArrowDown className="w-3 h-3" />
+                                </button>
+                              </div>
+
+                              <div className="w-7 h-7 rounded-lg bg-teal-100 text-teal-800 border border-teal-200 flex items-center justify-center shrink-0">
+                                {renderNavIcon(d.icon, 'w-3.5 h-3.5')}
+                              </div>
+
+                              <div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <h5 className="font-sans font-extrabold text-slate-900 text-xs">
+                                    {d.name}
+                                  </h5>
+                                  <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-slate-100 text-slate-600">
+                                    #{d.order + 1}
+                                  </span>
+                                  {d.displayType === 'drive' || d.driveUrl ? (
+                                    <span className="text-[9.5px] font-extrabold px-2 py-0.2 rounded-full bg-violet-100 text-violet-800 border border-violet-200 flex items-center gap-1">
+                                      <FileText className="w-2.5 h-2.5" />
+                                      <span>Google Drive</span>
+                                    </span>
+                                  ) : (
+                                    <span className="text-[9.5px] font-extrabold px-2 py-0.2 rounded-full bg-slate-100 text-slate-700 border border-slate-200 flex items-center gap-1">
+                                      <Layers className="w-2.5 h-2.5" />
+                                      <span>{/^https?:\/\//i.test(d.destination || '') ? 'Pautan Luar' : 'Modul'}</span>
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-[10px] text-slate-500 font-mono mt-0.5 truncate max-w-xs sm:max-w-md flex items-center gap-2 flex-wrap">
+                                  {d.displayType === 'drive' || d.driveUrl ? (
+                                    <>Drive URL: <span className="font-semibold text-violet-700">{d.driveUrl || 'Belum diisi'}</span></>
+                                  ) : (
+                                    <>Destinasi: <span className="font-semibold text-slate-700">{d.destination}</span></>
+                                  )}
+                                  <span className="text-[9.5px] font-bold text-teal-700 bg-teal-50 px-1.5 py-0.2 rounded-md border border-teal-200">
+                                    /{getHierarchicalSlug(d, items)}
+                                  </span>
+                                </div>
+
+                                {isEligibleDrivePdf(d) && (
+                                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                    {generatingThumbnailIds.has(d.id) || d.thumbnailStatus === 'generating' || d.thumbnailStatus === 'processing' ? (
+                                      <span className="text-[9.5px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.2 rounded border border-indigo-200 flex items-center gap-1">
+                                        <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                                        <span>Menjana...</span>
+                                      </span>
+                                    ) : d.thumbnailUrl && (d.thumbnailStatus === 'ready' || d.thumbnailStatus === 'generated') && !brokenThumbIds.has(d.id) ? (
+                                      <div className="flex items-center gap-1.5">
+                                        <img
+                                          src={d.thumbnailUrl}
+                                          alt={d.name}
+                                          className="w-5 h-6 object-cover rounded border border-slate-200 bg-white"
+                                          onError={() => setBrokenThumbIds((prev) => new Set(prev).add(d.id))}
+                                        />
+                                        <span className="text-[9.5px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200 flex items-center gap-1">
+                                          <CheckCircle2 className="w-2.5 h-2.5" />
+                                          <span>Thumbnail Sedia</span>
+                                        </span>
+                                      </div>
+                                    ) : d.thumbnailStatus === 'failed' || d.thumbnailStatus === 'error' || brokenThumbIds.has(d.id) ? (
+                                      <span
+                                        title={d.thumbnailError || 'Penjanaan thumbnail gagal; dokumen masih boleh dibuka.'}
+                                        className="text-[9.5px] font-bold text-amber-800 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200 flex items-center gap-1"
+                                      >
+                                        <AlertCircle className="w-2.5 h-2.5 text-amber-600" />
+                                        <span>Thumbnail Gagal (Opsional)</span>
+                                      </span>
+                                    ) : (
+                                      <span className="text-[9.5px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200 flex items-center gap-1">
+                                        <AlertCircle className="w-2.5 h-2.5" />
+                                        <span>Belum Dijana</span>
+                                      </span>
+                                    )}
+
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSingleThumbnailGeneration(d)}
+                                      disabled={generatingThumbnailIds.has(d.id)}
+                                      title="Jana Semula Thumbnail Dokumen"
+                                      className="text-[10px] font-bold text-violet-700 hover:text-violet-900 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded border border-violet-200 cursor-pointer flex items-center gap-1 disabled:opacity-50"
+                                    >
+                                      <RotateCcw className={`w-2.5 h-2.5 ${generatingThumbnailIds.has(d.id) ? 'animate-spin' : ''}`} />
+                                      <span>Jana Thumbnail</span>
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 self-end sm:self-center">
+                              <button
+                                type="button"
+                                onClick={() => handleToggleActive(d)}
+                                disabled={isSaving}
+                                className={`px-2 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1 ${
+                                  d.isActive
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                    : 'bg-slate-100 text-slate-500'
+                                }`}
+                              >
+                                {d.isActive ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                                <span>{d.isActive ? 'Aktif' : 'Tutup'}</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleEdit(d)}
+                                disabled={isSaving}
+                                className="p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 rounded-lg"
+                              >
+                                <Pencil className="w-3 h-3" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeletePrompt(d)}
+                                disabled={isSaving}
+                                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 rounded-lg"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+
+                        {gcDeltas.length === 0 && (
+                          <p className="text-[11px] text-slate-400 italic py-2 pl-2">
+                            Tiada navigasi delta di bawah charlie ini. Klik "Tambah Delta" untuk menambah dokumen PDF Drive atau pautan di bawah bekas Charlie ini.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {!contextualCharlieItem && charlieContainersForDeltas.length === 0 && (
+                  <div className="text-center py-10 border border-dashed border-teal-200 rounded-2xl p-6 bg-teal-50/20">
+                    <FolderTree className="w-8 h-8 text-teal-400 mx-auto mb-2" />
+                    <p className="text-xs font-extrabold text-slate-700">
+                      Tiada Bekas Charlie (Pages Kosong) atau Item Delta Buat Masa Ini.
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-1 max-w-md mx-auto">
+                      Tetapkan sesuatu item Charlie sebagai <b>"Pages Kosong"</b> di tab Charlie, atau klik <b>"Tambah Delta"</b> untuk menempatkan dokumen di bawah mana-mana Charlie.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Footer Controls */}
           <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2 shrink-0">
-            {isContextualCharlieMode && contextualBravoItem ? (
+            {isContextualDeltaMode && contextualCharlieItem ? (
+              <span className="text-[11px] font-bold text-slate-500">
+                Menunjukkan item Delta di bawah <span className="text-teal-700 font-extrabold">{contextualCharlieItem.name}</span> sahaja
+              </span>
+            ) : isContextualCharlieMode && contextualBravoItem ? (
               <span className="text-[11px] font-bold text-slate-500">
                 Menunjukkan item Charlie di bawah <span className="text-violet-700 font-extrabold">{contextualBravoItem.name}</span> sahaja
               </span>
@@ -1633,7 +2082,9 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
               onClick={onClose}
               className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-extrabold shadow-sm cursor-pointer ml-auto"
             >
-              {isContextualCharlieMode && contextualBravoItem
+              {isContextualDeltaMode && contextualCharlieItem
+                ? `Kembali ke ${contextualCharlieItem.name}`
+                : isContextualCharlieMode && contextualBravoItem
                 ? `Kembali ke ${contextualBravoItem.name}`
                 : 'Selesai'}
             </button>
@@ -1658,8 +2109,30 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                 </div>
 
                 <form onSubmit={handleFormSubmit} className="space-y-3.5">
-                  {/* Type Selector (Hidden/Locked in Contextual Charlie Mode) */}
-                  {isContextualCharlieMode && contextualBravoItem ? (
+                  {/* Type Selector (Hidden/Locked in Contextual Charlie/Delta Modes) */}
+                  {isContextualDeltaMode && contextualCharlieItem ? (
+                    <div className="p-3 bg-teal-50/80 rounded-2xl border border-teal-200 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-8 h-8 rounded-xl bg-teal-600 text-white flex items-center justify-center shrink-0">
+                          {renderNavIcon(contextualCharlieItem.icon, 'w-4 h-4')}
+                        </div>
+                        <div className="min-w-0">
+                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-teal-700 block">
+                            Konteks Induk Tetap (Delta)
+                          </span>
+                          <p className="text-xs font-extrabold text-slate-900 truncate">
+                            Delta di bawah: <span className="text-teal-700">{contextualCharlieItem.name}</span>
+                            {contextualBravoForDelta ? (
+                              <span className="text-slate-500 font-semibold"> ({contextualBravoForDelta.name})</span>
+                            ) : null}
+                          </p>
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-white text-teal-800 border border-teal-200 shrink-0">
+                        {contextualCharlieItem.id}
+                      </span>
+                    </div>
+                  ) : isContextualCharlieMode && contextualBravoItem ? (
                     <div className="p-3 bg-violet-50/80 rounded-2xl border border-violet-200 flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2.5 min-w-0">
                         <div className="w-8 h-8 rounded-xl bg-violet-600 text-white flex items-center justify-center shrink-0">
@@ -1685,7 +2158,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                     <>
                       <div className="space-y-1">
                         <label className="text-[11px] font-extrabold text-slate-700">Peringkat Hierarki Navigasi</label>
-                        <div className="grid grid-cols-3 gap-2">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                           <button
                             type="button"
                             onClick={() =>
@@ -1696,7 +2169,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                                 displayType: 'module',
                               }))
                             }
-                            className={`py-2 px-2.5 rounded-xl text-xs font-extrabold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                            className={`py-2 px-2 rounded-xl text-xs font-extrabold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                               formState.type === 'parent'
                                 ? 'bg-indigo-50 border-indigo-500 text-indigo-900 ring-2 ring-indigo-200'
                                 : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
@@ -1715,7 +2188,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                                 parentId: parents[0]?.id || '',
                               }))
                             }
-                            className={`py-2 px-2.5 rounded-xl text-xs font-extrabold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                            className={`py-2 px-2 rounded-xl text-xs font-extrabold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                               formState.type === 'child'
                                 ? 'bg-indigo-50 border-indigo-500 text-indigo-900 ring-2 ring-indigo-200'
                                 : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
@@ -1736,7 +2209,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                                 displayType: 'drive',
                               }))
                             }
-                            className={`py-2 px-2.5 rounded-xl text-xs font-extrabold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                            className={`py-2 px-2 rounded-xl text-xs font-extrabold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                               formState.type === 'grandchild'
                                 ? 'bg-violet-50 border-violet-500 text-violet-900 ring-2 ring-violet-200'
                                 : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
@@ -1744,6 +2217,28 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                           >
                             <FileText className="w-3.5 h-3.5 text-violet-600" />
                             <span>3. Charlie</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const defaultGc = charlieContainersForDeltas[0] || grandchildren[0];
+                              setFormState((prev) => ({
+                                ...prev,
+                                type: 'delta',
+                                parentId: defaultGc?.id || '',
+                                parentFilterId: defaultGc?.parentId || children[0]?.id || '',
+                                displayType: 'drive',
+                              }));
+                            }}
+                            className={`py-2 px-2 rounded-xl text-xs font-extrabold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                              formState.type === 'delta'
+                                ? 'bg-teal-50 border-teal-500 text-teal-900 ring-2 ring-teal-200'
+                                : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                            }`}
+                          >
+                            <FileText className="w-3.5 h-3.5 text-teal-600" />
+                            <span>4. Delta</span>
                           </button>
                         </div>
                       </div>
@@ -1819,6 +2314,63 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                           </div>
                         </div>
                       )}
+
+                      {/* Delta Association: Select Charlie Container (Only for Delta) */}
+                      {formState.type === 'delta' && (
+                        <div className="space-y-2 p-3 bg-teal-50/70 rounded-2xl border border-teal-100">
+                          <div className="space-y-1">
+                            <label className="text-[11px] font-extrabold text-teal-950">
+                              Tapis mengikut Bravo (Pilihan):
+                            </label>
+                            <select
+                              value={formState.parentFilterId}
+                              onChange={(e) => {
+                                const newBravoFilter = e.target.value;
+                                const availableGc = grandchildren.filter((gc) => !newBravoFilter || gc.parentId === newBravoFilter);
+                                setFormState({
+                                  ...formState,
+                                  parentFilterId: newBravoFilter,
+                                  parentId: availableGc[0]?.id || formState.parentId,
+                                });
+                              }}
+                              className="w-full px-3 py-1.5 rounded-xl border border-teal-200 text-xs bg-white outline-none focus:ring-2 focus:ring-teal-300"
+                            >
+                              <option value="">Semua Bravo</option>
+                              {children.map((c) => {
+                                const pName = parents.find((p) => p.id === c.parentId)?.name;
+                                return (
+                                  <option key={c.id} value={c.id}>
+                                    {c.name} {pName ? `(${pName})` : ''}
+                                  </option>
+                                );
+                              })}
+                            </select>
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="text-[11px] font-extrabold text-teal-950 flex items-center gap-1">
+                              <CornerDownRight className="w-3 h-3 text-teal-600" />
+                              <span>Pilih Navigasi Charlie (Bekas / Container) *</span>
+                            </label>
+                            <select
+                              value={formState.parentId}
+                              onChange={(e) => setFormState({ ...formState, parentId: e.target.value })}
+                              required
+                              className="w-full px-3 py-2 rounded-xl border border-teal-300 text-xs bg-white font-bold text-teal-950 outline-none focus:ring-2 focus:ring-teal-300 shadow-2xs"
+                            >
+                              {grandchildrenForDeltaForm.map((gc) => {
+                                const cName = children.find((c) => c.id === gc.parentId)?.name;
+                                const containerTag = gc.displayType === 'empty_page' ? ' [Bekas]' : '';
+                                return (
+                                  <option key={gc.id} value={gc.id}>
+                                    {gc.name}{containerTag} {cName ? `(di bawah ${cName})` : ''}
+                                  </option>
+                                );
+                              })}
+                            </select>
+                          </div>
+                        </div>
+                      )}
                     </>
                   )}
 
@@ -1837,8 +2389,10 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                         }));
                       }}
                       placeholder={
-                        formState.type === 'grandchild'
-                          ? 'Contoh: Grading, Garis Masa, Panduan Peperiksaan...'
+                        formState.type === 'delta'
+                          ? 'Contoh: Lampiran E-1, Lampiran F, Garis Panduan...'
+                          : formState.type === 'grandchild'
+                          ? 'Contoh: Kertas Kerja, Grading, Panduan Peperiksaan...'
                           : 'Contoh: Directory Staff, Portal Pelajar, Jadual...'
                       }
                       required
@@ -1846,13 +2400,13 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                     />
                   </div>
 
-                  {/* URL Slug (Laluan Bersih / Clean URL Architecture SES v4.4) */}
+                  {/* URL Slug (Laluan Bersih / Clean URL Architecture SES v4.5) */}
                   <div className="space-y-1.5 p-3 rounded-2xl bg-indigo-50/60 border border-indigo-100">
                     <div className="flex items-center justify-between">
                       <label className="text-[11px] font-extrabold text-indigo-950 flex items-center gap-1.5">
                         <span>URL Slug</span>
                         <span className="text-[9px] font-extrabold px-1.5 py-0.2 rounded-md bg-indigo-100 text-indigo-800 border border-indigo-200">
-                          SES v4.4
+                          SES v4.5
                         </span>
                       </label>
                       {formState.name.trim() && (
@@ -1891,15 +2445,15 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                       />
                     </div>
 
-                    {/* Live Hierarchical URL Preview (SES v4.4 Specification) */}
+                    {/* Live Hierarchical URL Preview (SES v4.5 4-Level Specification) */}
                     {(() => {
                       const currentSlug = formState.slug || slugify(formState.name) || 'slug';
                       let previewPath = currentSlug;
-                      if (formState.type === 'grandchild' && formState.parentId) {
-                        const parentChild = children.find((c) => c.id === formState.parentId);
-                        const parentSlug = parentChild?.slug ? slugify(parentChild.slug) : slugify(parentChild?.name || '');
-                        if (parentSlug) {
-                          previewPath = `${parentSlug}/${currentSlug}`;
+                      if ((formState.type === 'grandchild' || formState.type === 'delta') && formState.parentId) {
+                        const parentObj = items.find((i) => i.id === formState.parentId);
+                        const parentHierarchical = parentObj ? getHierarchicalSlug(parentObj, items) : '';
+                        if (parentHierarchical) {
+                          previewPath = `${parentHierarchical}/${currentSlug}`;
                         }
                       } else if (formState.type === 'parent' && (formState.destination === 'directory' || formState.id === 'nav_directory')) {
                         previewPath = '';
@@ -1947,20 +2501,20 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                     </div>
                   </div>
 
-                  {/* SECTION B: DISPLAY TYPE & DESTINATION CONFIGURATION (Child & Grandchild) */}
-                  {formState.type === 'child' || formState.type === 'grandchild' ? (
+                  {/* SECTION B: DISPLAY TYPE & DESTINATION CONFIGURATION (Child, Grandchild & Delta) */}
+                  {formState.type === 'child' || formState.type === 'grandchild' || formState.type === 'delta' ? (
                     <div className="space-y-3 p-3.5 bg-slate-50 border border-slate-200 rounded-2xl">
                       <div className="flex items-center justify-between">
                         <label className="text-[11px] font-extrabold text-slate-800">
                           SEKSYEN B — JENIS PAPARAN KANDUNGAN
                         </label>
                         <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200">
-                          SES v4.4
+                          SES v4.5
                         </span>
                       </div>
 
                       {/* Display Type Selector Segmented Buttons */}
-                      <div className={`grid ${formState.type === 'child' ? 'grid-cols-3' : 'grid-cols-2'} gap-2`}>
+                      <div className={`grid ${formState.type === 'child' || formState.type === 'grandchild' ? 'grid-cols-3' : 'grid-cols-2'} gap-2`}>
                         <button
                           type="button"
                           onClick={() => setFormState({ ...formState, displayType: 'module' })}
@@ -1971,7 +2525,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                           }`}
                         >
                           <Layers className="w-3.5 h-3.5" />
-                          <span>Modul Sedia Ada</span>
+                          <span>{formState.type === 'delta' ? 'Modul / Pautan Luar' : 'Modul Sedia Ada'}</span>
                         </button>
                         <button
                           type="button"
@@ -1985,7 +2539,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                           <FileText className="w-3.5 h-3.5" />
                           <span>Paparan Google Drive</span>
                         </button>
-                        {formState.type === 'child' && (
+                        {(formState.type === 'child' || formState.type === 'grandchild') && (
                           <button
                             type="button"
                             onClick={() => setFormState({ ...formState, displayType: 'empty_page' })}
@@ -2001,21 +2555,37 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                         )}
                       </div>
 
-                      {formState.displayType === 'empty_page' ? (
+                      {formState.displayType === 'empty_page' && (formState.type === 'child' || formState.type === 'grandchild') ? (
                         <div className="space-y-2 p-3.5 bg-emerald-50/70 border border-emerald-200/80 rounded-xl text-left">
                           <div className="flex items-center gap-2 text-emerald-800 font-extrabold text-xs">
                             <Layout className="w-4 h-4 text-emerald-600" />
-                            <span>Halaman Kosong / Container Navigasi Charlie</span>
+                            <span>
+                              {formState.type === 'grandchild'
+                                ? 'Halaman Kosong / Container Navigasi Delta'
+                                : 'Halaman Kosong / Container Navigasi Charlie'}
+                            </span>
                           </div>
                           <p className="text-[11px] text-emerald-700 leading-relaxed">
-                            Navigasi ini akan berfungsi sebagai <b>halaman container</b> yang membolehkan navigasi charlie diletakkan di bawahnya. Tidak memerlukan pautan Google Drive atau modul aplikasi khusus.
+                            {formState.type === 'grandchild' ? (
+                              <>
+                                Navigasi Charlie ini akan berfungsi sebagai <b>halaman container</b> yang membolehkan navigasi delta (dokumen PDF, borang, atau pautan) diletakkan di bawahnya.
+                              </>
+                            ) : (
+                              <>
+                                Navigasi ini akan berfungsi sebagai <b>halaman container</b> yang membolehkan navigasi charlie diletakkan di bawahnya. Tidak memerlukan pautan Google Drive atau modul aplikasi khusus.
+                              </>
+                            )}
                           </p>
                           <div className="text-[10px] text-emerald-900 bg-white/90 p-2.5 rounded-lg border border-emerald-200 font-medium space-y-1">
                             <div className="font-bold flex items-center gap-1 text-emerald-800">
-                              <span>✓ Bersedia Menerima Navigasi Charlie:</span>
+                              <span>
+                                ✓ Bersedia Menerima Navigasi {formState.type === 'grandchild' ? 'Delta' : 'Charlie'}:
+                              </span>
                             </div>
                             <p className="text-slate-600 leading-normal">
-                              Halaman kosong yang sah ini boleh menerima navigasi charlie kemudian. Anda boleh menambah navigasi charlie di bawahnya bila-bila masa melalui tab Charlie atau dari paparan container ini.
+                              {formState.type === 'grandchild'
+                                ? 'Anda boleh menambah item Delta di bawah bekas Charlie ini bila-bila masa melalui tab Delta atau terus daripada paparan container Charlie.'
+                                : 'Halaman kosong yang sah ini boleh menerima navigasi charlie kemudian. Anda boleh menambah navigasi charlie di bawahnya bila-bila masa melalui tab Charlie atau dari paparan container ini.'}
                             </p>
                           </div>
                         </div>

@@ -377,7 +377,23 @@ export function canDeleteChild(
 }
 
 /**
- * Generates a stable unique ID for a navigation item (Parent, Child, or Grandchild)
+ * Checks whether a Grandchild (Charlie) Navigation item can be safely deleted (SES v4.5 4-Level Architecture)
+ * A Charlie item with Delta children cannot be deleted until its deltas are deleted or reassigned.
+ */
+export function canDeleteGrandchild(
+  grandchildId: string,
+  allItems: NavigationItem[]
+): { canDelete: boolean; deltasCount: number; deltasNames: string[] } {
+  const deltas = allItems.filter((item) => item.type === 'delta' && item.parentId === grandchildId);
+  return {
+    canDelete: deltas.length === 0,
+    deltasCount: deltas.length,
+    deltasNames: deltas.map((d) => d.name),
+  };
+}
+
+/**
+ * Generates a stable unique ID for a navigation item (Parent, Child, Grandchild, or Delta)
  */
 export function generateNavId(name: string, type: NavigationType): string {
   const clean = name
@@ -386,7 +402,14 @@ export function generateNavId(name: string, type: NavigationType): string {
     .replace(/_+/g, '_')
     .slice(0, 16);
   const rand = Math.random().toString(36).substring(2, 6);
-  const prefix = type === 'parent' ? 'nav_p_' : type === 'grandchild' ? 'nav_gc_' : 'nav_c_';
+  const prefix =
+    type === 'parent'
+      ? 'nav_p_'
+      : type === 'grandchild'
+      ? 'nav_gc_'
+      : type === 'delta'
+      ? 'nav_d_'
+      : 'nav_c_';
   return `${prefix}${clean || 'item'}_${rand}`;
 }
 
@@ -408,9 +431,10 @@ export function slugify(text: string): string {
 /**
  * Resolves the hierarchical slug for a navigation item.
  * Walks up the parentId chain, omitting root 'parent' (Alfa) hubs as per SES specification:
- * - Alfa (Level 1 Parent) -> Excluded from child/grandchild path (e.g. Rujukan Kolej)
+ * - Alfa (Level 1 Parent) -> Excluded from child/grandchild/delta path (e.g. Rujukan Kolej)
  * - Bravo (Level 2 Child) -> /anak_slug (e.g. /borang)
- * - Charlie (Level 3 Grandchild) -> /anak_slug/cucu_slug (e.g. /borang/bayaran_penceramah, /borang/lampiran_a)
+ * - Charlie (Level 3 Grandchild) -> /anak_slug/cucu_slug (e.g. /borang/kertas_kerja)
+ * - Delta (Level 4 Delta) -> /anak_slug/cucu_slug/delta_slug (e.g. /borang/kertas_kerja/lampiran_f)
  */
 export function getHierarchicalSlug(
   item: NavigationItem,
@@ -520,13 +544,15 @@ export function validateNavigationSlug(
     return { valid: false, error: `Slug "${trimmed}" adalah laluan terpelihara sistem. Sila pilih slug yang lain.` };
   }
 
-  // Calculate projected hierarchical slug to prevent nested URL collision
+  // Calculate projected hierarchical slug to prevent nested URL collision (supports Level 3 Charlie & Level 4 Delta)
   let projectedHierarchical = trimmed;
-  if (type === 'grandchild' && parentId) {
-    const pChild = allItems.find((c) => c.id === parentId);
-    const pSlug = pChild?.slug ? slugify(pChild.slug) : slugify(pChild?.name || '');
-    if (pSlug) {
-      projectedHierarchical = `${pSlug}/${trimmed}`;
+  if ((type === 'grandchild' || type === 'delta') && parentId) {
+    const parentItem = allItems.find((i) => i.id === parentId);
+    if (parentItem && parentItem.type !== 'parent') {
+      const parentHierarchical = getHierarchicalSlug(parentItem, allItems);
+      if (parentHierarchical) {
+        projectedHierarchical = `${parentHierarchical}/${trimmed}`;
+      }
     }
   }
 
@@ -553,17 +579,18 @@ export interface ResolvedNavigationResult {
   matchedItem?: NavigationItem;
   parentItem?: NavigationItem;
   grandParentItem?: NavigationItem;
+  ancestors?: NavigationItem[];
   canonicalPath?: string;
 }
 
 /**
- * Centralized Navigation Destination Resolver (SES v4.4 Specification)
+ * Centralized Navigation Destination Resolver (SES v4.5 Specification)
  * 
- * Supports Multi-level Hierarchical URL matching:
- * 1. Match exact hierarchical slug (e.g. "borang/bayaran_penceramah")
- * 2. Match hierarchical slug with Alfa included (e.g. "rujukan/borang/bayaran_penceramah")
+ * Supports Multi-level Hierarchical URL matching (Alfa -> Bravo -> Charlie -> Delta):
+ * 1. Match exact hierarchical slug (e.g. "borang/kertas_kerja/lampiran_f", "borang/kertas_kerja", "borang")
+ * 2. Match hierarchical slug with Alfa included (e.g. "rujukan/borang/kertas_kerja/lampiran_f")
  * 3. Match unique navigation ID (Internal identity)
- * 4. Backward Compatibility: Match single leaf slug (e.g. "bayaran_penceramah" -> redirect to "/borang/bayaran_penceramah")
+ * 4. Backward Compatibility: Match single leaf slug (e.g. "bayaran_penceramah" -> resolves to target)
  * 5. Match standard module destinations
  * 6. Match legacy routes
  */
@@ -593,18 +620,25 @@ export function resolveNavigationFromUrl(
   // Clean and normalize token (remove leading/trailing slashes, lowercase)
   const cleanToken = token.replace(/^\/+|\/+$/g, '').toLowerCase();
 
-  const buildHierarchy = (item?: NavigationItem): { parentItem?: NavigationItem; grandParentItem?: NavigationItem } => {
+  const buildHierarchy = (
+    item?: NavigationItem
+  ): { parentItem?: NavigationItem; grandParentItem?: NavigationItem; ancestors?: NavigationItem[] } => {
     if (!item) return {};
-    if (item.type === 'grandchild') {
-      const parent = items.find((i) => i.id === item.parentId);
-      const grandParent = items.find((i) => i.id === parent?.parentId);
-      return { parentItem: parent, grandParentItem: grandParent };
+    const ancestors: NavigationItem[] = [];
+    const visited = new Set<string>([item.id]);
+    let curParentId = item.parentId;
+    while (curParentId && !visited.has(curParentId)) {
+      visited.add(curParentId);
+      const p = items.find((i) => i.id === curParentId);
+      if (!p) break;
+      ancestors.unshift(p);
+      curParentId = p.parentId;
     }
-    if (item.type === 'child') {
-      const parent = items.find((i) => i.id === item.parentId);
-      return { parentItem: parent };
-    }
-    return {};
+    return {
+      parentItem: ancestors.length > 0 ? ancestors[ancestors.length - 1] : undefined,
+      grandParentItem: ancestors.length > 1 ? ancestors[ancestors.length - 2] : undefined,
+      ancestors,
+    };
   };
 
   const createResult = (item?: NavigationItem, fallbackNavId?: string, fallbackDest?: string): ResolvedNavigationResult => {
@@ -709,7 +743,7 @@ export function resolveNavigationFromUrl(
 }
 
 /**
- * Normalizes 3-Level navigation ordering (Parent -> Child -> Grandchild)
+ * Normalizes 4-Level navigation ordering (Parent -> Child -> Grandchild -> Delta)
  */
 export function normalizeNavigationList(items: NavigationItem[]): NavigationItem[] {
   const sanitizeItem = (i: NavigationItem): NavigationItem => {
@@ -776,7 +810,32 @@ export function normalizeNavigationList(items: NavigationItem[]): NavigationItem
     });
   });
 
-  return [...parents, ...groupedChildren, ...groupedGrandchildren];
+  // Level 4: Deltas grouped by Grandchild
+  const deltas = items
+    .filter((i) => i.type === 'delta')
+    .sort((a, b) => {
+      if (a.parentId === b.parentId) return a.order - b.order;
+      return (a.parentId || '').localeCompare(b.parentId || '');
+    });
+
+  const groupedDeltas: NavigationItem[] = [];
+  const grandchildGroups = new Map<string, NavigationItem[]>();
+
+  deltas.forEach((d) => {
+    const gcId = d.parentId || 'orphan';
+    if (!grandchildGroups.has(gcId)) {
+      grandchildGroups.set(gcId, []);
+    }
+    grandchildGroups.get(gcId)!.push(d);
+  });
+
+  grandchildGroups.forEach((group) => {
+    group.forEach((item, index) => {
+      groupedDeltas.push({ ...sanitizeItem(item), order: index });
+    });
+  });
+
+  return [...parents, ...groupedChildren, ...groupedGrandchildren, ...groupedDeltas];
 }
 
 /**
@@ -955,7 +1014,11 @@ export function subscribeToNavigation(callback: (items: NavigationItem[]) => voi
   return onSnapshot(
     navigationDocRef(),
     (snapshot) => {
+      const isFromCache = Boolean(snapshot.metadata?.fromCache);
       if (!snapshot.exists()) {
+        if (isFromCache) {
+          return;
+        }
         const migration = migrateUppkGradingIfNeeded(DEFAULT_NAVIGATION_ITEMS);
         const defaults = normalizeNavigationList(ensureRujukanPlatformNavigation(migration.items));
         if (typeof window !== 'undefined') {

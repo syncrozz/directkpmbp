@@ -246,12 +246,6 @@ export const TakwimViewer: React.FC<TakwimViewerProps> = ({ isAdminMode = false,
         fallback
       )}
 
-      {hasViewer && (
-        <p className="text-[10.5px] text-slate-400 font-medium text-center">
-          Tidak dapat dilihat? Klik <b>Buka di Drive</b> atau <b>Lihat Penuh</b>.
-        </p>
-      )}
-
       {isFullscreen && parsed && (
         <div
           className="fixed inset-0 z-[100] flex flex-col bg-slate-950/90 backdrop-blur-md"

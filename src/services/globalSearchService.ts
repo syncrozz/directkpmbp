@@ -126,7 +126,7 @@ function isExternalHttpUrl(value?: string): boolean {
 }
 
 /**
- * Resolves the ancestor chain (Parent -> Child -> Grandchild) and verifies
+ * Resolves the ancestor chain (Parent -> Child -> Grandchild -> Delta) and verifies
  * that the item and every ancestor are active and cycle-free.
  */
 function resolveActiveAncestors(
@@ -152,7 +152,10 @@ function resolveActiveAncestors(
     currentParentId = parent.parentId;
   }
 
-  if ((item.type === 'child' || item.type === 'grandchild') && chain[0]?.type !== 'parent') {
+  if (
+    (item.type === 'child' || item.type === 'grandchild' || item.type === 'delta') &&
+    chain[0]?.type !== 'parent'
+  ) {
     return null;
   }
 
@@ -186,7 +189,7 @@ export function classifyNavigationContentType(
   const hasActiveChildren = allItems.some(
     (other) => other.parentId === item.id && other.isActive === true
   );
-  if (item.type === 'child' && hasActiveChildren && item.destination === item.id) {
+  if ((item.type === 'child' || item.type === 'grandchild') && hasActiveChildren && item.destination === item.id) {
     return 'Container';
   }
 
@@ -466,7 +469,8 @@ export function searchGlobalNavigation(
       score -= 40;
     }
 
-    if (entry.item.type === 'grandchild') score += 8;
+    if (entry.item.type === 'delta') score += 10;
+    else if (entry.item.type === 'grandchild') score += 8;
     else if (entry.item.type === 'child') score += 4;
 
     results.push({ entry, score });

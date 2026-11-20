@@ -233,9 +233,9 @@ export const LecturerTimetableHub: React.FC<LecturerTimetableHubProps> = ({
   }, [academicStaffList, availableIds]);
 
   return (
-    <div className="space-y-6 text-left">
+    <div className="space-y-4 sm:space-y-5 text-left">
       {/* Dynamic Filter & Controls Bar (Search consolidated into GlobalSmartSearch) */}
-      <div className="glass-panel rounded-3xl p-4 md:p-4 border border-white/60 shadow-xs space-y-3 sticky top-2 z-20 backdrop-blur-md bg-white/95 transition-all">
+      <div className="glass-panel rounded-2xl sm:rounded-3xl p-3 sm:p-4 border border-white/60 shadow-xs space-y-3 backdrop-blur-md bg-white/95 transition-all">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
           {/* Department Filter Pills */}
           <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 pt-0.5 scrollbar-none min-w-0 flex-1">
@@ -311,11 +311,6 @@ export const LecturerTimetableHub: React.FC<LecturerTimetableHubProps> = ({
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
                 Senarai Pensyarah ({filteredStaff.length})
               </span>
-              {selectedStaff && (
-                <span className="text-xs font-medium text-rose-600">
-                  Dipilih: <span className="font-extrabold">{currentStaffId}</span>
-                </span>
-              )}
             </div>
 
             {isLoading ? (
@@ -418,11 +413,11 @@ export const LecturerTimetableHub: React.FC<LecturerTimetableHubProps> = ({
               </div>
             )}
 
-            {/* Source of truth footer note */}
+            {/* Source footer note */}
             <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
               <span className="inline-flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                Arkib: syncrozz/syncrozz-assets (TimeTable)
+                Arkib Jadual Pensyarah
               </span>
               {lastUpdated && <span>Kemas kini: {lastUpdated}</span>}
             </div>

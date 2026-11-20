@@ -13,7 +13,6 @@ import {
   Check, 
   BookOpen, 
   AlertCircle,
-  Eye,
   Info
 } from 'lucide-react';
 import { StudentTimetable } from '../types';
@@ -372,7 +371,7 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-5">
       {/* Top Filter & Controls Bar (Search consolidated into GlobalSmartSearch) */}
       <div className="glass-panel rounded-2xl sm:rounded-3xl p-3 sm:p-4 border border-white/60 shadow-xs space-y-2.5 bg-white/95 backdrop-blur-md">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
@@ -436,13 +435,8 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({
           <div className="glass-panel rounded-3xl p-4 md:p-5 border border-white/60 shadow-xs space-y-3">
             <div className="flex items-center justify-between px-1">
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                Senarai Padanan ({filteredTimetables.length})
+                Senarai Kelas ({filteredTimetables.length})
               </span>
-              {selectedTimetable && (
-                <span className="text-xs font-medium text-indigo-600">
-                  Dipilih: <span className="font-extrabold">{selectedTimetable.classCode}</span>
-                </span>
-              )}
             </div>
 
             {isLoading ? (
@@ -516,11 +510,11 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({
               </div>
             )}
 
-            {/* Source of truth footer note */}
+            {/* Source footer note */}
             <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
               <span className="inline-flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                Sumber: syncrozz/syncrozz-assets
+                Arkib Jadual Pelajar
               </span>
               {lastUpdated && <span>Kemas kini: {lastUpdated}</span>}
             </div>
@@ -541,32 +535,30 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({
                   <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${getSemesterTheme(selectedTimetable.semester, selectedTimetable.classCode).badgeViewer}`}>
                     {selectedTimetable.program} • {selectedTimetable.semester}
                   </span>
+                </div>
 
-                  {/* 2 Buttons placed directly beside the program & semester badge */}
-                  <div className="flex items-center gap-1.5 ml-1">
-                    {/* Fullscreen Button */}
-                    <button
-                      type="button"
-                      onClick={() => setIsFullscreenOpen(true)}
-                      title="Buka paparan skrin penuh"
-                      aria-label="Buka paparan skrin penuh"
-                      className="p-2 rounded-xl text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer flex items-center justify-center"
-                    >
-                      <Maximize2 className="w-4 h-4" />
-                    </button>
+                {/* Right-Aligned Action Controls (Consistent Across All Viewers) */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setIsFullscreenOpen(true)}
+                    title="Buka paparan skrin penuh"
+                    aria-label="Buka paparan skrin penuh"
+                    className="p-2 rounded-xl text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer flex items-center justify-center"
+                  >
+                    <Maximize2 className="w-4 h-4" />
+                  </button>
 
-                    {/* Download Button */}
-                    <button
-                      type="button"
-                      onClick={handleDownload}
-                      disabled={downloading}
-                      title="Muat turun imej resolusi asal"
-                      aria-label="Muat turun imej resolusi asal"
-                      className="p-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs shadow-indigo-200 transition-colors disabled:opacity-50 cursor-pointer flex items-center justify-center"
-                    >
-                      <Download className={`w-4 h-4 ${downloading ? 'animate-bounce' : ''}`} />
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={handleDownload}
+                    disabled={downloading}
+                    title="Muat turun imej resolusi asal"
+                    aria-label="Muat turun imej resolusi asal"
+                    className="p-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs shadow-indigo-200 transition-colors disabled:opacity-50 cursor-pointer flex items-center justify-center"
+                  >
+                    <Download className={`w-4 h-4 ${downloading ? 'animate-bounce' : ''}`} />
+                  </button>
                 </div>
               </div>
 
@@ -633,16 +625,6 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({
                       className="w-full h-auto max-h-[75vh] object-contain rounded-xl shadow-2xs cursor-zoom-in transition-transform duration-200"
                       onClick={() => setIsFullscreenOpen(true)}
                     />
-
-                    {/* Hover Click Hint */}
-                    <button
-                      type="button"
-                      onClick={() => setIsFullscreenOpen(true)}
-                      className="absolute bottom-4 right-4 bg-slate-900/75 hover:bg-slate-900 text-white px-3 py-1.5 rounded-xl text-xs font-semibold backdrop-blur-sm shadow-md transition-all opacity-90 sm:opacity-0 sm:group-hover:opacity-100 flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      <span>Klik untuk Skrin Penuh</span>
-                    </button>
                   </div>
                 )}
               </div>

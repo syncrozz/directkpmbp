@@ -16,10 +16,10 @@ import {
   Lock,
   Pencil,
   FileSpreadsheet,
-  ChevronDown,
   GraduationCap,
   Layers,
-  LogOut
+  LogOut,
+  ExternalLink
 } from 'lucide-react';
 import { Staff, DivisionType, StaffCommittee, AuthorizedAdmin, NavigationItem, PlatformLink, PlatformSyncStatus, StudentTimetable } from './types';
 import { INITIAL_STAFF_DATA } from './data/initialStaff';
@@ -91,6 +91,19 @@ export default function App() {
         target = gcs[0];
       }
     }
+    if (
+      target.type === 'grandchild' &&
+      target.displayType !== 'empty_page' &&
+      !target.driveUrl &&
+      target.destination === target.id
+    ) {
+      const deltas = allItems
+        .filter((i) => i.type === 'delta' && i.parentId === target.id && i.isActive)
+        .sort((a, b) => a.order - b.order);
+      if (deltas.length > 0) {
+        target = deltas[0];
+      }
+    }
     return target;
   };
 
@@ -129,41 +142,41 @@ export default function App() {
       return resolveLeafItem(byId, navigationItems);
     }
 
-    // 2. Match by exact hierarchical slug (e.g. "borang/bayaran_penceramah")
+    // 2. Match by exact hierarchical slug (e.g. "borang/kertas_kerja/lampiran_f")
     const byHierarchicalSlug = navigationItems.find(
       (item) => getHierarchicalSlug(item, navigationItems).toLowerCase() === activeHub.toLowerCase()
     );
-    if (byHierarchicalSlug) return byHierarchicalSlug;
+    if (byHierarchicalSlug) {
+      return resolveLeafItem(byHierarchicalSlug, navigationItems);
+    }
 
     // 3. Match by leaf slug
     const bySlug = navigationItems.find(
       (item) => item.slug && item.slug.toLowerCase() === activeHub.toLowerCase()
     );
     if (bySlug) {
-      if (bySlug.type === 'child' && bySlug.displayType !== 'empty_page' && !bySlug.driveUrl) {
-        const childGrandchildren = navigationItems.filter(
-          (item) => item.type === 'grandchild' && item.parentId === bySlug.id && item.isActive
-        );
-        if (childGrandchildren.length > 0 && !bySlug.driveUrl && bySlug.destination === bySlug.id) {
-          return childGrandchildren[0];
-        }
-      }
-      return bySlug;
+      return resolveLeafItem(bySlug, navigationItems);
     }
 
-    // 4. Grandchild match by destination
+    // 4. Delta match by destination
+    const deltaMatch = navigationItems.find(
+      (item) => item.type === 'delta' && item.destination === activeHub
+    );
+    if (deltaMatch) return deltaMatch;
+
+    // 5. Grandchild match by destination
     const grandchildMatch = navigationItems.find(
       (item) => item.type === 'grandchild' && item.destination === activeHub
     );
     if (grandchildMatch) return grandchildMatch;
 
-    // 5. Child match by destination
+    // 6. Child match by destination
     const childMatch = navigationItems.find(
       (item) => item.type === 'child' && item.destination === activeHub
     );
     if (childMatch) return childMatch;
 
-    // 6. Parent match by destination
+    // 7. Parent match by destination
     return navigationItems.find((item) => item.destination === activeHub);
   }, [navigationItems, activeHub]);
 
@@ -854,6 +867,7 @@ export default function App() {
                         type="button"
                         onClick={() => {
                           setIsAdminProfileOpen(false);
+                          setNavManagerContext(null);
                           setIsNavManagerOpen(true);
                         }}
                         className="w-full px-2.5 py-2 text-xs font-bold text-slate-700 hover:text-indigo-600 hover:bg-slate-50 rounded-xl transition-all flex items-center gap-2 cursor-pointer"
@@ -988,11 +1002,13 @@ export default function App() {
           <EmptyPageContainer
             item={activeNavItem}
             parentItem={navigationItems.find((p) => p.id === activeNavItem.parentId)}
-            grandchildren={navigationItems.filter((item) =>
-              activeNavItem.type === 'parent'
-                ? item.type === 'child' && item.parentId === activeNavItem.id && item.isActive
-                : item.type === 'grandchild' && item.parentId === activeNavItem.id && item.isActive
-            )}
+            grandchildren={navigationItems.filter((item) => {
+              if (!item.isActive || item.parentId !== activeNavItem.id) return false;
+              if (activeNavItem.type === 'parent') return item.type === 'child';
+              if (activeNavItem.type === 'child') return item.type === 'grandchild';
+              if (activeNavItem.type === 'grandchild') return item.type === 'delta';
+              return false;
+            })}
             allItems={navigationItems}
             onSelectGrandchild={(gc) => handleSelectDestination(gc.id || gc.destination)}
             onSelectParent={(pId) => handleSelectDestination(pId)}
@@ -1002,6 +1018,12 @@ export default function App() {
                 setNavManagerContext({
                   mode: 'contextual-charlie',
                   bravoParentId: activeNavItem.id,
+                  autoOpenAdd: true,
+                });
+              } else if (activeNavItem.type === 'grandchild') {
+                setNavManagerContext({
+                  mode: 'contextual-delta',
+                  charlieParentId: activeNavItem.id,
                   autoOpenAdd: true,
                 });
               } else {
@@ -1083,10 +1105,10 @@ export default function App() {
             }}
           />
         ) : resolvedDestination === 'directory' ? (
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-5">
             
             {/* Directory Filter & Category Control Bar (One Search consolidated into GlobalSmartSearch above) */}
-            <div className="glass-panel rounded-3xl p-3.5 md:p-4 border border-white/55 shadow-sm space-y-3 text-left sticky top-2 z-30 bg-white/95 backdrop-blur-md transition-all">
+            <div className="glass-panel rounded-2xl sm:rounded-3xl p-3 sm:p-4 border border-white/60 shadow-xs space-y-3 text-left bg-white/95 backdrop-blur-md transition-all">
               
               {/* Mobile Search Live Toolbar: Appears when typing on mobile for instant feedback without layout shift */}
               {searchQuery.trim() && (
@@ -1276,24 +1298,6 @@ export default function App() {
               )}
             </div>
 
-            {/* Mobile Floating Result Quick Dismiss Pill (Optional helper when searching on mobile) */}
-            {searchQuery.trim() && filteredStaff.length > 0 && (
-              <div className="sm:hidden fixed bottom-4 inset-x-4 z-40 flex justify-center pointer-events-none">
-                <button
-                  type="button"
-                  onClick={() => (document.activeElement as HTMLElement)?.blur()}
-                  className="pointer-events-auto bg-slate-900/90 hover:bg-slate-900 text-white text-xs font-bold px-4 py-2.5 rounded-full shadow-xl backdrop-blur-md flex items-center gap-2 border border-slate-700/50 active:scale-95 transition-all cursor-pointer"
-                >
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <span>{filteredStaff.length} staf dijumpai</span>
-                  <span className="text-slate-400">•</span>
-                  <span className="text-indigo-300 font-extrabold flex items-center gap-0.5">
-                    Lihat Penuh <ChevronDown className="w-3.5 h-3.5 inline" />
-                  </span>
-                </button>
-              </div>
-            )}
-
           </div>
         ) : resolvedDestination === 'jadual' ? (
           <StudentTimetableHub
@@ -1312,7 +1316,7 @@ export default function App() {
             }}
           />
         ) : resolvedDestination === 'platform' || resolvedDestination === 'rujukan' ? (
-          <div className="glass-panel rounded-3xl p-6 md:p-8 border border-white/55 shadow-sm">
+          <div className="glass-panel rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-white/60 shadow-xs">
             <PlatformHub
               isAdminMode={isAdminMode}
               platformsData={platformLinks}
@@ -1332,6 +1336,40 @@ export default function App() {
               setSelectedStaff(staff);
             }}
           />
+        ) : /^https?:\/\//i.test(resolvedDestination) ? (
+          <div className="glass-panel rounded-3xl p-8 sm:p-10 text-center space-y-5 max-w-lg mx-auto my-10 border border-white/70 shadow-sm">
+            <div className="w-14 h-14 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 mx-auto shadow-2xs">
+              <ExternalLink className="w-6 h-6" />
+            </div>
+            <div className="space-y-1.5">
+              <h3 className="text-lg font-extrabold text-slate-900">
+                {activeNavItem?.displayTitle || activeNavItem?.name || 'Pautan Luar'}
+              </h3>
+              <p className="text-xs text-slate-500 font-medium break-all bg-slate-50/90 px-3 py-2 rounded-xl border border-slate-200/70">
+                {resolvedDestination}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-2.5 pt-1">
+              <a
+                href={resolvedDestination}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-extrabold shadow-sm cursor-pointer transition-all active:scale-95 inline-flex items-center gap-2"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>Buka Pautan Rasmi</span>
+              </a>
+              {activeNavItem?.parentId && (
+                <button
+                  type="button"
+                  onClick={() => handleSelectDestination(activeNavItem.parentId!)}
+                  className="px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold shadow-2xs cursor-pointer transition-all active:scale-95"
+                >
+                  Kembali
+                </button>
+              )}
+            </div>
+          </div>
         ) : (
           <div className="glass-panel rounded-3xl p-10 text-center space-y-4 max-w-lg mx-auto my-12">
             <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 mx-auto">
@@ -1458,7 +1496,10 @@ export default function App() {
           }
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }}
-        onOpenNavigationManager={() => setIsNavManagerOpen(true)}
+        onOpenNavigationManager={() => {
+          setNavManagerContext(null);
+          setIsNavManagerOpen(true);
+        }}
       />
 
       <AdminPinModal

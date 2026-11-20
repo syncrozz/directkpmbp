@@ -138,7 +138,7 @@ export interface PlatformSubscriptionResult {
   errorMessage?: string;
 }
 
-export type NavigationType = 'parent' | 'child' | 'grandchild';
+export type NavigationType = 'parent' | 'child' | 'grandchild' | 'delta';
 export type NavigationDisplayType = 'module' | 'drive' | 'empty_page';
 
 export type ThumbnailStatus =
@@ -155,8 +155,8 @@ export interface NavigationItem {
   id: string; // Stable unique identifier e.g. "nav_directory"
   name: string; // Display name e.g. "Directory Staff"
   icon: string; // Icon identifier e.g. "UserCheck", "BookOpen", "Calendar"
-  type: NavigationType; // 'parent' | 'child' | 'grandchild'
-  parentId?: string | null; // ID of immediate parent: null for parent, Parent ID for child, Child ID for grandchild
+  type: NavigationType; // 'parent' | 'child' | 'grandchild' | 'delta'
+  parentId?: string | null; // ID of immediate parent: null for parent (Alfa), Parent ID for child (Bravo), Child ID for grandchild (Charlie), Grandchild ID for delta (Delta)
   destination: string; // Module identifier or route ('directory' | 'platform' | 'jadual' | 'jadual-pensyarah' | 'daftar' | custom URL | navId)
   order: number; // Display order index within its parent container
   isActive: boolean; // Active toggle

@@ -21,18 +21,15 @@ import {
 } from '../services/pdfThumbnailService';
 import {
   FolderTree,
-  ChevronRight,
   Plus,
   FileText,
-  Layers,
-  ArrowRight,
   Sparkles,
-  Info,
   Loader2,
   CheckCircle2,
   AlertCircle,
   RotateCcw,
-  ExternalLink
+  ExternalLink,
+  Layers
 } from 'lucide-react';
 
 interface EmptyPageContainerProps {
@@ -68,6 +65,9 @@ export const EmptyPageContainer: React.FC<EmptyPageContainerProps> = ({
     latestAllItemsRef.current = allItems;
     latestGrandchildrenRef.current = grandchildren;
   }, [allItems, grandchildren]);
+
+  const childLevelLabel =
+    item.type === 'parent' ? 'Bravo' : item.type === 'child' ? 'Charlie' : 'Delta';
 
   const eligiblePdfs = grandchildren.filter(isEligibleDrivePdf);
   const readyThumbnailsCount = eligiblePdfs.filter(
@@ -198,98 +198,63 @@ export const EmptyPageContainer: React.FC<EmptyPageContainerProps> = ({
   };
 
   return (
-    <div className="space-y-6 text-left animate-fadeIn">
-      {/* 1. Header Hero Glass Card */}
-      <div className="glass-panel rounded-3xl p-6 sm:p-8 border border-white/60 shadow-sm bg-gradient-to-br from-white/95 via-amber-50/20 to-white/90 backdrop-blur-md relative overflow-hidden">
-        {/* Ambient subtle decorative shape */}
-        <div className="absolute -top-12 -right-12 w-48 h-48 bg-amber-400/10 rounded-full blur-2xl pointer-events-none" />
+    <div className="space-y-4 sm:space-y-5 text-left animate-fadeIn">
+      {/* 1. Compact Context-Aware Container Header */}
+      <div className="glass-panel rounded-2xl sm:rounded-3xl px-4 py-3.5 sm:px-5 sm:py-4 border border-white/60 shadow-xs bg-white/95 backdrop-blur-md">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 via-amber-600 to-orange-600 text-white flex items-center justify-center shadow-xs shadow-amber-200 shrink-0">
+              {renderNavIcon(item.icon, 'w-5 h-5 text-white')}
+            </div>
+            <div className="min-w-0 flex items-center gap-2 flex-wrap">
+              <h2 className="font-sans font-black text-slate-900 text-lg sm:text-xl tracking-tight leading-tight truncate">
+                {item.name}
+              </h2>
+              <span className="px-2.5 py-0.5 rounded-full text-[10.5px] font-extrabold bg-amber-50 text-amber-900 border border-amber-200/80 shrink-0">
+                {grandchildren.length} {item.type === 'grandchild' ? 'dokumen' : 'item'}
+              </span>
+            </div>
+          </div>
 
-        <div className="relative z-10 space-y-4">
-          {/* Breadcrumb Hierarchy */}
-          <nav aria-label="Hierarki Navigasi" className="flex items-center gap-1.5 text-xs font-extrabold text-slate-400 flex-wrap">
-            {parentItem && (
-              <>
+          {/* Admin Fast-track Buttons */}
+          {isAdminMode && (
+            <div className="flex items-center gap-2 flex-wrap shrink-0">
+              {eligiblePdfs.length > 0 && (
                 <button
                   type="button"
-                  onClick={() => onSelectParent?.(parentItem.id || parentItem.destination)}
-                  className="flex items-center gap-1 text-slate-500 hover:text-indigo-600 transition-colors cursor-pointer"
+                  onClick={() => handleBulkGenerate(false)}
+                  disabled={isBulkGenerating}
+                  title="Jana Semula Semua Thumbnail PDF di halaman ini"
+                  className="px-3.5 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white rounded-xl text-xs font-extrabold shadow-sm transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 disabled:opacity-50 shrink-0"
                 >
-                  {renderNavIcon(parentItem.icon, 'w-3.5 h-3.5 text-slate-500')}
-                  <span>{parentItem.name}</span>
+                  {isBulkGenerating ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>
+                        Menjana... ({bulkProgress?.completed}/{bulkProgress?.total})
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Jana Thumbnail ({readyThumbnailsCount}/{eligiblePdfs.length})</span>
+                    </>
+                  )}
                 </button>
-                <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-              </>
-            )}
-            <span className="flex items-center gap-1 text-amber-700 bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-200/80">
-              {renderNavIcon(item.icon, 'w-3.5 h-3.5 text-amber-600')}
-              <span>{item.name}</span>
-            </span>
-          </nav>
+              )}
 
-          {/* Title & Badge */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-start sm:items-center gap-3.5">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-500 via-amber-600 to-orange-600 text-white flex items-center justify-center shadow-md shadow-amber-200 shrink-0">
-                {renderNavIcon(item.icon, 'w-6 h-6 text-white')}
-              </div>
-              <div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h2 className="font-sans font-black text-slate-900 text-xl sm:text-2xl tracking-tight leading-tight">
-                    {item.name}
-                  </h2>
-                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-200/80 flex items-center gap-1">
-                    <FolderTree className="w-3 h-3 text-amber-700" />
-                    <span>Pages Kosong • Container</span>
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500 font-medium mt-1">
-                  {grandchildren.length > 0
-                    ? `Terdapat ${grandchildren.length} navigasi kandungan disediakan di bawah bekas ini.`
-                    : `Halaman bekas sedia untuk menempatkan navigasi ${item.type === 'parent' ? 'bravo' : 'charlie'} dan fail berkaitan.`}
-                </p>
-              </div>
+              {onOpenNavManager && (
+                <button
+                  type="button"
+                  onClick={onOpenNavManager}
+                  className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-extrabold shadow-sm transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 shrink-0"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Urus / Tambah {childLevelLabel}</span>
+                </button>
+              )}
             </div>
-
-            {/* Admin Fast-track Buttons */}
-            {isAdminMode && (
-              <div className="flex items-center gap-2 flex-wrap">
-                {eligiblePdfs.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => handleBulkGenerate(false)}
-                    disabled={isBulkGenerating}
-                    title="Jana Semula Semua Thumbnail PDF di halaman ini"
-                    className="px-3.5 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white rounded-xl text-xs font-extrabold shadow-sm transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 disabled:opacity-50 shrink-0"
-                  >
-                    {isBulkGenerating ? (
-                      <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        <span>
-                          Menjana... ({bulkProgress?.completed}/{bulkProgress?.total})
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="w-3.5 h-3.5" />
-                        <span>Jana Thumbnail ({readyThumbnailsCount}/{eligiblePdfs.length})</span>
-                      </>
-                    )}
-                  </button>
-                )}
-
-                {onOpenNavManager && (
-                  <button
-                    type="button"
-                    onClick={onOpenNavManager}
-                    className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-extrabold shadow-sm transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 shrink-0"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>Urus / Tambah Charlie</span>
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
+          )}
         </div>
       </div>
 
@@ -326,23 +291,14 @@ export const EmptyPageContainer: React.FC<EmptyPageContainerProps> = ({
 
       {/* 2. Content Section: Grid of Grandchildren vs Empty State */}
       {grandchildren.length > 0 ? (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-              <h3 className="text-xs font-black uppercase tracking-wider text-slate-700">
-                Senarai Dokumen & Pautan ({grandchildren.length})
-              </h3>
-            </div>
-            <span className="text-[11px] text-slate-400 font-medium hidden sm:inline">
-              Klik mana-mana item untuk membuka dokumen Google Drive
-            </span>
-          </div>
-
-          {/* Grandchildren Cards Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {grandchildren.map((gc, index) => {
-              const isDrive = gc.displayType === 'drive' || Boolean(gc.driveUrl);
+              const isContainer = gc.displayType === 'empty_page';
+              const isDrive = !isContainer && (gc.displayType === 'drive' || Boolean(gc.driveUrl));
+              const isExternalLink = !isContainer && !isDrive && /^https?:\/\//i.test(gc.destination || '');
+              const nestedCount = isContainer
+                ? allItems.filter((sub) => sub.parentId === gc.id && sub.isActive).length
+                : 0;
               const isEligible = isEligibleDrivePdf(gc);
               const isGenerating = generatingIds.has(gc.id) || gc.thumbnailStatus === 'processing' || gc.thumbnailStatus === 'generating';
               const effectiveThumbnailUrl = gc.thumbnailUrl;
@@ -364,8 +320,8 @@ export const EmptyPageContainer: React.FC<EmptyPageContainerProps> = ({
                   className="glass-panel p-4 rounded-3xl border border-slate-200/80 hover:border-indigo-400 bg-white hover:bg-gradient-to-br hover:from-white hover:to-indigo-50/30 transition-all cursor-pointer shadow-2xs hover:shadow-lg group flex flex-col justify-between gap-3 text-left relative overflow-hidden"
                 >
                   <div className="space-y-3">
-                    {/* First Page Preview Thumbnail Display */}
-                    {isDrive && (
+                    {/* First Page Preview Thumbnail Display OR Container/Link Preview */}
+                    {isDrive ? (
                       <div className="w-full aspect-[4/3] bg-gradient-to-b from-slate-50 via-slate-100/70 to-slate-200/50 rounded-2xl overflow-hidden relative border border-slate-200/90 flex items-center justify-center p-2 group-hover:border-indigo-300 transition-colors shadow-inner">
                         {isGenerating ? (
                           <div className="flex flex-col items-center justify-center gap-2 text-indigo-600">
@@ -434,6 +390,58 @@ export const EmptyPageContainer: React.FC<EmptyPageContainerProps> = ({
                           )}
                         </div>
                       </div>
+                    ) : isContainer ? (
+                      <div className="w-full aspect-[4/3] bg-gradient-to-br from-amber-50/70 via-white to-violet-50/60 rounded-2xl overflow-hidden relative border border-amber-200/80 flex flex-col items-center justify-center p-4 group-hover:border-violet-400 transition-colors shadow-inner text-center gap-2">
+                        <div className="w-12 h-12 rounded-2xl bg-white border border-amber-200 flex items-center justify-center text-amber-600 shadow-xs group-hover:scale-105 transition-transform">
+                          <FolderTree className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <span className="text-[11px] font-extrabold text-slate-800 block">
+                            Bekas Kandungan ({nestedCount} item)
+                          </span>
+                          <span className="text-[10px] text-slate-500 font-medium">
+                            Klik untuk buka senarai dokumen
+                          </span>
+                        </div>
+
+                        <div className="absolute top-2.5 left-2.5">
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded-lg bg-white/90 backdrop-blur-xs text-slate-700 border border-slate-200 shadow-2xs font-extrabold">
+                            #{index + 1}
+                          </span>
+                        </div>
+                        <div className="absolute top-2.5 right-2.5">
+                          <span className="px-2 py-0.5 rounded-lg bg-amber-600/90 backdrop-blur-xs text-[9.5px] font-extrabold text-white uppercase tracking-wider flex items-center gap-1 shadow-2xs">
+                            <FolderTree className="w-3 h-3" />
+                            <span>Bekas</span>
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="w-full aspect-[4/3] bg-gradient-to-br from-emerald-50/60 via-white to-indigo-50/60 rounded-2xl overflow-hidden relative border border-slate-200/90 flex flex-col items-center justify-center p-4 group-hover:border-indigo-300 transition-colors shadow-inner text-center gap-2">
+                        <div className="w-12 h-12 rounded-2xl bg-white border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-xs group-hover:scale-105 transition-transform">
+                          {isExternalLink ? <ExternalLink className="w-6 h-6 text-emerald-600" /> : <Layers className="w-6 h-6" />}
+                        </div>
+                        <div>
+                          <span className="text-[11px] font-extrabold text-slate-800 block">
+                            {isExternalLink ? 'Pautan Luar' : 'Modul Platform'}
+                          </span>
+                          <span className="text-[10px] text-slate-500 font-medium">
+                            Klik untuk membuka destinasi
+                          </span>
+                        </div>
+
+                        <div className="absolute top-2.5 left-2.5">
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded-lg bg-white/90 backdrop-blur-xs text-slate-700 border border-slate-200 shadow-2xs font-extrabold">
+                            #{index + 1}
+                          </span>
+                        </div>
+                        <div className="absolute top-2.5 right-2.5">
+                          <span className={`px-2 py-0.5 rounded-lg backdrop-blur-xs text-[9.5px] font-extrabold text-white uppercase tracking-wider flex items-center gap-1 shadow-2xs ${isExternalLink ? 'bg-emerald-600/90' : 'bg-indigo-600/90'}`}>
+                            {isExternalLink ? <ExternalLink className="w-3 h-3" /> : <Layers className="w-3 h-3" />}
+                            <span>{isExternalLink ? 'Pautan' : 'Modul'}</span>
+                          </span>
+                        </div>
+                      </div>
                     )}
 
                     {/* Title & Icon */}
@@ -449,40 +457,32 @@ export const EmptyPageContainer: React.FC<EmptyPageContainerProps> = ({
                 </div>
               );
             })}
-          </div>
         </div>
       ) : (
-        /* Clean Empty State when Pages Kosong has no grandchildren yet */
-        <div className="glass-panel rounded-3xl p-8 sm:p-12 text-center max-w-lg mx-auto space-y-4 border border-dashed border-amber-200/90 bg-amber-50/30">
-          <div className="w-16 h-16 bg-white border border-amber-200 rounded-3xl flex items-center justify-center mx-auto text-amber-600 shadow-sm">
-            <FolderTree className="w-8 h-8" />
+        /* Clean Empty State when Container has no items yet */
+        <div className="glass-panel rounded-3xl p-8 sm:p-10 text-center max-w-lg mx-auto space-y-4 border border-dashed border-amber-200/90 bg-amber-50/30">
+          <div className="w-14 h-14 bg-white border border-amber-200 rounded-2xl flex items-center justify-center mx-auto text-amber-600 shadow-sm">
+            <FolderTree className="w-7 h-7" />
           </div>
 
           <div className="space-y-1.5">
             <h3 className="font-sans font-black text-slate-900 text-base sm:text-lg">
-              Halaman Bekas Sedia Digunakan
+              Tiada Dokumen Buat Masa Ini
             </h3>
             <p className="text-xs text-slate-600 leading-relaxed max-w-md mx-auto font-medium">
-              Halaman container <b>"{item.name}"</b> telah berjaya diwujudkan. Buat masa ini, belum ada navigasi {item.type === 'parent' ? 'bravo' : 'charlie'} (seperti fail Google Drive atau modul) ditambah di bawah halaman ini.
+              Kandungan bagi bahagian <b>"{item.name}"</b> belum ditambah lagi.
             </p>
           </div>
 
-          <div className="p-3 bg-white/80 rounded-2xl border border-amber-100 text-[11px] text-slate-500 font-medium flex items-center gap-2 max-w-sm mx-auto text-left">
-            <Info className="w-4 h-4 text-amber-600 shrink-0" />
-            <span>
-              Prinsip SES: <i>"Cipta container terlebih dahulu. Tambah navigasi {item.type === 'parent' ? 'bravo' : 'charlie'} apabila diperlukan."</i>
-            </span>
-          </div>
-
           {isAdminMode && onOpenNavManager && (
-            <div className="pt-2">
+            <div className="pt-1">
               <button
                 type="button"
                 onClick={onOpenNavManager}
                 className="px-4 py-2.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white rounded-xl text-xs font-extrabold shadow-sm transition-all cursor-pointer inline-flex items-center gap-1.5 active:scale-95"
               >
                 <Plus className="w-4 h-4" />
-                <span>+ Tambah {item.type === 'parent' ? 'Bravo' : 'Charlie'} di bawah {item.name}</span>
+                <span>+ Tambah {childLevelLabel} di bawah {item.name}</span>
               </button>
             </div>
           )}

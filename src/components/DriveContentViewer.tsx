@@ -21,8 +21,7 @@ import {
   Check,
   AlertCircle,
   FileText,
-  FolderOpen,
-  ChevronRight
+  FolderOpen
 } from 'lucide-react';
 import { NavigationItem } from '../types';
 import { parseTakwimLink } from '../services/takwimService';
@@ -134,41 +133,13 @@ export const DriveContentViewer: React.FC<DriveContentViewerProps> = ({
               {renderNavIcon(item.icon, 'w-4 h-4')}
             </div>
           )}
-          <div className="min-w-0">
-            {/* Breadcrumb & Document Header */}
-            {(parentItem || grandParentItem) ? (
-              <nav aria-label="Hierarki Navigasi" className="flex items-center gap-1.5 text-xs sm:text-sm font-extrabold text-slate-500 flex-wrap">
-                {grandParentItem && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => onNavigate?.(grandParentItem.id || grandParentItem.destination)}
-                      className="hover:text-indigo-600 text-slate-500 transition-colors cursor-pointer truncate max-w-[120px] sm:max-w-[200px]"
-                    >
-                      {grandParentItem.name}
-                    </button>
-                    <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                  </>
-                )}
-                {parentItem && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => onNavigate?.(parentItem.id || parentItem.destination)}
-                      className="hover:text-indigo-600 text-slate-600 transition-colors cursor-pointer truncate max-w-[120px] sm:max-w-[200px]"
-                    >
-                      {parentItem.name}
-                    </button>
-                    <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                  </>
-                )}
-                <span className="text-slate-900 font-black truncate max-w-[180px] sm:max-w-[360px]">
-                  {title}
-                </span>
-              </nav>
-            ) : (
-              <span className="text-sm sm:text-base font-black text-slate-900 truncate">
-                {title}
+          <div className="min-w-0 flex items-center gap-2 flex-wrap">
+            <h2 className="text-sm sm:text-base font-black text-slate-900 truncate max-w-[210px] sm:max-w-[440px]">
+              {title}
+            </h2>
+            {parsed && (
+              <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-slate-100 text-slate-600 border border-slate-200/80 uppercase tracking-wide shrink-0">
+                {parsed.kind === 'drive-folder' ? 'Folder' : 'PDF'}
               </span>
             )}
           </div>
@@ -363,7 +334,7 @@ export const DriveContentViewer: React.FC<DriveContentViewerProps> = ({
             Pautan Google Drive Belum Ditetapkan
           </h3>
           <p className="text-xs text-slate-500 leading-relaxed">
-            Navigasi bravo <strong>"{item.name}"</strong> dikonfigurasi sebagai Paparan Google Drive, namun pautan Google Drive belum diisi atau formatnya tidak sah.
+            Item navigasi <strong>"{item.name}"</strong> dikonfigurasi sebagai Paparan Google Drive, namun pautan Google Drive belum diisi atau formatnya tidak sah.
           </p>
           {isAdminMode ? (
             <button
@@ -380,12 +351,6 @@ export const DriveContentViewer: React.FC<DriveContentViewerProps> = ({
             </p>
           )}
         </div>
-      )}
-
-      {parsed && (
-        <p className="text-[11px] text-slate-400 font-medium text-center">
-          Tidak dapat melihat fail dengan jelas? Klik <b>Lihat Penuh</b> atau <b>Buka di Drive</b>.
-        </p>
       )}
 
       {/* Fullscreen Modal View */}
