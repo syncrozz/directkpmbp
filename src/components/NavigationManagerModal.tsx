@@ -343,12 +343,12 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
     }
 
     if (formState.type === 'child' && !formState.parentId) {
-      setNotice({ type: 'error', text: 'Navigasi anak wajib dikaitkan dengan satu Navigasi Induk.' });
+      setNotice({ type: 'error', text: 'Navigasi Bravo wajib dikaitkan dengan satu Navigasi Alfa.' });
       return;
     }
 
     if (formState.type === 'grandchild' && !formState.parentId) {
-      setNotice({ type: 'error', text: 'Navigasi cucu wajib dikaitkan dengan satu Navigasi Anak (Bekas / Container).' });
+      setNotice({ type: 'error', text: 'Navigasi Charlie wajib dikaitkan dengan satu Navigasi Bravo (Bekas / Container).' });
       return;
     }
 
@@ -575,14 +575,14 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
       const check = canDeleteParent(item.id, items);
       if (!check.canDelete) {
         setDeleteWarning(
-          `Navigasi Induk ini mempunyai ${check.childrenCount} navigasi anak (${check.childrenNames.join(', ')}). Sila padam atau pindahkan navigasi anak tersebut terlebih dahulu sebelum memadam navigasi induk ini.`
+          `Navigasi Alfa ini mempunyai ${check.childrenCount} Navigasi Bravo (${check.childrenNames.join(', ')}). Sila padam atau pindahkan Navigasi Bravo tersebut terlebih dahulu sebelum memadam Navigasi Alfa ini.`
         );
       }
     } else if (item.type === 'child') {
       const checkChild = canDeleteChild(item.id, items);
       if (!checkChild.canDelete) {
         setDeleteWarning(
-          `Navigasi Anak ini mengandungi ${checkChild.grandchildrenCount} navigasi cucu (${checkChild.grandchildrenNames.join(', ')}). Sila padam atau pindahkan navigasi cucu terlebih dahulu sebelum memadam navigasi anak ini.`
+          `Navigasi Bravo ini mengandungi ${checkChild.grandchildrenCount} Navigasi Charlie (${checkChild.grandchildrenNames.join(', ')}). Sila padam atau pindahkan Navigasi Charlie terlebih dahulu sebelum memadam Navigasi Bravo ini.`
         );
       }
     }
@@ -599,7 +599,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
       if (!check.canDelete) {
         setNotice({
           type: 'error',
-          text: 'Pemadaman disekat kerana masih terdapat navigasi anak di bawah induk ini.'
+          text: 'Pemadaman disekat kerana masih terdapat Navigasi Bravo di bawah Navigasi Alfa ini.'
         });
         setItemToDelete(null);
         return;
@@ -609,7 +609,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
       if (!checkChild.canDelete) {
         setNotice({
           type: 'error',
-          text: 'Pemadaman disekat kerana masih terdapat navigasi cucu di bawah anak ini.'
+          text: 'Pemadaman disekat kerana masih terdapat Navigasi Charlie di bawah Navigasi Bravo ini.'
         });
         setItemToDelete(null);
         return;
@@ -674,7 +674,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                   </span>
                 </h3>
                 <p className="text-xs text-slate-500 font-medium">
-                  Urus hierarki Induk → Anak → Cucu secara dinamik dengan storan masa nyata Firestore
+                  Urus hierarki Navigasi Alfa → Navigasi Bravo → Navigasi Charlie secara dinamik dengan storan masa nyata Firestore
                 </p>
               </div>
             </div>
@@ -788,7 +788,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                 }`}
               >
                 <FolderTree className="w-3.5 h-3.5" />
-                <span>Navigasi Anak ({children.length})</span>
+                <span>Navigasi Bravo ({children.length})</span>
               </button>
 
               <button
@@ -801,7 +801,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                 }`}
               >
                 <FileText className="w-3.5 h-3.5" />
-                <span>Navigasi Cucu ({grandchildren.length})</span>
+                <span>Navigasi Charlie ({grandchildren.length})</span>
               </button>
             </div>
 
@@ -817,10 +817,10 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
               <Plus className="w-4 h-4" />
               <span>
                 {activeTab === 'parents'
-                  ? 'Tambah Induk'
+                  ? 'Tambah Alfa'
                   : activeTab === 'children'
-                  ? 'Tambah Anak'
-                  : 'Tambah Cucu'}
+                  ? 'Tambah Bravo'
+                  : 'Tambah Charlie'}
               </span>
             </button>
           </div>
@@ -965,10 +965,10 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                             {renderNavIcon(p.icon, 'w-3 h-3')}
                           </div>
                           <span className="text-xs font-extrabold text-slate-900">
-                            Di bawah Induk: <span className="text-indigo-600">{p.name}</span>
+                            Di bawah Navigasi Alfa: <span className="text-indigo-600">{p.name}</span>
                           </span>
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white text-slate-600 border border-slate-200">
-                            {pChildren.length} Anak
+                            {pChildren.length} Bravo
                           </span>
                         </div>
 
@@ -978,7 +978,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                           className="px-2.5 py-1 bg-white hover:bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-xl text-[11px] font-extrabold transition-all cursor-pointer flex items-center gap-1"
                         >
                           <Plus className="w-3 h-3" />
-                          <span>Tambah Anak</span>
+                          <span>Tambah Bravo</span>
                         </button>
                       </div>
 
@@ -1029,12 +1029,12 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                                     {c.displayType === 'empty_page' ? (
                                       <span className="text-[9.5px] font-extrabold px-2 py-0.2 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
                                         <Layout className="w-2.5 h-2.5" />
-                                        <span>Pages Kosong ({gcs.length} Cucu)</span>
+                                        <span>Pages Kosong ({gcs.length} Charlie)</span>
                                       </span>
                                     ) : gcs.length > 0 ? (
                                       <span className="text-[9.5px] font-extrabold px-2 py-0.2 rounded-full bg-violet-100 text-violet-800 border border-violet-200 flex items-center gap-1">
                                         <FolderTree className="w-2.5 h-2.5" />
-                                        <span>Bekas ({gcs.length} Cucu)</span>
+                                        <span>Bekas ({gcs.length} Charlie)</span>
                                       </span>
                                     ) : c.displayType === 'drive' || c.driveUrl ? (
                                       <span className="text-[9.5px] font-extrabold px-2 py-0.2 rounded-full bg-violet-100 text-violet-800 border border-violet-200 flex items-center gap-1">
@@ -1050,7 +1050,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                                   </div>
                                   <div className="text-[10px] text-slate-500 font-mono mt-0.5 truncate max-w-xs sm:max-w-md flex items-center gap-2 flex-wrap">
                                     {c.displayType === 'empty_page' ? (
-                                      <>Container: <span className="font-semibold text-emerald-700">Pages Kosong ({gcs.length} Cucu)</span></>
+                                      <>Container: <span className="font-semibold text-emerald-700">Pages Kosong ({gcs.length} Charlie)</span></>
                                     ) : c.displayType === 'drive' || c.driveUrl ? (
                                       <>Drive URL: <span className="font-semibold text-violet-700">{c.driveUrl || 'Belum diisi'}</span></>
                                     ) : (
@@ -1106,11 +1106,11 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => handleAddNew('grandchild', c.id)}
-                                  title="Tambah Navigasi Cucu di bawah bekas ini"
+                                  title="Tambah Navigasi Charlie di bawah bekas ini"
                                   className="px-2 py-1 rounded-lg text-[11px] font-extrabold bg-violet-50 hover:bg-violet-100 text-violet-700 border border-violet-200 flex items-center gap-1 cursor-pointer"
                                 >
                                   <Plus className="w-3 h-3" />
-                                  <span>+ Cucu</span>
+                                  <span>+ Charlie</span>
                                 </button>
                                 <button
                                   type="button"
@@ -1148,7 +1148,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
 
                         {pChildren.length === 0 && (
                           <p className="text-[11px] text-slate-400 italic py-2 pl-2">
-                            Tiada navigasi anak di bawah induk ini. (Induk bertindak sebagai akses terus).
+                            Tiada Navigasi Bravo di bawah Navigasi Alfa ini. (Navigasi Alfa bertindak sebagai akses terus).
                           </p>
                         )}
                       </div>
@@ -1176,13 +1176,13 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                             {renderNavIcon(c.icon, 'w-3 h-3')}
                           </div>
                           <span className="text-xs font-extrabold text-slate-900">
-                            Bekas Anak: <span className="text-violet-700">{c.name}</span>
+                            Bekas Navigasi Bravo: <span className="text-violet-700">{c.name}</span>
                             {parentOfChild && (
                               <span className="text-slate-400 font-normal ml-1">({parentOfChild.name})</span>
                             )}
                           </span>
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white text-violet-700 border border-violet-200">
-                            {cGrandchildren.length} Cucu
+                            {cGrandchildren.length} Charlie
                           </span>
                         </div>
 
@@ -1192,7 +1192,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                           className="px-2.5 py-1 bg-white hover:bg-violet-100 border border-violet-200 text-violet-700 rounded-xl text-[11px] font-extrabold transition-all cursor-pointer flex items-center gap-1"
                         >
                           <Plus className="w-3 h-3" />
-                          <span>Tambah Cucu</span>
+                          <span>Tambah Charlie</span>
                         </button>
                       </div>
 
@@ -1338,7 +1338,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
 
                         {cGrandchildren.length === 0 && (
                           <p className="text-[11px] text-slate-400 italic py-2 pl-2">
-                            Tiada navigasi cucu di bawah anak ini. Klik "+ Cucu" untuk menambah dokumen fail Drive atau pautan di bawah anak ini.
+                            Tiada Navigasi Charlie di bawah Navigasi Bravo ini. Klik "+ Charlie" untuk menambah dokumen fail Drive atau pautan di bawah Navigasi Bravo ini.
                           </p>
                         )}
                       </div>
@@ -1349,7 +1349,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                 {children.length === 0 && (
                   <div className="text-center py-10 border border-dashed border-slate-200 rounded-2xl p-6">
                     <FolderTree className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                    <p className="text-xs font-bold text-slate-500">Tiada Navigasi Anak untuk dijadikan bekas cucu.</p>
+                    <p className="text-xs font-bold text-slate-500">Tiada Navigasi Bravo untuk dijadikan bekas Navigasi Charlie.</p>
                   </div>
                 )}
               </div>
@@ -1417,7 +1417,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                         }`}
                       >
                         <Layers className="w-3.5 h-3.5 text-indigo-600" />
-                        <span>1. Induk</span>
+                        <span>1. Navigasi Alfa</span>
                       </button>
 
                       <button
@@ -1436,7 +1436,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                         }`}
                       >
                         <FolderTree className="w-3.5 h-3.5 text-indigo-600" />
-                        <span>2. Anak</span>
+                        <span>2. Navigasi Bravo</span>
                       </button>
 
                       <button
@@ -1457,7 +1457,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                         }`}
                       >
                         <FileText className="w-3.5 h-3.5 text-violet-600" />
-                        <span>3. Cucu</span>
+                        <span>3. Navigasi Charlie</span>
                       </button>
                     </div>
                   </div>
@@ -1465,7 +1465,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                   {/* Parent Association Dropdown (Only for Child) */}
                   {formState.type === 'child' && (
                     <div className="space-y-1">
-                      <label className="text-[11px] font-extrabold text-slate-700">Pilih Navigasi Induk (Parent)</label>
+                      <label className="text-[11px] font-extrabold text-slate-700">Pilih Navigasi Alfa (Parent)</label>
                       <select
                         value={formState.parentId}
                         onChange={(e) => setFormState({ ...formState, parentId: e.target.value })}
@@ -1486,7 +1486,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                     <div className="space-y-2 p-3 bg-violet-50/60 rounded-2xl border border-violet-100">
                       <div className="space-y-1">
                         <label className="text-[11px] font-extrabold text-violet-950">
-                          Tapis mengikut Induk (Pilihan):
+                          Tapis mengikut Navigasi Alfa (Pilihan):
                         </label>
                         <select
                           value={formState.parentFilterId}
@@ -1501,7 +1501,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                           }}
                           className="w-full px-3 py-1.5 rounded-xl border border-violet-200 text-xs bg-white outline-none focus:ring-2 focus:ring-violet-300"
                         >
-                          <option value="">Semua Induk</option>
+                          <option value="">Semua Navigasi Alfa</option>
                           {parents.map((p) => (
                             <option key={p.id} value={p.id}>
                               {p.name}
@@ -1513,7 +1513,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                       <div className="space-y-1">
                         <label className="text-[11px] font-extrabold text-violet-950 flex items-center gap-1">
                           <CornerDownRight className="w-3 h-3 text-violet-600" />
-                          <span>Pilih Navigasi Anak (Bekas / Container) *</span>
+                          <span>Pilih Navigasi Bravo (Bekas / Container) *</span>
                         </label>
                         <select
                           value={formState.parentId}
@@ -1717,17 +1717,17 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                         <div className="space-y-2 p-3.5 bg-emerald-50/70 border border-emerald-200/80 rounded-xl text-left">
                           <div className="flex items-center gap-2 text-emerald-800 font-extrabold text-xs">
                             <Layout className="w-4 h-4 text-emerald-600" />
-                            <span>Halaman Kosong / Container Navigasi Cucu</span>
+                            <span>Halaman Kosong / Container Navigasi Charlie</span>
                           </div>
                           <p className="text-[11px] text-emerald-700 leading-relaxed">
-                            Navigasi ini akan berfungsi sebagai <b>halaman container</b> yang membolehkan navigasi cucu diletakkan di bawahnya. Tidak memerlukan pautan Google Drive atau modul aplikasi khusus.
+                            Navigasi ini akan berfungsi sebagai <b>halaman container</b> yang membolehkan Navigasi Charlie diletakkan di bawahnya. Tidak memerlukan pautan Google Drive atau modul aplikasi khusus.
                           </p>
                           <div className="text-[10px] text-emerald-900 bg-white/90 p-2.5 rounded-lg border border-emerald-200 font-medium space-y-1">
                             <div className="font-bold flex items-center gap-1 text-emerald-800">
-                              <span>✓ Bersedia Menerima Navigasi Cucu:</span>
+                              <span>✓ Bersedia Menerima Navigasi Charlie:</span>
                             </div>
                             <p className="text-slate-600 leading-normal">
-                              Halaman kosong yang sah ini boleh menerima navigasi cucu kemudian. Anda boleh menambah navigasi cucu di bawahnya bila-bila masa melalui tab Cucu atau dari paparan container ini.
+                              Halaman kosong yang sah ini boleh menerima Navigasi Charlie kemudian. Anda boleh menambah Navigasi Charlie di bawahnya bila-bila masa melalui tab Charlie atau dari paparan container ini.
                             </p>
                           </div>
                         </div>
@@ -1824,7 +1824,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                     /* Parent Destination / Route Configuration */
                     <div className="space-y-1.5">
                       <div className="flex items-center justify-between">
-                        <label className="text-[11px] font-extrabold text-slate-700">Destinasi Modul / Pautan Induk</label>
+                        <label className="text-[11px] font-extrabold text-slate-700">Destinasi Modul / Pautan Navigasi Alfa</label>
                         <label className="flex items-center gap-1 text-[11px] text-slate-500 cursor-pointer font-medium">
                           <input
                             type="checkbox"
@@ -1859,7 +1859,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                         />
                       )}
                       <p className="text-[10px] text-slate-400">
-                        Jika navigasi induk mempunyai anak, klik pada induk akan membuka anak pertama secara automatik.
+                        Jika Navigasi Alfa mempunyai Navigasi Bravo, klik pada Navigasi Alfa akan membuka Navigasi Bravo pertama secara automatik.
                       </p>
                     </div>
                   )}
@@ -1976,11 +1976,11 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                 </p>
 
                 <ul className="text-xs text-slate-700 list-disc list-inside space-y-1 bg-slate-50 p-3 rounded-xl border border-slate-200 font-medium">
-                  <li><strong>Induk 1:</strong> Directory Staff</li>
-                  <li><strong>Induk 2:</strong> Rujukan Kolej</li>
-                  <li><strong>Induk 3:</strong> Jadual</li>
-                  <li className="pl-4">↳ <strong>Anak 1:</strong> Jadual Pelajar</li>
-                  <li className="pl-4">↳ <strong>Anak 2:</strong> Jadual Pensyarah</li>
+                  <li><strong>Navigasi Alfa 1:</strong> Directory Staff</li>
+                  <li><strong>Navigasi Alfa 2:</strong> Rujukan Kolej</li>
+                  <li><strong>Navigasi Alfa 3:</strong> Jadual</li>
+                  <li className="pl-4">↳ <strong>Navigasi Bravo 1:</strong> Jadual Pelajar</li>
+                  <li className="pl-4">↳ <strong>Navigasi Bravo 2:</strong> Jadual Pensyarah</li>
                 </ul>
 
                 <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
