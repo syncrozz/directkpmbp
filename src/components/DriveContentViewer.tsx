@@ -52,6 +52,7 @@ export const DriveContentViewer: React.FC<DriveContentViewerProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [iframeLoaded, setIframeLoaded] = useState(false);
+  const [thumbImgFailed, setThumbImgFailed] = useState(false);
 
   const parsed = useMemo(() => parseTakwimLink(item.driveUrl || ''), [item.driveUrl]);
   const title = item.displayTitle?.trim() || item.name;
@@ -59,6 +60,10 @@ export const DriveContentViewer: React.FC<DriveContentViewerProps> = ({
   useEffect(() => {
     setIframeLoaded(false);
   }, [parsed?.embedUrl]);
+
+  useEffect(() => {
+    setThumbImgFailed(false);
+  }, [item.id, item.thumbnailUrl]);
 
   // Fullscreen escape key & body scroll lock
   useEffect(() => {
@@ -115,15 +120,13 @@ export const DriveContentViewer: React.FC<DriveContentViewerProps> = ({
       {/* Top Action & Title Bar */}
       <div className="glass-panel rounded-2xl px-3.5 py-2.5 sm:px-4 sm:py-3 border border-white/60 shadow-xs flex flex-row items-center justify-between gap-2.5 sm:gap-3">
         <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-          {item.thumbnailUrl && (item.thumbnailStatus === 'ready' || item.thumbnailStatus === 'generated') ? (
+          {item.thumbnailUrl && !thumbImgFailed && (item.thumbnailStatus === 'ready' || item.thumbnailStatus === 'generated') ? (
             <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-white border border-slate-200 overflow-hidden shadow-2xs shrink-0 flex items-center justify-center p-0.5">
               <img
                 src={item.thumbnailUrl}
                 alt={title}
                 className="w-full h-full object-contain"
-                onError={(e) => {
-                  e.currentTarget.style.display = 'none';
-                }}
+                onError={() => setThumbImgFailed(true)}
               />
             </div>
           ) : (

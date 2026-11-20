@@ -10,14 +10,14 @@
  * first-page PDF preview thumbnail cards, or a helpful empty state.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { NavigationItem } from '../types';
 import { renderNavIcon, saveNavigationItems } from '../services/navigationService';
 import {
   generateThumbnailForItem,
   generateBulkThumbnails,
   isEligibleDrivePdf,
-  extractGoogleDriveFileId,
+  applyValidatedThumbnailOutcome,
 } from '../services/pdfThumbnailService';
 import {
   FolderTree,
@@ -57,116 +57,87 @@ export const EmptyPageContainer: React.FC<EmptyPageContainerProps> = ({
   onOpenNavManager,
 }) => {
   const [generatingIds, setGeneratingIds] = useState<Set<string>>(new Set());
+  const [brokenThumbIds, setBrokenThumbIds] = useState<Set<string>>(new Set());
   const [isBulkGenerating, setIsBulkGenerating] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<{ completed: number; total: number } | null>(null);
-  const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [notification, setNotification] = useState<{ type: 'success' | 'warning' | 'error'; message: string } | null>(null);
+  const latestAllItemsRef = useRef<NavigationItem[]>(allItems);
+  const latestGrandchildrenRef = useRef<NavigationItem[]>(grandchildren);
+
+  useEffect(() => {
+    latestAllItemsRef.current = allItems;
+    latestGrandchildrenRef.current = grandchildren;
+  }, [allItems, grandchildren]);
 
   const eligiblePdfs = grandchildren.filter(isEligibleDrivePdf);
-  const readyThumbnailsCount = eligiblePdfs.filter((g) => {
-    const fid = extractGoogleDriveFileId(g.driveUrl);
-    const hasThumb = Boolean(g.thumbnailUrl) || Boolean(fid);
-    return hasThumb && g.thumbnailStatus !== 'processing' && g.thumbnailStatus !== 'generating';
-  }).length;
-  const failedThumbnailsCount = eligiblePdfs.filter(
-    (g) => (g.thumbnailStatus === 'failed' || g.thumbnailStatus === 'error') && !g.thumbnailUrl
+  const readyThumbnailsCount = eligiblePdfs.filter(
+    (g) =>
+      Boolean(g.thumbnailUrl) &&
+      (g.thumbnailStatus === 'generated' || g.thumbnailStatus === 'ready') &&
+      !brokenThumbIds.has(g.id)
   ).length;
 
-  // Auto-heal missing or failed thumbnails in background when admin visits page
-  useEffect(() => {
-    if (!isAdminMode) return;
-    const missing = grandchildren.filter((g) => {
-      const fid = extractGoogleDriveFileId(g.driveUrl);
-      return isEligibleDrivePdf(g) && fid && (!g.thumbnailUrl || g.thumbnailStatus === 'failed' || g.thumbnailStatus === 'error');
-    });
-
-    if (missing.length === 0) return;
-
-    const timer = setTimeout(async () => {
+  const resolveFullNavigationList = (): NavigationItem[] => {
+    const cached = localStorage.getItem('kpmbp_navigation_items_v4');
+    const currentAll = latestAllItemsRef.current;
+    const currentGrandchildren = latestGrandchildrenRef.current;
+    let fullList: NavigationItem[] = currentAll.length > 0 ? currentAll : currentGrandchildren;
+    if (cached && fullList.length <= currentGrandchildren.length) {
       try {
-        const cached = localStorage.getItem('kpmbp_navigation_items_v4');
-        let fullList: NavigationItem[] = allItems.length > 0 ? allItems : grandchildren;
-        if (cached && fullList.length <= grandchildren.length) {
-          try {
-            const parsed = JSON.parse(cached);
-            if (Array.isArray(parsed) && parsed.length > fullList.length) {
-              fullList = parsed;
-            }
-          } catch {
-            // fallback
-          }
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > fullList.length) {
+          fullList = parsed;
         }
-
-        let hasUpdates = false;
-        const patchedList = fullList.map((itm) => {
-          const matchMissing = missing.find((m) => m.id === itm.id);
-          if (matchMissing) {
-            const fid = extractGoogleDriveFileId(matchMissing.driveUrl);
-            if (fid) {
-              hasUpdates = true;
-              return {
-                ...itm,
-                thumbnailUrl: `/thumbnails/${fid}.png`,
-                thumbnailStatus: 'generated' as const,
-                thumbnailFileId: fid,
-                thumbnailGeneratedAt: itm.thumbnailGeneratedAt || new Date().toISOString(),
-                thumbnailError: undefined,
-              };
-            }
-          }
-          return itm;
-        });
-
-        if (hasUpdates) {
-          await saveNavigationItems(patchedList);
-        }
-      } catch (err) {
-        console.warn('[EmptyPageContainer] Auto-heal thumbnail notice:', err);
+      } catch {
+        // fallback
       }
-    }, 1000);
+    }
+    return fullList;
+  };
 
-    return () => clearTimeout(timer);
-  }, [grandchildren, isAdminMode, allItems]);
-
-  // Single Item Thumbnail Regeneration (Admin)
+  // Single Item Thumbnail Regeneration (Admin) — strictly non-fatal
   const handleRegenerateThumbnail = async (e: React.MouseEvent, gc: NavigationItem) => {
     e.stopPropagation();
     if (generatingIds.has(gc.id)) return;
 
     setGeneratingIds((prev) => new Set(prev).add(gc.id));
+    setBrokenThumbIds((prev) => {
+      if (!prev.has(gc.id)) return prev;
+      const next = new Set(prev);
+      next.delete(gc.id);
+      return next;
+    });
     setNotification(null);
 
     try {
+      const baselineGeneratedAt = gc.thumbnailGeneratedAt;
       const result = await generateThumbnailForItem(gc, true);
-      if (result.success) {
-        // Persist change to Firestore using full list
-        const cached = localStorage.getItem('kpmbp_navigation_items_v4');
-        let fullList: NavigationItem[] = allItems.length > 0 ? allItems : grandchildren;
-        if (cached && fullList.length <= grandchildren.length) {
-          try {
-            const parsed = JSON.parse(cached);
-            if (Array.isArray(parsed) && parsed.length > fullList.length) {
-              fullList = parsed;
-            }
-          } catch {
-            // fallback
-          }
-        }
-        const updatedList = fullList.map((itm) => (itm.id === gc.id ? result.item : itm));
+      const updatedList = resolveFullNavigationList().map((itm) =>
+        itm.id === gc.id
+          ? applyValidatedThumbnailOutcome(itm, result.item, baselineGeneratedAt)
+          : itm
+      );
+      try {
         await saveNavigationItems(updatedList);
+      } catch (saveErr: any) {
+        console.warn('[EmptyPageContainer] Non-fatal thumbnail status save notice:', saveErr?.message || saveErr);
+      }
+
+      if (result.success) {
         setNotification({
           type: 'success',
           message: `Thumbnail bagi "${gc.name}" berjaya dijana dan dimuat naik ke Firebase Storage.`,
         });
       } else {
         setNotification({
-          type: 'error',
-          message: result.error || `Gagal menjana thumbnail bagi "${gc.name}".`,
+          type: 'warning',
+          message: `Thumbnail bagi "${gc.name}" gagal dijana (${result.error || 'sumber PDF tidak dapat dicapai'}), namun dokumen masih boleh dibuka seperti biasa.`,
         });
       }
     } catch (err: any) {
       setNotification({
-        type: 'error',
-        message: err?.message || 'Ralat semasa menjana thumbnail.',
+        type: 'warning',
+        message: `Penjanaan thumbnail gagal (${err?.message || 'ralat tidak diketahui'}), namun dokumen "${gc.name}" masih boleh dibuka seperti biasa.`,
       });
     } finally {
       setGeneratingIds((prev) => {
@@ -198,31 +169,27 @@ export const EmptyPageContainer: React.FC<EmptyPageContainerProps> = ({
     setNotification(null);
 
     try {
-      const cached = localStorage.getItem('kpmbp_navigation_items_v4');
-      let fullList: NavigationItem[] = allItems.length > 0 ? allItems : grandchildren;
-      if (cached && fullList.length <= grandchildren.length) {
-        try {
-          const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed) && parsed.length > fullList.length) {
-            fullList = parsed;
-          }
-        } catch {
-          // fallback
-        }
-      }
-
-      const result = await generateBulkThumbnails(fullList, true, (p) => {
-        setBulkProgress({ completed: p.completed, total: p.total });
-      });
+      const fullList = resolveFullNavigationList();
+      const result = await generateBulkThumbnails(
+        fullList,
+        true,
+        (p) => {
+          setBulkProgress({ completed: p.completed, total: p.total });
+        },
+        () => resolveFullNavigationList()
+      );
 
       setNotification({
-        type: 'success',
-        message: `Selesai: ${result.successCount} thumbnail berjaya dijana & disimpan ke Firebase Storage (${result.failureCount} gagal, ${result.skippedCount} dilangkau).`,
+        type: result.failureCount > 0 ? 'warning' : 'success',
+        message:
+          result.failureCount > 0
+            ? `Selesai (tidak menyekat paparan): ${result.successCount} berjaya, ${result.failureCount} gagal, ${result.skippedCount} dilangkau. Semua dokumen kekal boleh dibuka.`
+            : `Selesai: ${result.successCount} thumbnail berjaya dijana & disimpan ke Firebase Storage (${result.failureCount} gagal, ${result.skippedCount} dilangkau).`,
       });
     } catch (err: any) {
       setNotification({
-        type: 'error',
-        message: err?.message || 'Ralat semasa memproses thumbnail pukal.',
+        type: 'warning',
+        message: err?.message || 'Ralat semasa memproses thumbnail pukal. Semua dokumen masih boleh dibuka.',
       });
     } finally {
       setIsBulkGenerating(false);
@@ -332,12 +299,16 @@ export const EmptyPageContainer: React.FC<EmptyPageContainerProps> = ({
           className={`p-3.5 rounded-2xl text-xs font-bold flex items-center justify-between gap-2 animate-fadeIn ${
             notification.type === 'success'
               ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+              : notification.type === 'warning'
+              ? 'bg-amber-50 text-amber-800 border border-amber-200'
               : 'bg-rose-50 text-rose-800 border border-rose-200'
           }`}
         >
           <div className="flex items-center gap-2">
             {notification.type === 'success' ? (
               <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            ) : notification.type === 'warning' ? (
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
             ) : (
               <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
             )}
@@ -373,13 +344,18 @@ export const EmptyPageContainer: React.FC<EmptyPageContainerProps> = ({
             {grandchildren.map((gc, index) => {
               const isDrive = gc.displayType === 'drive' || Boolean(gc.driveUrl);
               const isEligible = isEligibleDrivePdf(gc);
-              const fileId = isEligible ? extractGoogleDriveFileId(gc.driveUrl) : null;
               const isGenerating = generatingIds.has(gc.id) || gc.thumbnailStatus === 'processing' || gc.thumbnailStatus === 'generating';
-              const effectiveThumbnailUrl =
-                gc.thumbnailUrl || (fileId ? `/thumbnails/${fileId}.png` : undefined);
+              const effectiveThumbnailUrl = gc.thumbnailUrl;
+              const isImgBroken = brokenThumbIds.has(gc.id);
               const hasThumbnail =
-                Boolean(effectiveThumbnailUrl) && !isGenerating;
-              const isFailed = (gc.thumbnailStatus === 'failed' || gc.thumbnailStatus === 'error') && !effectiveThumbnailUrl;
+                Boolean(effectiveThumbnailUrl) &&
+                gc.thumbnailStatus !== 'failed' &&
+                gc.thumbnailStatus !== 'error' &&
+                !isGenerating &&
+                !isImgBroken;
+              const isFailed =
+                !isGenerating &&
+                (gc.thumbnailStatus === 'failed' || gc.thumbnailStatus === 'error' || isImgBroken);
 
               return (
                 <div
@@ -399,30 +375,17 @@ export const EmptyPageContainer: React.FC<EmptyPageContainerProps> = ({
                             </span>
                           </div>
                         ) : hasThumbnail ? (
-                          <>
-                            <img
-                              src={effectiveThumbnailUrl}
-                              alt={`Lakaran muka surat 1 - ${gc.name}`}
-                              className="w-full h-full object-contain rounded drop-shadow-sm transition-transform duration-300 group-hover:scale-[1.02]"
-                              loading="lazy"
-                              onError={(e) => {
-                                // Graceful fallback on broken image url without broken icon symbol
-                                e.currentTarget.style.display = 'none';
-                                const fb = e.currentTarget.nextElementSibling as HTMLElement;
-                                if (fb) fb.style.display = 'flex';
-                              }}
-                            />
-                            {/* Hidden fallback shown on image error */}
-                            <div
-                              style={{ display: 'none' }}
-                              className="w-full h-full flex flex-col items-center justify-center gap-1 text-slate-400"
-                            >
-                              <FileText className="w-8 h-8 text-rose-500" />
-                              <span className="text-[10px] font-bold">Google Drive PDF</span>
-                            </div>
-                          </>
+                          <img
+                            src={effectiveThumbnailUrl}
+                            alt={`Lakaran muka surat 1 - ${gc.name}`}
+                            className="w-full h-full object-contain rounded drop-shadow-sm transition-transform duration-300 group-hover:scale-[1.02]"
+                            loading="lazy"
+                            onError={() => {
+                              setBrokenThumbIds((prev) => new Set(prev).add(gc.id));
+                            }}
+                          />
                         ) : (
-                          /* Fallback PDF Card (Consistent Card Dimensions, No Broken Placeholder) */
+                          /* Fallback PDF Card (Consistent Card Dimensions, Always Clickable) */
                           <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-center p-3">
                             <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 shadow-2xs group-hover:scale-105 transition-transform">
                               <FileText className="w-6 h-6" />
@@ -433,8 +396,8 @@ export const EmptyPageContainer: React.FC<EmptyPageContainerProps> = ({
                               </span>
                               <span className="text-[10px] text-slate-400 font-medium">
                                 {isFailed && isAdminMode ? (
-                                  <span className="text-rose-600 font-bold" title={gc.thumbnailError}>
-                                    Gagal dijana (klik ikon semula)
+                                  <span className="text-amber-700 font-bold" title={gc.thumbnailError}>
+                                    Thumbnail gagal — klik kad untuk buka
                                   </span>
                                 ) : (
                                   'Klik untuk melihat kandungan'

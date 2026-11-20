@@ -63,8 +63,9 @@ import {
 } from './config/firebase';
 import {
   generateThumbnailForItem,
-  generateBulkThumbnails,
-  isEligibleDrivePdf
+  isEligibleDrivePdf,
+  extractGoogleDriveFileId,
+  applyValidatedThumbnailOutcome
 } from './services/pdfThumbnailService';
 
 export default function App() {
@@ -102,6 +103,10 @@ export default function App() {
 
   // Dynamic Hierarchical Navigation State (SES v4.4)
   const [navigationItems, setNavigationItems] = useState<NavigationItem[]>(DEFAULT_NAVIGATION_ITEMS);
+  const navigationItemsRef = useRef<NavigationItem[]>(navigationItems);
+  useEffect(() => {
+    navigationItemsRef.current = navigationItems;
+  }, [navigationItems]);
   const [isNavManagerOpen, setIsNavManagerOpen] = useState(false);
   const [navManagerContext, setNavManagerContext] = useState<NavigationManagerContext | null>(null);
 
@@ -975,30 +980,64 @@ export default function App() {
             onNavigate={(dest) => handleSelectDestination(dest)}
             isAdminMode={isAdminMode}
             onUpdateConfig={async (newUrl, newTitle) => {
+              const trimmedUrl = newUrl.trim();
+              const isSameUrl = (activeNavItem.driveUrl || '').trim() === trimmedUrl;
+              const nextFileId = extractGoogleDriveFileId(trimmedUrl) || undefined;
+              const isEligible = isEligibleDrivePdf({ ...activeNavItem, driveUrl: trimmedUrl });
+              const shouldRefreshThumb =
+                isEligible &&
+                (!isSameUrl ||
+                  !activeNavItem.thumbnailUrl ||
+                  activeNavItem.thumbnailStatus === 'failed' ||
+                  activeNavItem.thumbnailStatus === 'error');
+
               const updated = navigationItems.map((n) =>
                 n.id === activeNavItem.id
                   ? {
                       ...n,
-                      driveUrl: newUrl,
+                      driveUrl: trimmedUrl,
                       displayTitle: newTitle || n.name,
-                      thumbnailStatus: 'generating' as const,
+                      thumbnailUrl: isSameUrl ? n.thumbnailUrl : undefined,
+                      thumbnailFileId: nextFileId,
+                      thumbnailGeneratedAt: isSameUrl ? n.thumbnailGeneratedAt : undefined,
+                      thumbnailError: undefined,
+                      thumbnailStatus: shouldRefreshThumb
+                        ? ('generating' as const)
+                        : isSameUrl
+                        ? (n.thumbnailStatus || 'idle')
+                        : ('idle' as const),
                       updatedAt: new Date().toISOString(),
                     }
                   : n
               );
               setNavigationItems(updated);
+              navigationItemsRef.current = updated;
               await saveNavigationItems(updated);
 
-              // Auto-generate thumbnail for updated URL
+              // Auto-generate thumbnail in background (strictly non-fatal)
               const target = updated.find((it) => it.id === activeNavItem.id);
-              if (target && isEligibleDrivePdf(target)) {
-                generateThumbnailForItem(target, true).then(async (res) => {
-                  if (res.success) {
-                    const withThumb = updated.map((it) => (it.id === target.id ? res.item : it));
-                    setNavigationItems(withThumb);
-                    await saveNavigationItems(withThumb);
-                  }
-                }).catch(console.warn);
+              if (target && shouldRefreshThumb) {
+                const baselineGeneratedAt = target.thumbnailGeneratedAt;
+                generateThumbnailForItem(target, true)
+                  .then(async (res) => {
+                    const mergeItem = (list: NavigationItem[]) =>
+                      list.map((it) =>
+                        it.id === target.id
+                          ? applyValidatedThumbnailOutcome(it, res.item, baselineGeneratedAt)
+                          : it
+                      );
+                    const mergedForSave = mergeItem(navigationItemsRef.current);
+                    navigationItemsRef.current = mergedForSave;
+                    setNavigationItems((prev) => mergeItem(prev));
+                    try {
+                      await saveNavigationItems(mergedForSave);
+                    } catch (saveThumbErr: any) {
+                      console.warn('[App] Non-fatal thumbnail status save notice:', saveThumbErr?.message || saveThumbErr);
+                    }
+                  })
+                  .catch((thumbErr) => {
+                    console.warn('[App] Non-fatal thumbnail generation notice:', thumbErr?.message || thumbErr);
+                  });
               }
             }}
           />

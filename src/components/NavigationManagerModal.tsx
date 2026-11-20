@@ -60,7 +60,8 @@ import {
   generateThumbnailForItem,
   generateBulkThumbnails,
   isEligibleDrivePdf,
-  extractGoogleDriveFileId
+  extractGoogleDriveFileId,
+  applyValidatedThumbnailOutcome
 } from '../services/pdfThumbnailService';
 
 export interface NavigationManagerContext {
@@ -106,6 +107,11 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [notice, setNotice] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
   const prevIsOpenRef = useRef(false);
+  const latestItemsRef = useRef<NavigationItem[]>(items);
+
+  useEffect(() => {
+    latestItemsRef.current = items;
+  }, [items]);
 
   // Edit/Create Sub-modal state
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -203,8 +209,21 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
 
   // Automatic PDF Thumbnail Generation States & Counts
   const [generatingThumbnailIds, setGeneratingThumbnailIds] = useState<Set<string>>(new Set());
+  const [brokenThumbIds, setBrokenThumbIds] = useState<Set<string>>(new Set());
   const [isBulkGeneratingThumbnails, setIsBulkGeneratingThumbnails] = useState(false);
   const [bulkThumbnailProgress, setBulkThumbnailProgress] = useState<{ completed: number; total: number } | null>(null);
+
+  const mergeThumbnailOutcome = (
+    baseList: NavigationItem[],
+    targetId: string,
+    outcomeItem: NavigationItem,
+    baselineGeneratedAt?: string
+  ): NavigationItem[] =>
+    baseList.map((entry) =>
+      entry.id === targetId
+        ? applyValidatedThumbnailOutcome(entry, outcomeItem, baselineGeneratedAt)
+        : entry
+    );
 
   const eligiblePdfItems = useMemo(() => {
     if (contextualBravoItem) {
@@ -220,28 +239,46 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
   const handleSingleThumbnailGeneration = async (targetItem: NavigationItem) => {
     if (generatingThumbnailIds.has(targetItem.id)) return;
     setGeneratingThumbnailIds((prev) => new Set(prev).add(targetItem.id));
+    setBrokenThumbIds((prev) => {
+      if (!prev.has(targetItem.id)) return prev;
+      const next = new Set(prev);
+      next.delete(targetItem.id);
+      return next;
+    });
     setNotice(null);
 
     try {
+      const baselineGeneratedAt = targetItem.thumbnailGeneratedAt;
       const result = await generateThumbnailForItem(targetItem, true);
-      if (result.success) {
-        const updated = items.map((i) => (i.id === targetItem.id ? result.item : i));
+      const updated = mergeThumbnailOutcome(
+        latestItemsRef.current,
+        targetItem.id,
+        result.item,
+        baselineGeneratedAt
+      );
+      try {
         await saveNavigationItems(updated);
+        latestItemsRef.current = updated;
         onItemsChange?.(updated);
+      } catch (saveErr: any) {
+        console.warn('[NavigationManagerModal] Non-fatal thumbnail status save notice:', saveErr?.message || saveErr);
+      }
+
+      if (result.success) {
         setNotice({
           type: 'success',
           text: `Thumbnail untuk "${targetItem.name}" berjaya dijana dan disimpan ke Firebase Storage.`,
         });
       } else {
         setNotice({
-          type: 'error',
-          text: result.error || `Gagal menjana thumbnail untuk "${targetItem.name}".`,
+          type: 'warning',
+          text: `Thumbnail untuk "${targetItem.name}" gagal dijana (${result.error || 'sumber PDF tidak dapat dicapai'}). Rekod navigasi dan paparan dokumen kekal aktif tanpa halangan.`,
         });
       }
     } catch (err: any) {
       setNotice({
-        type: 'error',
-        text: err?.message || 'Ralat semasa menjana thumbnail PDF.',
+        type: 'warning',
+        text: `Penjanaan thumbnail untuk "${targetItem.name}" gagal (${err?.message || 'ralat tidak diketahui'}), namun rekod navigasi kekal boleh digunakan.`,
       });
     } finally {
       setGeneratingThumbnailIds((prev) => {
@@ -259,19 +296,28 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
     setNotice(null);
 
     try {
-      const result = await generateBulkThumbnails(items, true, (p) => {
-        setBulkThumbnailProgress({ completed: p.completed, total: p.total });
-      });
+      const result = await generateBulkThumbnails(
+        latestItemsRef.current,
+        true,
+        (p) => {
+          setBulkThumbnailProgress({ completed: p.completed, total: p.total });
+        },
+        () => latestItemsRef.current
+      );
 
+      latestItemsRef.current = result.updatedItems;
       onItemsChange?.(result.updatedItems);
       setNotice({
-        type: 'success',
-        text: `Penjanaan thumbnail pukal selesai: ${result.successCount} berjaya, ${result.failureCount} gagal, ${result.skippedCount} dilangkau.`,
+        type: result.failureCount > 0 ? 'warning' : 'success',
+        text:
+          result.failureCount > 0
+            ? `Penjanaan thumbnail pukal selesai (tidak menyekat paparan): ${result.successCount} berjaya, ${result.failureCount} gagal, ${result.skippedCount} dilangkau.`
+            : `Penjanaan thumbnail pukal selesai: ${result.successCount} berjaya, ${result.failureCount} gagal, ${result.skippedCount} dilangkau.`,
       });
     } catch (err: any) {
       setNotice({
-        type: 'error',
-        text: err?.message || 'Ralat semasa penjanaan thumbnail pukal.',
+        type: 'warning',
+        text: err?.message || 'Ralat semasa penjanaan thumbnail pukal. Rekod navigasi kekal berfungsi seperti biasa.',
       });
     } finally {
       setIsBulkGeneratingThumbnails(false);
@@ -446,16 +492,32 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
       setNotice(null);
 
       let updatedList: NavigationItem[];
-      const driveFileId = isDriveDisplay ? extractGoogleDriveFileId(formState.driveUrl) : null;
+      const trimmedDriveUrl = isDriveDisplay ? formState.driveUrl.trim() : '';
+      const driveFileId = isDriveDisplay ? extractGoogleDriveFileId(trimmedDriveUrl) : null;
+      const parsedDriveLink = isDriveDisplay ? parseTakwimLink(trimmedDriveUrl) : null;
+      const isDrivePdfCandidate = Boolean(
+        isDriveDisplay &&
+          driveFileId &&
+          parsedDriveLink &&
+          parsedDriveLink.kind !== 'drive-folder'
+      );
+      let shouldGenerateBackgroundThumb = false;
+      let targetSavedId = editingItem?.id || '';
 
       if (editingItem) {
-        // Update existing item
+        // Update existing item (never block parent record update on thumbnail generation)
         updatedList = items.map((item) => {
           if (item.id === editingItem.id) {
-            const isSameDriveUrl = item.driveUrl === formState.driveUrl.trim();
-            const thumbUrl = driveFileId
-              ? (isSameDriveUrl && item.thumbnailUrl ? item.thumbnailUrl : `/thumbnails/${driveFileId}.png`)
-              : undefined;
+            const isSameDriveUrl = (item.driveUrl || '').trim() === trimmedDriveUrl;
+            const hasValidExistingThumb =
+              isSameDriveUrl &&
+              Boolean(item.thumbnailUrl) &&
+              (item.thumbnailStatus === 'generated' || item.thumbnailStatus === 'ready') &&
+              item.thumbnailFileId === driveFileId;
+
+            if (isDrivePdfCandidate && !hasValidExistingThumb) {
+              shouldGenerateBackgroundThumb = true;
+            }
 
             return {
               ...item,
@@ -466,14 +528,28 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
               parentId: formState.type === 'parent' ? undefined : formState.parentId,
               destination: finalDest,
               displayType: formState.type === 'parent' ? (isParentEmptyPage ? 'empty_page' : undefined) : formState.displayType,
-              driveUrl: isDriveDisplay ? formState.driveUrl.trim() : undefined,
+              driveUrl: isDriveDisplay ? trimmedDriveUrl : undefined,
               displayTitle: isDriveDisplay ? (formState.displayTitle.trim() || formState.name.trim()) : undefined,
               isActive: formState.isActive,
-              thumbnailUrl: thumbUrl,
-              thumbnailStatus: driveFileId ? 'generated' : (item.thumbnailStatus || 'idle'),
-              thumbnailFileId: driveFileId || item.thumbnailFileId,
-              thumbnailGeneratedAt: driveFileId ? (item.thumbnailGeneratedAt || new Date().toISOString()) : item.thumbnailGeneratedAt,
-              thumbnailError: driveFileId ? undefined : item.thumbnailError,
+              thumbnailUrl: !isDriveDisplay
+                ? undefined
+                : hasValidExistingThumb
+                ? item.thumbnailUrl
+                : undefined,
+              thumbnailStatus: !isDriveDisplay
+                ? 'idle'
+                : hasValidExistingThumb
+                ? item.thumbnailStatus
+                : isDrivePdfCandidate
+                ? 'generating'
+                : 'idle',
+              thumbnailFileId: isDriveDisplay ? driveFileId || undefined : undefined,
+              thumbnailGeneratedAt: !isDriveDisplay
+                ? undefined
+                : hasValidExistingThumb
+                ? item.thumbnailGeneratedAt
+                : undefined,
+              thumbnailError: undefined,
               updatedAt: new Date().toISOString(),
             };
           }
@@ -482,12 +558,17 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
       } else {
         // Create new item
         const newId = (isDriveDisplay || isEmptyPageDisplay) && finalDest ? finalDest : generateNavId(formState.name, formState.type);
+        targetSavedId = newId;
         const siblings = formState.type === 'parent'
           ? parents
           : formState.type === 'child'
           ? children.filter((c) => c.parentId === formState.parentId)
           : grandchildren.filter((gc) => gc.parentId === formState.parentId);
         const nextOrder = siblings.length;
+
+        if (isDrivePdfCandidate) {
+          shouldGenerateBackgroundThumb = true;
+        }
 
         const newItem: NavigationItem = {
           id: newId,
@@ -498,14 +579,14 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
           parentId: formState.type === 'parent' ? undefined : formState.parentId,
           destination: (isDriveDisplay || isEmptyPageDisplay) ? newId : finalDest,
           displayType: formState.type === 'parent' ? (isParentEmptyPage ? 'empty_page' : undefined) : formState.displayType,
-          driveUrl: isDriveDisplay ? formState.driveUrl.trim() : undefined,
+          driveUrl: isDriveDisplay ? trimmedDriveUrl : undefined,
           displayTitle: isDriveDisplay ? (formState.displayTitle.trim() || formState.name.trim()) : undefined,
           order: nextOrder,
           isActive: formState.isActive,
-          thumbnailUrl: driveFileId ? `/thumbnails/${driveFileId}.png` : undefined,
-          thumbnailStatus: driveFileId ? 'generated' : 'idle',
+          thumbnailUrl: undefined,
+          thumbnailStatus: isDrivePdfCandidate ? 'generating' : 'idle',
           thumbnailFileId: driveFileId || undefined,
-          thumbnailGeneratedAt: driveFileId ? new Date().toISOString() : undefined,
+          thumbnailGeneratedAt: undefined,
           thumbnailError: undefined,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
@@ -515,6 +596,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
       }
 
       await saveNavigationItems(updatedList);
+      latestItemsRef.current = updatedList;
       onItemsChange?.(updatedList);
       setIsEditorOpen(false);
       setNotice({
@@ -522,22 +604,33 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
         text: `Navigasi "${formState.name}" berjaya disimpan ke Firestore.`
       });
 
-      // Automatically generate thumbnail for newly registered or updated Google Drive PDF documents
-      if (isDriveDisplay && formState.driveUrl) {
-        const targetSavedId = editingItem ? editingItem.id : (updatedList[updatedList.length - 1]?.id);
+      // Automatically generate thumbnail in background as a strictly non-fatal enrichment step
+      if (shouldGenerateBackgroundThumb && targetSavedId) {
         const savedItem = updatedList.find((i) => i.id === targetSavedId);
         if (savedItem && isEligibleDrivePdf(savedItem)) {
-          generateThumbnailForItem(savedItem, true).then(async (thumbResult) => {
-            if (thumbResult.success) {
-              const withThumbnailList = updatedList.map((i) =>
-                i.id === savedItem.id ? thumbResult.item : i
+          const baselineGeneratedAt = savedItem.thumbnailGeneratedAt;
+          generateThumbnailForItem(savedItem, true)
+            .then(async (thumbResult) => {
+              const withOutcomeList = mergeThumbnailOutcome(
+                latestItemsRef.current,
+                savedItem.id,
+                thumbResult.item,
+                baselineGeneratedAt
               );
-              await saveNavigationItems(withThumbnailList);
-              onItemsChange?.(withThumbnailList);
-            }
-          }).catch((thumbErr) => {
-            console.warn('[NavigationManagerModal] Auto-generate thumbnail notice:', thumbErr?.message || thumbErr);
-          });
+              try {
+                await saveNavigationItems(withOutcomeList);
+                latestItemsRef.current = withOutcomeList;
+                onItemsChange?.(withOutcomeList);
+              } catch (saveThumbErr: any) {
+                console.warn(
+                  '[NavigationManagerModal] Non-fatal thumbnail status save notice:',
+                  saveThumbErr?.message || saveThumbErr
+                );
+              }
+            })
+            .catch((thumbErr) => {
+              console.warn('[NavigationManagerModal] Non-fatal auto-thumbnail notice:', thumbErr?.message || thumbErr);
+            });
         }
       }
     } catch (err: any) {
@@ -760,6 +853,8 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
               <div className="flex items-center gap-2">
                 {notice.type === 'success' ? (
                   <Check className="w-4 h-4 shrink-0 text-emerald-600" />
+                ) : notice.type === 'warning' ? (
+                  <AlertCircle className="w-4 h-4 shrink-0 text-amber-600" />
                 ) : (
                   <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
                 )}
@@ -1203,26 +1298,35 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                                   </div>
 
                                   {isEligibleDrivePdf(c) && (
-                                    <div className="flex items-center gap-2 mt-1.5">
-                                      {c.thumbnailUrl && c.thumbnailStatus === 'ready' ? (
+                                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                      {generatingThumbnailIds.has(c.id) || c.thumbnailStatus === 'generating' || c.thumbnailStatus === 'processing' ? (
+                                        <span className="text-[9.5px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.2 rounded border border-indigo-200 flex items-center gap-1">
+                                          <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                                          <span>Menjana...</span>
+                                        </span>
+                                      ) : c.thumbnailUrl && (c.thumbnailStatus === 'ready' || c.thumbnailStatus === 'generated') && !brokenThumbIds.has(c.id) ? (
                                         <div className="flex items-center gap-1.5">
                                           <img
                                             src={c.thumbnailUrl}
                                             alt={c.name}
                                             className="w-5 h-6 object-cover rounded border border-slate-200 bg-white"
+                                            onError={() => setBrokenThumbIds((prev) => new Set(prev).add(c.id))}
                                           />
                                           <span className="text-[9.5px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200 flex items-center gap-1">
                                             <CheckCircle2 className="w-2.5 h-2.5" />
                                             <span>Thumbnail Sedia</span>
                                           </span>
                                         </div>
-                                      ) : generatingThumbnailIds.has(c.id) || c.thumbnailStatus === 'generating' ? (
-                                        <span className="text-[9.5px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.2 rounded border border-indigo-200 flex items-center gap-1">
-                                          <Loader2 className="w-2.5 h-2.5 animate-spin" />
-                                          <span>Menjana...</span>
+                                      ) : c.thumbnailStatus === 'failed' || c.thumbnailStatus === 'error' || brokenThumbIds.has(c.id) ? (
+                                        <span
+                                          title={c.thumbnailError || 'Penjanaan thumbnail gagal; dokumen masih boleh dibuka.'}
+                                          className="text-[9.5px] font-bold text-amber-800 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200 flex items-center gap-1"
+                                        >
+                                          <AlertCircle className="w-2.5 h-2.5 text-amber-600" />
+                                          <span>Thumbnail Gagal (Opsional)</span>
                                         </span>
                                       ) : (
-                                        <span className="text-[9.5px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200 flex items-center gap-1">
+                                        <span className="text-[9.5px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200 flex items-center gap-1">
                                           <AlertCircle className="w-2.5 h-2.5" />
                                           <span>Belum Dijana</span>
                                         </span>
@@ -1403,26 +1507,35 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                                 </div>
 
                                 {isEligibleDrivePdf(gc) && (
-                                  <div className="flex items-center gap-2 mt-1.5">
-                                    {gc.thumbnailUrl && gc.thumbnailStatus === 'ready' ? (
+                                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                    {generatingThumbnailIds.has(gc.id) || gc.thumbnailStatus === 'generating' || gc.thumbnailStatus === 'processing' ? (
+                                      <span className="text-[9.5px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.2 rounded border border-indigo-200 flex items-center gap-1">
+                                        <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                                        <span>Menjana...</span>
+                                      </span>
+                                    ) : gc.thumbnailUrl && (gc.thumbnailStatus === 'ready' || gc.thumbnailStatus === 'generated') && !brokenThumbIds.has(gc.id) ? (
                                       <div className="flex items-center gap-1.5">
                                         <img
                                           src={gc.thumbnailUrl}
                                           alt={gc.name}
                                           className="w-5 h-6 object-cover rounded border border-slate-200 bg-white"
+                                          onError={() => setBrokenThumbIds((prev) => new Set(prev).add(gc.id))}
                                         />
                                         <span className="text-[9.5px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200 flex items-center gap-1">
                                           <CheckCircle2 className="w-2.5 h-2.5" />
                                           <span>Thumbnail Sedia</span>
                                         </span>
                                       </div>
-                                    ) : generatingThumbnailIds.has(gc.id) || gc.thumbnailStatus === 'generating' ? (
-                                      <span className="text-[9.5px] font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.2 rounded border border-indigo-200 flex items-center gap-1">
-                                        <Loader2 className="w-2.5 h-2.5 animate-spin" />
-                                        <span>Menjana...</span>
+                                    ) : gc.thumbnailStatus === 'failed' || gc.thumbnailStatus === 'error' || brokenThumbIds.has(gc.id) ? (
+                                      <span
+                                        title={gc.thumbnailError || 'Penjanaan thumbnail gagal; dokumen masih boleh dibuka.'}
+                                        className="text-[9.5px] font-bold text-amber-800 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200 flex items-center gap-1"
+                                      >
+                                        <AlertCircle className="w-2.5 h-2.5 text-amber-600" />
+                                        <span>Thumbnail Gagal (Opsional)</span>
                                       </span>
                                     ) : (
-                                      <span className="text-[9.5px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200 flex items-center gap-1">
+                                      <span className="text-[9.5px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200 flex items-center gap-1">
                                         <AlertCircle className="w-2.5 h-2.5" />
                                         <span>Belum Dijana</span>
                                       </span>
