@@ -3,29 +3,22 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
-  Search,
   X,
   Download,
   Share2,
   Maximize2,
   RotateCw,
   Calendar,
-  Sparkles,
   Check,
   ExternalLink,
-  BookOpen,
-  Layers,
-  AlertCircle,
-  Eye,
-  Info,
   User,
-  GraduationCap,
-  Building,
   CheckCircle2,
   ChevronRight,
-  RotateCcw
+  RotateCcw,
+  Info,
+  AlertCircle
 } from 'lucide-react';
 import { Staff } from '../types';
 import { 
@@ -40,12 +33,16 @@ interface LecturerTimetableHubProps {
   staffList: Staff[];
   onSelectProfile?: (staff: Staff) => void;
   initialStaffId?: string;
+  selectionSeq?: number;
+  onAvailableIdsLoaded?: (ids: Set<string>) => void;
 }
 
 export const LecturerTimetableHub: React.FC<LecturerTimetableHubProps> = ({
   staffList,
   onSelectProfile,
   initialStaffId,
+  selectionSeq = 0,
+  onAvailableIdsLoaded,
 }) => {
   const [availableIds, setAvailableIds] = useState<Set<string>>(
     () => new Set(FALLBACK_LECTURER_TIMETABLE_IDS)
@@ -54,8 +51,7 @@ export const LecturerTimetableHub: React.FC<LecturerTimetableHubProps> = ({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
-  // Search & Filter State
-  const [searchQuery, setSearchQuery] = useState('');
+  // Filter State (Search consolidated into GlobalSmartSearch)
   const [selectedDept, setSelectedDept] = useState<string>('Semua');
   const [onlyAvailable, setOnlyAvailable] = useState<boolean>(true);
   const [selectedStaff, setSelectedStaff] = useState<Staff | null>(null);
@@ -66,8 +62,6 @@ export const LecturerTimetableHub: React.FC<LecturerTimetableHubProps> = ({
   const [isFullscreenOpen, setIsFullscreenOpen] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [downloading, setDownloading] = useState(false);
-
-  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Load available timetable IDs from GitHub
   const loadData = async (forceRefresh = false) => {
@@ -80,6 +74,7 @@ export const LecturerTimetableHub: React.FC<LecturerTimetableHubProps> = ({
     try {
       const res = await fetchAvailableTimetableIds(forceRefresh);
       setAvailableIds(res.ids);
+      onAvailableIdsLoaded?.(res.ids);
       if (res.lastUpdated) {
         setLastUpdated(res.lastUpdated);
       }
@@ -105,17 +100,20 @@ export const LecturerTimetableHub: React.FC<LecturerTimetableHubProps> = ({
     });
   }, [staffList, availableIds]);
 
-  // Set default selected staff
+  // Select target lecturer automatically when routed via Global Smart Search, or pick default
   useEffect(() => {
     if (academicStaffList.length === 0) return;
 
     if (initialStaffId) {
+      const normalizedTarget = initialStaffId.toUpperCase().trim();
       const found = academicStaffList.find((s) => {
         const id = (s.ID || s.staff_id || '').toUpperCase().trim();
-        return id === initialStaffId.toUpperCase().trim();
+        return id === normalizedTarget;
       });
       if (found) {
+        setSelectedDept('Semua');
         setSelectedStaff(found);
+        setImageError(false);
         return;
       }
     }
@@ -128,7 +126,7 @@ export const LecturerTimetableHub: React.FC<LecturerTimetableHubProps> = ({
       });
       setSelectedStaff(firstAvailable || academicStaffList[0]);
     }
-  }, [academicStaffList, initialStaffId, availableIds]);
+  }, [academicStaffList, initialStaffId, selectionSeq, availableIds]);
 
   // Available departments for filter pills
   const departments = useMemo(() => {
@@ -142,43 +140,24 @@ export const LecturerTimetableHub: React.FC<LecturerTimetableHubProps> = ({
     return ['Semua', ...Array.from(set).sort()];
   }, [academicStaffList]);
 
-  // Filtered staff records
+  // Filtered staff records by availability and department
   const filteredStaff = useMemo(() => {
-    const q = searchQuery.toLowerCase().trim();
-    const qNoSpace = q.replace(/\s+/g, '');
-
     return academicStaffList.filter((s) => {
       const id = (s.ID || s.staff_id || '').toUpperCase().trim();
       const hasTimetable = availableIds.has(id);
 
-      // Filter: only with available timetable
       if (onlyAvailable && !hasTimetable) {
         return false;
       }
 
-      // Filter: department
       if (selectedDept !== 'Semua') {
         const d = (s.DepartmentID || s.Unit || '').trim();
         if (d !== selectedDept) return false;
       }
 
-      // Filter: search query
-      if (q) {
-        const name = (s.Nama || '').toLowerCase();
-        const jawatan = (s.Jawatan || '').toLowerCase();
-        const dept = (s.DepartmentID || s.Unit || '').toLowerCase();
-        const matches =
-          name.includes(q) ||
-          name.replace(/\s+/g, '').includes(qNoSpace) ||
-          id.toLowerCase().includes(q) ||
-          jawatan.includes(q) ||
-          dept.includes(q);
-        if (!matches) return false;
-      }
-
       return true;
     });
-  }, [academicStaffList, searchQuery, selectedDept, onlyAvailable, availableIds]);
+  }, [academicStaffList, selectedDept, onlyAvailable, availableIds]);
 
   // Handle staff selection
   const handleSelectLecturer = (staff: Staff) => {
@@ -255,36 +234,42 @@ export const LecturerTimetableHub: React.FC<LecturerTimetableHubProps> = ({
 
   return (
     <div className="space-y-6 text-left">
-      {/* Dynamic Header & Control Bar */}
-      <div className="glass-panel rounded-3xl p-4 md:p-5 border border-white/60 shadow-xs space-y-3.5 sticky top-2 z-20 backdrop-blur-md bg-white/95 transition-all">
-        {/* Row 1: Search Box & Global Controls */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-          <div className="relative flex-1 min-w-0">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-rose-500 pointer-events-none" />
-            <input
-              ref={searchInputRef}
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Cari nama pensyarah, no. staf, atau jabatan..."
-              className="w-full pl-9 sm:pl-10 pr-9 py-2 sm:py-2.5 md:py-3 bg-slate-50 hover:bg-slate-50/80 border border-slate-200/90 rounded-xl sm:rounded-2xl text-xs sm:text-sm font-semibold text-slate-800 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition-all shadow-inner"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchQuery('');
-                  searchInputRef.current?.focus();
-                }}
-                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 bg-slate-200/60 hover:bg-slate-200 rounded-full cursor-pointer transition-colors"
-                title="Padam carian"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
+      {/* Dynamic Filter & Controls Bar (Search consolidated into GlobalSmartSearch) */}
+      <div className="glass-panel rounded-3xl p-4 md:p-4 border border-white/60 shadow-xs space-y-3 sticky top-2 z-20 backdrop-blur-md bg-white/95 transition-all">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+          {/* Department Filter Pills */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 pt-0.5 scrollbar-none min-w-0 flex-1">
+            {departments.map((dept) => {
+              const isSelected = selectedDept === dept;
+              const count = dept === 'Semua' 
+                ? academicStaffList.length 
+                : academicStaffList.filter(s => (s.DepartmentID || s.Unit || '').trim() === dept).length;
+
+              return (
+                <button
+                  key={dept}
+                  type="button"
+                  onClick={() => setSelectedDept(dept)}
+                  className={`px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1 sm:gap-1.5 ${
+                    isSelected
+                      ? 'bg-gradient-to-r from-rose-600 to-pink-600 text-white shadow-xs shadow-rose-200'
+                      : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200/80'
+                  }`}
+                >
+                  <span>{dept}</span>
+                  <span
+                    className={`text-[9.5px] sm:text-[10px] px-1.5 py-0.2 rounded-md ${
+                      isSelected ? 'bg-white/25 text-white' : 'bg-slate-100 text-slate-500'
+                    }`}
+                  >
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
           </div>
 
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 justify-end">
             {/* Filter Toggle: Jadual Tersedia */}
             <button
               type="button"
@@ -297,7 +282,7 @@ export const LecturerTimetableHub: React.FC<LecturerTimetableHubProps> = ({
               title="Tapis hanya pensyarah yang mempunyai fail jadual"
             >
               <CheckCircle2 className={`w-3.5 h-3.5 ${onlyAvailable ? 'text-rose-600' : 'text-slate-400'}`} />
-              <span className="hidden xs:inline">Jadual Tersedia</span>
+              <span>Jadual Tersedia</span>
               <span className={`text-[10px] px-1.5 py-0.2 rounded-md ${onlyAvailable ? 'bg-rose-200/80 text-rose-900' : 'bg-slate-100 text-slate-600'}`}>
                 {totalAvailableCount}
               </span>
@@ -314,38 +299,6 @@ export const LecturerTimetableHub: React.FC<LecturerTimetableHubProps> = ({
               <RotateCw className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${isRefreshing ? 'animate-spin text-rose-600' : ''}`} />
             </button>
           </div>
-        </div>
-
-        {/* Row 2: Department Filter Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 pt-0.5 scrollbar-none -mx-1 px-1">
-          {departments.map((dept) => {
-            const isSelected = selectedDept === dept;
-            const count = dept === 'Semua' 
-              ? academicStaffList.length 
-              : academicStaffList.filter(s => (s.DepartmentID || s.Unit || '').trim() === dept).length;
-
-            return (
-              <button
-                key={dept}
-                type="button"
-                onClick={() => setSelectedDept(dept)}
-                className={`px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1 sm:gap-1.5 ${
-                  isSelected
-                    ? 'bg-gradient-to-r from-rose-600 to-pink-600 text-white shadow-xs shadow-rose-200'
-                    : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200/80'
-                }`}
-              >
-                <span>{dept}</span>
-                <span
-                  className={`text-[9.5px] sm:text-[10px] px-1.5 py-0.2 rounded-md ${
-                    isSelected ? 'bg-white/25 text-white' : 'bg-slate-100 text-slate-500'
-                  }`}
-                >
-                  {count}
-                </span>
-              </button>
-            );
-          })}
         </div>
       </div>
 
@@ -376,21 +329,20 @@ export const LecturerTimetableHub: React.FC<LecturerTimetableHubProps> = ({
                 <div className="space-y-1">
                   <h4 className="text-sm font-bold text-slate-800">Tiada Pensyarah Ditemui</h4>
                   <p className="text-xs text-slate-500 max-w-xs mx-auto">
-                    Tiada pensyarah sepadan dengan carian <span className="font-bold text-rose-600">"{searchQuery}"</span>.
+                    Tiada pensyarah tersedia bagi penapis semasa.
                   </p>
                 </div>
-                {(searchQuery || selectedDept !== 'Semua' || onlyAvailable) && (
+                {(selectedDept !== 'Semua' || onlyAvailable) && (
                   <button
                     type="button"
                     onClick={() => {
-                      setSearchQuery('');
                       setSelectedDept('Semua');
                       setOnlyAvailable(false);
                     }}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors cursor-pointer"
                   >
                     <RotateCcw className="w-3 h-3" />
-                    Reset Carian
+                    Reset Saringan
                   </button>
                 )}
               </div>

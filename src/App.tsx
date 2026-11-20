@@ -7,7 +7,6 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Search,
   Filter, 
-  X, 
   RotateCcw, 
   UserCheck, 
   Sparkles,
@@ -22,12 +21,15 @@ import {
   Layers,
   LogOut
 } from 'lucide-react';
-import { Staff, DivisionType, StaffCommittee, AuthorizedAdmin, NavigationItem } from './types';
+import { Staff, DivisionType, StaffCommittee, AuthorizedAdmin, NavigationItem, PlatformLink, PlatformSyncStatus, StudentTimetable } from './types';
 import { INITIAL_STAFF_DATA } from './data/initialStaff';
 import { STAFF_GRADE_MAP, determineBahagian } from './utils/staffGrade';
-import { getDistrictState } from './utils/stateMapping';
 import { generateDefaultCommitteesForStaff, deduplicateCommittees } from './utils/committeeService';
-import { formatIC, cleanIC } from './utils/icFormatter';
+import { formatIC } from './utils/icFormatter';
+import { buildStaffSearchIndex, searchStaffIndex } from './services/globalSearchService';
+import { fetchStudentTimetables } from './services/timetableService';
+import { fetchAvailableTimetableIds, FALLBACK_LECTURER_TIMETABLE_IDS } from './services/lecturerTimetableService';
+import { subscribeToPlatformLinks } from './services/platformService';
 import { StaffCard } from './components/StaffCard';
 import { ProfileModal } from './components/ProfileModal';
 import { CommitteeModal } from './components/CommitteeModal';
@@ -39,6 +41,7 @@ import { SelfRegistrationPage } from './components/SelfRegistrationPage';
 import { StudentTimetableHub } from './components/StudentTimetableHub';
 import { LecturerTimetableHub } from './components/LecturerTimetableHub';
 import { DynamicNavigationBar } from './components/DynamicNavigationBar';
+import { GlobalSmartSearch } from './components/GlobalSmartSearch';
 import { NavigationManagerModal, NavigationManagerContext } from './components/NavigationManagerModal';
 import { DriveContentViewer } from './components/DriveContentViewer';
 import { EmptyPageContainer } from './components/EmptyPageContainer';
@@ -229,6 +232,70 @@ export default function App() {
         window.history.pushState({ navId: fallbackDest }, '', targetPath);
       }
     }
+  };
+
+  // Authoritative Global Search Datasets & Direct Timetable Targets (SES v4.5)
+  const [studentTimetables, setStudentTimetables] = useState<StudentTimetable[]>([]);
+  const [availableLecturerIds, setAvailableLecturerIds] = useState<Set<string>>(
+    () => new Set(FALLBACK_LECTURER_TIMETABLE_IDS)
+  );
+  const [platformLinks, setPlatformLinks] = useState<PlatformLink[]>([]);
+  const [platformSyncStatus, setPlatformSyncStatus] = useState<PlatformSyncStatus>('loading');
+  const [platformSyncError, setPlatformSyncError] = useState<string | null>(null);
+  const [isPlatformsLoading, setIsPlatformsLoading] = useState<boolean>(true);
+  const [selectedStudentTarget, setSelectedStudentTarget] = useState<{ classCode: string; seq: number } | null>(null);
+  const [selectedLecturerTarget, setSelectedLecturerTarget] = useState<{ staffId: string; seq: number } | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    fetchStudentTimetables()
+      .then((res) => {
+        if (isMounted && Array.isArray(res.data)) {
+          setStudentTimetables(res.data);
+        }
+      })
+      .catch(() => {});
+
+    fetchAvailableTimetableIds()
+      .then((res) => {
+        if (isMounted && res.ids && res.ids.size > 0) {
+          setAvailableLecturerIds(res.ids);
+        }
+      })
+      .catch(() => {});
+
+    const unsubscribePlatforms = subscribeToPlatformLinks((result) => {
+      if (!isMounted) return;
+      setPlatformLinks(result.platforms);
+      setPlatformSyncStatus(result.status);
+      setPlatformSyncError(result.errorMessage || null);
+      setIsPlatformsLoading(false);
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribePlatforms();
+    };
+  }, []);
+
+  const handleSelectStudentTimetable = (classCode: string) => {
+    setSelectedStudentTarget((prev) => ({
+      classCode,
+      seq: (prev?.seq ?? 0) + 1,
+    }));
+    setSearchQuery('');
+    setDebouncedSearchQuery('');
+    handleSelectDestination('jadual');
+  };
+
+  const handleSelectLecturerTimetable = (staffId: string) => {
+    setSelectedLecturerTarget((prev) => ({
+      staffId,
+      seq: (prev?.seq ?? 0) + 1,
+    }));
+    setSearchQuery('');
+    setDebouncedSearchQuery('');
+    handleSelectDestination('jadual-pensyarah');
   };
 
   // Staff Directory State
@@ -468,6 +535,8 @@ export default function App() {
     setDebouncedSearchQuery('');
     setSelectedDivision('Semua');
     setSelectedDepartment('Semua');
+    setSelectedStudentTarget(null);
+    setSelectedLecturerTarget(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -615,97 +684,43 @@ export default function App() {
     loadCommitteesData(staffList);
   };
 
-  // Build pre-computed searchable index on staff dataset load/change
-  const indexedStaffList = useMemo(() => {
-    return staffList.map((staff) => {
-      const district = String(staff.DaerahAsal || '');
-      const state = getDistrictState(district);
+  // Build pre-computed searchable index via shared Unified Search engine
+  const indexedStaffList = useMemo(
+    () => buildStaffSearchIndex(staffList, isAdminMode),
+    [staffList, isAdminMode]
+  );
 
-      // Collect all vehicle plates (PlatNo1, PlatNo2, PlatNo3)
-      const allPlates = [
-        staff.PlatNo1,
-        staff.PlatNo2,
-        staff.PlatNo3,
-        staff.NoPlat,
-      ].filter(Boolean) as string[];
+  // Global debounced staff search matches (unrestricted by Directory tab/department filters)
+  const searchMatchedStaff = useMemo(
+    () => searchStaffIndex(indexedStaffList, debouncedSearchQuery),
+    [indexedStaffList, debouncedSearchQuery]
+  );
 
-      const platesNormalized = allPlates.map((p) => String(p).toLowerCase().trim());
-      const platesNoSpace = allPlates.map((p) => String(p).toLowerCase().replace(/\s+/g, ''));
-
-      // Combine searchable staff fields matching the 17 official columns
-      const searchableText = [
-        staff.Nama,
-        staff.NamaPendek,
-        staff.StaffID,
-        staff.ID,
-        staff.staff_id,
-        staff.Kategori,
-        staff.Bahagian,
-        staff.Jawatan,
-        staff.Unit,
-        staff.DepartmentID,
-        staff.Gred,
-        staff.grade,
-        staff.Email,
-        staff.Telefon,
-        staff.Sambungan,
-        ...platesNormalized,
-        ...platesNoSpace,
-        staff.TahunLahir,
-        staff['Tahun Lahir'],
-        district,
-        state,
-        staff.Kelulusan,
-        staff.Pengkhususan,
-        ...(isAdminMode && (staff.IC || staff.NoKP) ? [
-          formatIC(staff.IC || staff.NoKP),
-          cleanIC(staff.IC || staff.NoKP)
-        ] : []),
-      ]
-        .filter(Boolean)
-        .map((val) => String(val).toLowerCase().trim())
-        .join(' ');
-
-      return {
-        staff,
-        searchableText,
-        platesNoSpace,
-      };
-    });
-  }, [staffList, isAdminMode]);
-
-  // Filters calculation using pre-computed index & debounced search query
+  // Filters calculation using shared debounced search matches + Directory Staff filters
   const uniqueDepartments = ['Semua', ...Array.from(new Set(staffList.map((s) => s.DepartmentID)))];
 
   const filteredStaff = useMemo(() => {
-    const q = debouncedSearchQuery.toLowerCase().trim();
-    const qNoSpace = q.replace(/\s+/g, '');
+    return searchMatchedStaff.filter((staff) => {
+      if (selectedDivision !== 'Semua' && staff.Bahagian !== selectedDivision) {
+        return false;
+      }
 
-    return indexedStaffList
-      .filter(({ staff, searchableText, platesNoSpace }) => {
-        if (q) {
-          const matchesQuery =
-            searchableText.includes(q) ||
-            searchableText.includes(qNoSpace) ||
-            platesNoSpace.some((plate) => plate.includes(qNoSpace));
-          if (!matchesQuery) return false;
-        }
+      if (selectedDepartment !== 'Semua' && staff.DepartmentID !== selectedDepartment) {
+        return false;
+      }
 
-        if (selectedDivision !== 'Semua' && staff.Bahagian !== selectedDivision) {
-          return false;
-        }
+      return true;
+    });
+  }, [searchMatchedStaff, selectedDivision, selectedDepartment]);
 
-        if (selectedDepartment !== 'Semua' && staff.DepartmentID !== selectedDepartment) {
-          return false;
-        }
-
-        return true;
-      })
-      .map((item) => item.staff);
-  }, [indexedStaffList, debouncedSearchQuery, selectedDivision, selectedDepartment]);
+  const handleClearSearch = () => {
+    setSearchQuery('');
+    setDebouncedSearchQuery('');
+  };
 
   const resetFilters = () => {
     setSearchQuery('');
+    setDebouncedSearchQuery('');
     setSelectedDivision('Semua');
     setSelectedDepartment('Semua');
     setShowMobileFilters(false);
@@ -941,6 +956,32 @@ export default function App() {
         }}
       />
 
+      {/* Unified Global Smart Search Bar — Single Search Interface Directly Below Main Navigation */}
+      <section
+        aria-label="Carian Global Platform"
+        className="relative z-[34] bg-white/75 backdrop-blur-md border-b border-slate-200/70 shadow-2xs"
+      >
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2.5 sm:py-3">
+          <GlobalSmartSearch
+            items={navigationItems}
+            query={searchQuery}
+            debouncedQuery={debouncedSearchQuery}
+            onQueryChange={setSearchQuery}
+            onClearSearch={handleClearSearch}
+            onSelectDestination={handleSelectDestination}
+            staffList={staffList}
+            staffMatches={searchQuery.trim() ? searchMatchedStaff : []}
+            studentTimetables={studentTimetables}
+            availableLecturerIds={availableLecturerIds}
+            platformLinks={platformLinks}
+            isStaffSearching={staffList.length > 0}
+            onSelectStaff={(staff) => setSelectedStaff(staff)}
+            onSelectStudentTimetable={handleSelectStudentTimetable}
+            onSelectLecturerTimetable={handleSelectLecturerTimetable}
+          />
+        </div>
+      </section>
+
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 relative z-10">
         {activeNavItem?.displayType === 'empty_page' ? (
@@ -1044,83 +1085,28 @@ export default function App() {
         ) : resolvedDestination === 'directory' ? (
           <div className="space-y-6">
             
-            {/* Unified Search & Directory Control Bar */}
-            <div className="glass-panel rounded-3xl p-4 md:p-5 border border-white/55 shadow-sm space-y-3.5 text-left sticky top-2 z-30 bg-white/95 backdrop-blur-md transition-all">
+            {/* Directory Filter & Category Control Bar (One Search consolidated into GlobalSmartSearch above) */}
+            <div className="glass-panel rounded-3xl p-3.5 md:p-4 border border-white/55 shadow-sm space-y-3 text-left sticky top-2 z-30 bg-white/95 backdrop-blur-md transition-all">
               
-              {/* Row 1: Search Box & Jabatan Selector */}
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                
-                {/* Prominent Search Bar */}
-                <div className="relative flex-1">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-500 w-4 h-4 pointer-events-none" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Cari nama, no. plat, gred, jabatan..."
-                    className="w-full pl-11 pr-10 py-3 bg-white/90 border border-indigo-200/80 rounded-2xl text-xs md:text-sm font-medium text-slate-800 placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:outline-none transition-all shadow-2xs"
-                  />
-                  {searchQuery && (
-                    <button
-                      onClick={() => setSearchQuery('')}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-full transition-all cursor-pointer"
-                      title="Padam carian"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-
-                {/* Jabatan Selector (always on desktop; on mobile hidden while searching unless expanded) */}
-                <div className={`relative min-w-[200px] ${searchQuery.trim() && !showMobileFilters ? 'hidden sm:block' : 'block'}`}>
-                  <select
-                    value={selectedDepartment}
-                    onChange={(e) => setSelectedDepartment(e.target.value)}
-                    className="w-full pl-4 pr-10 py-3 bg-white/90 border border-slate-200/80 rounded-2xl text-xs font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 focus:outline-none appearance-none cursor-pointer shadow-2xs"
-                  >
-                    <option value="Semua">Semua Bahagian</option>
-                    {uniqueDepartments.filter(d => d !== 'Semua').map((dept) => (
-                      <option key={dept} value={dept}>
-                        {dept}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="absolute inset-y-0 right-3.5 flex items-center pointer-events-none text-slate-500">
-                    <Filter className="w-3.5 h-3.5" />
-                  </div>
-                </div>
-
-                {/* Reset Filters button */}
-                {(searchQuery || selectedDivision !== 'Semua' || selectedDepartment !== 'Semua') && (
-                  <button
-                    onClick={resetFilters}
-                    className={`px-3.5 py-3 text-xs text-indigo-700 hover:text-indigo-950 font-bold items-center justify-center gap-1.5 bg-indigo-50/80 hover:bg-indigo-100/80 rounded-2xl border border-indigo-200/80 transition-all cursor-pointer whitespace-nowrap shadow-2xs ${
-                      searchQuery.trim() && !showMobileFilters ? 'hidden sm:flex' : 'flex'
-                    }`}
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    <span>Set Semula</span>
-                  </button>
-                )}
-              </div>
-
               {/* Mobile Search Live Toolbar: Appears when typing on mobile for instant feedback without layout shift */}
               {searchQuery.trim() && (
-                <div className="flex sm:hidden items-center justify-between pt-1 pb-0.5 text-xs">
+                <div className="flex sm:hidden items-center justify-between pt-0.5 pb-0.5 text-xs">
                   <div className="flex items-center gap-1.5 font-extrabold text-indigo-950 bg-indigo-50/90 px-3 py-1.5 rounded-xl border border-indigo-200/70 shadow-2xs">
                     <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
                     <span>{filteredStaff.length} staf ditemui</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => (document.activeElement as HTMLElement)?.blur()}
-                      className="px-3 py-1.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 active:scale-95 rounded-xl cursor-pointer transition-all flex items-center gap-1 shadow-2xs"
-                      title="Tutup papan kekunci maya untuk paparan luas"
-                    >
-                      <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
-                      <span>Tutup Kekunci</span>
-                    </button>
+                    {(searchQuery || selectedDivision !== 'Semua' || selectedDepartment !== 'Semua') && (
+                      <button
+                        type="button"
+                        onClick={resetFilters}
+                        className="px-2.5 py-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-xl border border-indigo-200/80 cursor-pointer transition-all flex items-center gap-1 shadow-2xs"
+                        title="Set Semula Saringan"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        <span>Set Semula</span>
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => setShowMobileFilters(!showMobileFilters)}
@@ -1137,66 +1123,103 @@ export default function App() {
                 </div>
               )}
 
-              {/* Row 2: Horizontal Division (Bahagian) Filter Tabs (collapsed on mobile during search to bring results up) */}
-              <div className={`items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none border-t border-slate-100/80 pt-3 ${
+              {/* Preserved Directory Filters: Division Category Tabs + Department Selector + Reset */}
+              <div className={`flex-col lg:flex-row lg:items-center lg:justify-between gap-3 ${
                 searchQuery.trim() && !showMobileFilters ? 'hidden sm:flex' : 'flex'
               }`}>
-                {(['Semua', 'Pengurusan', 'Akademik', 'Sokongan Akademik', 'Pentadbiran'] as DivisionType[])
-                  .filter((div) => {
-                    if (div === 'Semua') return true;
-                    // Sembunyikan kategori sekiranya tiada staf (bilangan 0 seperti Sokongan Akademik)
-                    const count = staffList.filter((s) => s.Bahagian === div).length;
-                    return count > 0;
-                  })
-                  .map((div) => {
-                  const isActive = selectedDivision === div;
-                  const count = div === 'Semua' 
-                    ? staffList.length 
-                    : staffList.filter(s => s.Bahagian === div).length;
+                
+                {/* Horizontal Division (Bahagian) Filter Tabs */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none min-w-0 flex-1">
+                  {(['Semua', 'Pengurusan', 'Akademik', 'Sokongan Akademik', 'Pentadbiran'] as DivisionType[])
+                    .filter((div) => {
+                      if (div === 'Semua') return true;
+                      // Sembunyikan kategori sekiranya tiada staf (bilangan 0 seperti Sokongan Akademik)
+                      const count = staffList.filter((s) => s.Bahagian === div).length;
+                      return count > 0;
+                    })
+                    .map((div) => {
+                    const isActive = selectedDivision === div;
+                    const count = div === 'Semua' 
+                      ? staffList.length 
+                      : staffList.filter(s => s.Bahagian === div).length;
 
-                  let pastelStyle = '';
-                  let badgeStyle = '';
+                    let pastelStyle = '';
+                    let badgeStyle = '';
 
-                  if (div === 'Semua') {
-                    pastelStyle = isActive
-                      ? 'bg-rose-100/95 text-rose-950 border-2 border-rose-400 shadow-xs font-black'
-                      : 'bg-rose-50/80 text-rose-900 hover:bg-rose-100/70 border border-rose-200/70 font-extrabold';
-                    badgeStyle = isActive ? 'bg-rose-200 text-rose-950' : 'bg-rose-100 text-rose-900';
-                  } else if (div === 'Pengurusan') {
-                    pastelStyle = isActive
-                      ? 'bg-purple-100/95 text-purple-950 border-2 border-purple-400 shadow-xs font-black'
-                      : 'bg-purple-50/80 text-purple-900 hover:bg-purple-100/70 border border-purple-200/70 font-extrabold';
-                    badgeStyle = isActive ? 'bg-purple-200 text-purple-950' : 'bg-purple-100 text-purple-900';
-                  } else if (div === 'Akademik') {
-                    pastelStyle = isActive
-                      ? 'bg-amber-100/95 text-amber-950 border-2 border-amber-400 shadow-xs font-black'
-                      : 'bg-amber-50/80 text-amber-900 hover:bg-amber-100/70 border border-amber-200/70 font-extrabold';
-                    badgeStyle = isActive ? 'bg-amber-200 text-amber-950' : 'bg-amber-100 text-amber-900';
-                  } else if (div === 'Sokongan Akademik') {
-                    pastelStyle = isActive
-                      ? 'bg-sky-100/95 text-sky-950 border-2 border-sky-400 shadow-xs font-black'
-                      : 'bg-sky-50/80 text-sky-900 hover:bg-sky-100/70 border border-sky-200/70 font-extrabold';
-                    badgeStyle = isActive ? 'bg-sky-200 text-sky-950' : 'bg-sky-100 text-sky-900';
-                  } else if (div === 'Pentadbiran') {
-                    pastelStyle = isActive
-                      ? 'bg-emerald-100/95 text-emerald-950 border-2 border-emerald-400 shadow-xs font-black'
-                      : 'bg-emerald-50/80 text-emerald-900 hover:bg-emerald-100/70 border border-emerald-200/70 font-extrabold';
-                    badgeStyle = isActive ? 'bg-emerald-200 text-emerald-950' : 'bg-emerald-100 text-emerald-900';
-                  }
+                    if (div === 'Semua') {
+                      pastelStyle = isActive
+                        ? 'bg-rose-100/95 text-rose-950 border-2 border-rose-400 shadow-xs font-black'
+                        : 'bg-rose-50/80 text-rose-900 hover:bg-rose-100/70 border border-rose-200/70 font-extrabold';
+                      badgeStyle = isActive ? 'bg-rose-200 text-rose-950' : 'bg-rose-100 text-rose-900';
+                    } else if (div === 'Pengurusan') {
+                      pastelStyle = isActive
+                        ? 'bg-purple-100/95 text-purple-950 border-2 border-purple-400 shadow-xs font-black'
+                        : 'bg-purple-50/80 text-purple-900 hover:bg-purple-100/70 border border-purple-200/70 font-extrabold';
+                      badgeStyle = isActive ? 'bg-purple-200 text-purple-950' : 'bg-purple-100 text-purple-900';
+                    } else if (div === 'Akademik') {
+                      pastelStyle = isActive
+                        ? 'bg-amber-100/95 text-amber-950 border-2 border-amber-400 shadow-xs font-black'
+                        : 'bg-amber-50/80 text-amber-900 hover:bg-amber-100/70 border border-amber-200/70 font-extrabold';
+                      badgeStyle = isActive ? 'bg-amber-200 text-amber-950' : 'bg-amber-100 text-amber-900';
+                    } else if (div === 'Sokongan Akademik') {
+                      pastelStyle = isActive
+                        ? 'bg-sky-100/95 text-sky-950 border-2 border-sky-400 shadow-xs font-black'
+                        : 'bg-sky-50/80 text-sky-900 hover:bg-sky-100/70 border border-sky-200/70 font-extrabold';
+                      badgeStyle = isActive ? 'bg-sky-200 text-sky-950' : 'bg-sky-100 text-sky-900';
+                    } else if (div === 'Pentadbiran') {
+                      pastelStyle = isActive
+                        ? 'bg-emerald-100/95 text-emerald-950 border-2 border-emerald-400 shadow-xs font-black'
+                        : 'bg-emerald-50/80 text-emerald-900 hover:bg-emerald-100/70 border border-emerald-200/70 font-extrabold';
+                      badgeStyle = isActive ? 'bg-emerald-200 text-emerald-950' : 'bg-emerald-100 text-emerald-900';
+                    }
 
-                  return (
-                    <button
-                      key={div}
-                      onClick={() => setSelectedDivision(div)}
-                      className={`px-4 py-2 rounded-2xl text-xs font-extrabold whitespace-nowrap transition-all flex items-center gap-2 cursor-pointer ${pastelStyle}`}
+                    return (
+                      <button
+                        key={div}
+                        onClick={() => setSelectedDivision(div)}
+                        className={`px-4 py-2 rounded-2xl text-xs font-extrabold whitespace-nowrap transition-all flex items-center gap-2 cursor-pointer ${pastelStyle}`}
+                      >
+                        <span>{div}</span>
+                        <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md ${badgeStyle}`}>
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Jabatan Selector & Reset Filters */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 shrink-0">
+                  <div className="relative min-w-[200px]">
+                    <select
+                      value={selectedDepartment}
+                      onChange={(e) => setSelectedDepartment(e.target.value)}
+                      aria-label="Saring mengikut Bahagian atau Jabatan"
+                      className="w-full pl-4 pr-10 py-2.5 bg-white/90 border border-slate-200/80 rounded-2xl text-xs font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 focus:outline-none appearance-none cursor-pointer shadow-2xs"
                     >
-                      <span>{div}</span>
-                      <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md ${badgeStyle}`}>
-                        {count}
-                      </span>
+                      <option value="Semua">Semua Bahagian</option>
+                      {uniqueDepartments.filter(d => d !== 'Semua').map((dept) => (
+                        <option key={dept} value={dept}>
+                          {dept}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="absolute inset-y-0 right-3.5 flex items-center pointer-events-none text-slate-500">
+                      <Filter className="w-3.5 h-3.5" />
+                    </div>
+                  </div>
+
+                  {(searchQuery || selectedDivision !== 'Semua' || selectedDepartment !== 'Semua') && (
+                    <button
+                      onClick={resetFilters}
+                      className="px-3.5 py-2.5 text-xs text-indigo-700 hover:text-indigo-950 font-bold flex items-center justify-center gap-1.5 bg-indigo-50/80 hover:bg-indigo-100/80 rounded-2xl border border-indigo-200/80 transition-all cursor-pointer whitespace-nowrap shadow-2xs"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Set Semula</span>
                     </button>
-                  );
-                })}
+                  )}
+                </div>
+
               </div>
 
             </div>
@@ -1273,17 +1296,31 @@ export default function App() {
 
           </div>
         ) : resolvedDestination === 'jadual' ? (
-          <StudentTimetableHub />
+          <StudentTimetableHub
+            initialClassCode={selectedStudentTarget?.classCode}
+            selectionSeq={selectedStudentTarget?.seq}
+            onTimetablesLoaded={setStudentTimetables}
+          />
         ) : resolvedDestination === 'jadual-pensyarah' ? (
           <LecturerTimetableHub
             staffList={staffList}
+            initialStaffId={selectedLecturerTarget?.staffId}
+            selectionSeq={selectedLecturerTarget?.seq}
+            onAvailableIdsLoaded={setAvailableLecturerIds}
             onSelectProfile={(staff) => {
               setSelectedStaff(staff);
             }}
           />
         ) : resolvedDestination === 'platform' || resolvedDestination === 'rujukan' ? (
           <div className="glass-panel rounded-3xl p-6 md:p-8 border border-white/55 shadow-sm">
-            <PlatformHub isAdminMode={isAdminMode} />
+            <PlatformHub
+              isAdminMode={isAdminMode}
+              platformsData={platformLinks}
+              syncStatusProp={platformSyncStatus}
+              syncErrorProp={platformSyncError}
+              isLoadingProp={isPlatformsLoading}
+              searchQuery={debouncedSearchQuery}
+            />
           </div>
         ) : resolvedDestination === 'daftar' ? (
           <SelfRegistrationPage

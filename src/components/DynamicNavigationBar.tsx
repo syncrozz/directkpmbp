@@ -302,13 +302,13 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
   };
 
   return (
-    <div className={`transition-all duration-300 border-b relative z-30 backdrop-blur-md ${getContainerBgClasses()}`}>
+    <div className={`transition-all duration-300 border-b relative z-[35] backdrop-blur-md ${getContainerBgClasses()}`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2.5 sm:py-3 space-y-2">
         {/* ROW 1: PRIMARY (PARENT) NAVIGATION */}
         <div className="flex items-center justify-between gap-2">
           <nav
             aria-label="Navigasi Utama Platform"
-            className="flex items-center gap-2 overflow-x-auto scrollbar-none py-0.5 shrink-0 max-w-full"
+            className="flex items-center gap-2 overflow-x-auto scrollbar-none py-0.5 min-w-0 flex-1"
           >
             {activeParents.map((parent) => {
               const isSelected = activeParent?.id === parent.id;
@@ -350,13 +350,13 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
             })}
           </nav>
 
-          {/* Admin Navigation Manager Launcher (Hanya dalam Mod Admin) */}
+          {/* Admin Navigation Manager Launcher */}
           {isAdminMode && onOpenNavManager && (
             <button
               type="button"
               onClick={onOpenNavManager}
               title="Urus Susunan Navigasi Dinamik (SES v4.4)"
-              className="px-3 py-1.5 bg-white/90 hover:bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-xl text-xs font-extrabold shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer shrink-0 active:scale-95"
+              className="px-3 py-1.5 sm:py-2 bg-white/90 hover:bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-xl text-xs font-extrabold shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer shrink-0 active:scale-95"
             >
               <Layers className="w-3.5 h-3.5 text-indigo-600" />
               <span className="hidden sm:inline">Urus Navigasi</span>

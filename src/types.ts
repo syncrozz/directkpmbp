@@ -180,6 +180,8 @@ export interface NavigationItem {
     sizeBytes?: number;
     lastModified?: string;
   };
+  keywords?: string[];
+  searchableKeywords?: string;
 }
 
 

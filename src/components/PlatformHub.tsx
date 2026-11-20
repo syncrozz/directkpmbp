@@ -13,7 +13,6 @@ import React, { useState, useEffect } from 'react';
 import {
   Layers,
   ExternalLink,
-  Search,
   Plus,
   Pencil,
   Trash2,
@@ -38,6 +37,11 @@ import { AddEditPlatformModal } from './AddEditPlatformModal';
 
 interface PlatformHubProps {
   isAdminMode?: boolean;
+  platformsData?: PlatformLink[];
+  syncStatusProp?: PlatformSyncStatus;
+  syncErrorProp?: string | null;
+  isLoadingProp?: boolean;
+  searchQuery?: string;
 }
 
 interface PlatformCardProps {
@@ -245,27 +249,41 @@ const PlatformCard: React.FC<PlatformCardProps> = ({
   );
 };
 
-export const PlatformHub: React.FC<PlatformHubProps> = ({ isAdminMode = false }) => {
-  const [platforms, setPlatforms] = useState<PlatformLink[]>([]);
-  const [syncStatus, setSyncStatus] = useState<PlatformSyncStatus>('loading');
-  const [syncError, setSyncError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
+export const PlatformHub: React.FC<PlatformHubProps> = ({
+  isAdminMode = false,
+  platformsData,
+  syncStatusProp,
+  syncErrorProp,
+  isLoadingProp,
+  searchQuery = '',
+}) => {
+  const [localPlatforms, setLocalPlatforms] = useState<PlatformLink[]>([]);
+  const [localSyncStatus, setLocalSyncStatus] = useState<PlatformSyncStatus>('loading');
+  const [localSyncError, setLocalSyncError] = useState<string | null>(null);
+  const [localIsLoading, setLocalIsLoading] = useState(true);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPlatform, setEditingPlatform] = useState<PlatformLink | null>(null);
   const [platformToDelete, setPlatformToDelete] = useState<PlatformLink | null>(null);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  const hasExternalData = platformsData !== undefined;
+
   useEffect(() => {
+    if (hasExternalData) return;
     const unsubscribe = subscribeToPlatformLinks((result) => {
-      setPlatforms(result.platforms);
-      setSyncStatus(result.status);
-      setSyncError(result.errorMessage || null);
-      setIsLoading(false);
+      setLocalPlatforms(result.platforms);
+      setLocalSyncStatus(result.status);
+      setLocalSyncError(result.errorMessage || null);
+      setLocalIsLoading(false);
     });
     return () => unsubscribe();
-  }, []);
+  }, [hasExternalData]);
+
+  const platforms = hasExternalData ? platformsData : localPlatforms;
+  const syncStatus = syncStatusProp ?? localSyncStatus;
+  const syncError = syncErrorProp ?? localSyncError;
+  const isLoading = isLoadingProp ?? localIsLoading;
 
   const filteredPlatforms = platforms.filter((item) => {
     if (!isAdminMode && item.isActive === false) return false;
@@ -339,31 +357,8 @@ export const PlatformHub: React.FC<PlatformHubProps> = ({ isAdminMode = false })
           ) : null}
         </div>
 
-        {/* Search & Admin Add Action */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-          {platforms.length > 0 && (
-            <div className="relative min-w-[200px]">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Cari platform..."
-                className="w-full pl-8 pr-7 py-1.5 bg-white/90 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
-                  aria-label="Kosongkan carian"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-          )}
-
+        {/* Admin Add Action (Search consolidated into GlobalSmartSearch) */}
+        <div className="flex items-center gap-2">
           {isAdminMode && (
             <button
               type="button"
