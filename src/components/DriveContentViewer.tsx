@@ -360,7 +360,7 @@ export const DriveContentViewer: React.FC<DriveContentViewerProps> = ({
             Pautan Google Drive Belum Ditetapkan
           </h3>
           <p className="text-xs text-slate-500 leading-relaxed">
-            Navigasi Bravo <strong>"{item.name}"</strong> dikonfigurasi sebagai Paparan Google Drive, namun pautan Google Drive belum diisi atau formatnya tidak sah.
+            Navigasi bravo <strong>"{item.name}"</strong> dikonfigurasi sebagai Paparan Google Drive, namun pautan Google Drive belum diisi atau formatnya tidak sah.
           </p>
           {isAdminMode ? (
             <button

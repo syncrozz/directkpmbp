@@ -365,7 +365,7 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
         </div>
 
         {/* ROW 2: SECONDARY (CHILD) NAVIGATION */}
-        {/* Dipaparkan HANYA apabila Parent terpilih mempunyai Navigasi Bravo yang aktif */}
+        {/* Dipaparkan HANYA apabila Parent terpilih mempunyai navigasi bravo yang aktif */}
         {currentParentChildren.length > 0 && (
           <div className="pt-1.5 border-t border-slate-200/60 flex items-center gap-2 overflow-x-auto scrollbar-none animate-fadeIn">
             <div className="flex items-center gap-1 text-[11px] font-extrabold text-slate-400 uppercase tracking-wider pl-1 shrink-0">
@@ -417,7 +417,7 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
         )}
 
         {/* ROW 3: TERTIARY (GRANDCHILD) NAVIGATION */}
-        {/* Dipaparkan HANYA apabila Navigasi Bravo terpilih mempunyai Navigasi Charlie yang aktif */}
+        {/* Dipaparkan HANYA apabila Child terpilih mempunyai navigasi charlie yang aktif */}
         {currentChildGrandchildren.length > 0 && (
           <div className="pt-1.5 border-t border-violet-200/60 flex items-center gap-2 overflow-x-auto scrollbar-none animate-fadeIn bg-violet-50/40 rounded-xl px-2 py-1">
             <div className="flex items-center gap-1 text-[10.5px] font-extrabold text-violet-600 uppercase tracking-wider pl-1 shrink-0">

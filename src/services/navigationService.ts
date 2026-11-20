@@ -423,8 +423,8 @@ export function slugify(text: string): string {
 
 /**
  * Resolves the hierarchical slug for a navigation item.
- * Walks up the parentId chain, omitting root 'parent' (Induk) hubs as per SES specification:
- * - Induk (Level 1 Parent) -> Excluded from child/grandchild path (e.g. Rujukan Kolej)
+ * Walks up the parentId chain, omitting root 'parent' (Alfa) hubs as per SES specification:
+ * - Alfa (Level 1 Parent) -> Excluded from child/grandchild path (e.g. Rujukan Kolej)
  * - Bravo (Level 2 Child) -> /anak_slug (e.g. /borang)
  * - Charlie (Level 3 Grandchild) -> /anak_slug/cucu_slug (e.g. /borang/bayaran_penceramah, /borang/lampiran_a)
  */
@@ -436,7 +436,7 @@ export function getHierarchicalSlug(
 
   const itemSlug = item.slug?.trim() ? slugify(item.slug) : slugify(item.name);
 
-  // Level 1: Parent (Induk)
+  // Level 1: Parent (Alfa)
   if (item.type === 'parent') {
     if (item.destination === 'directory' || item.id === 'nav_directory') {
       return '';
@@ -459,7 +459,7 @@ export function getHierarchicalSlug(
     const parent = allItems.find((i) => i.id === currentParentId);
     if (!parent) break;
 
-    // Stop at Level 1 parent (Induk), as Induk is not part of child/grandchild URL path
+    // Stop at Level 1 parent (Alfa), as Alfa is not part of child/grandchild URL path
     if (parent.type === 'parent') {
       break;
     }
@@ -577,7 +577,7 @@ export interface ResolvedNavigationResult {
  * 
  * Supports Multi-level Hierarchical URL matching:
  * 1. Match exact hierarchical slug (e.g. "borang/bayaran_penceramah")
- * 2. Match hierarchical slug with Induk included (e.g. "rujukan/borang/bayaran_penceramah")
+ * 2. Match hierarchical slug with Alfa included (e.g. "rujukan/borang/bayaran_penceramah")
  * 3. Match unique navigation ID (Internal identity)
  * 4. Backward Compatibility: Match single leaf slug (e.g. "bayaran_penceramah" -> redirect to "/borang/bayaran_penceramah")
  * 5. Match standard module destinations
@@ -655,7 +655,7 @@ export function resolveNavigationFromUrl(
     return createResult(matchByHierarchicalSlug);
   }
 
-  // Priority 2: Match Hierarchical Slug with Induk Included (e.g. "rujukan/borang/bayaran_penceramah", "rujukan/borang")
+  // Priority 2: Match Hierarchical Slug with Alfa Included (e.g. "rujukan/borang/bayaran_penceramah", "rujukan/borang")
   // Allows users/links specifying parent hub to resolve seamlessly
   const parentHub = items.find(
     (p) => p.type === 'parent' && cleanToken.startsWith((p.slug || slugify(p.name)).toLowerCase() + '/')

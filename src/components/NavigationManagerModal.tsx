@@ -343,12 +343,12 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
     }
 
     if (formState.type === 'child' && !formState.parentId) {
-      setNotice({ type: 'error', text: 'Navigasi Bravo wajib dikaitkan dengan satu Navigasi Alfa.' });
+      setNotice({ type: 'error', text: 'Navigasi bravo wajib dikaitkan dengan satu Navigasi Alfa.' });
       return;
     }
 
     if (formState.type === 'grandchild' && !formState.parentId) {
-      setNotice({ type: 'error', text: 'Navigasi Charlie wajib dikaitkan dengan satu Navigasi Bravo (Bekas / Container).' });
+      setNotice({ type: 'error', text: 'Navigasi charlie wajib dikaitkan dengan satu Navigasi Bravo (Bekas / Container).' });
       return;
     }
 
@@ -575,14 +575,14 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
       const check = canDeleteParent(item.id, items);
       if (!check.canDelete) {
         setDeleteWarning(
-          `Navigasi Alfa ini mempunyai ${check.childrenCount} Navigasi Bravo (${check.childrenNames.join(', ')}). Sila padam atau pindahkan Navigasi Bravo tersebut terlebih dahulu sebelum memadam Navigasi Alfa ini.`
+          `Navigasi Alfa ini mempunyai ${check.childrenCount} navigasi bravo (${check.childrenNames.join(', ')}). Sila padam atau pindahkan navigasi bravo tersebut terlebih dahulu sebelum memadam navigasi alfa ini.`
         );
       }
     } else if (item.type === 'child') {
       const checkChild = canDeleteChild(item.id, items);
       if (!checkChild.canDelete) {
         setDeleteWarning(
-          `Navigasi Bravo ini mengandungi ${checkChild.grandchildrenCount} Navigasi Charlie (${checkChild.grandchildrenNames.join(', ')}). Sila padam atau pindahkan Navigasi Charlie terlebih dahulu sebelum memadam Navigasi Bravo ini.`
+          `Navigasi Bravo ini mengandungi ${checkChild.grandchildrenCount} navigasi charlie (${checkChild.grandchildrenNames.join(', ')}). Sila padam atau pindahkan navigasi charlie terlebih dahulu sebelum memadam navigasi bravo ini.`
         );
       }
     }
@@ -599,7 +599,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
       if (!check.canDelete) {
         setNotice({
           type: 'error',
-          text: 'Pemadaman disekat kerana masih terdapat Navigasi Bravo di bawah Navigasi Alfa ini.'
+          text: 'Pemadaman disekat kerana masih terdapat navigasi bravo di bawah alfa ini.'
         });
         setItemToDelete(null);
         return;
@@ -609,7 +609,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
       if (!checkChild.canDelete) {
         setNotice({
           type: 'error',
-          text: 'Pemadaman disekat kerana masih terdapat Navigasi Charlie di bawah Navigasi Bravo ini.'
+          text: 'Pemadaman disekat kerana masih terdapat navigasi charlie di bawah bravo ini.'
         });
         setItemToDelete(null);
         return;
@@ -674,7 +674,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                   </span>
                 </h3>
                 <p className="text-xs text-slate-500 font-medium">
-                  Urus hierarki Navigasi Alfa → Navigasi Bravo → Navigasi Charlie secara dinamik dengan storan masa nyata Firestore
+                  Urus hierarki Alfa → Bravo → Charlie secara dinamik dengan storan masa nyata Firestore
                 </p>
               </div>
             </div>
@@ -965,7 +965,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                             {renderNavIcon(p.icon, 'w-3 h-3')}
                           </div>
                           <span className="text-xs font-extrabold text-slate-900">
-                            Di bawah Navigasi Alfa: <span className="text-indigo-600">{p.name}</span>
+                            Di bawah Alfa: <span className="text-indigo-600">{p.name}</span>
                           </span>
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white text-slate-600 border border-slate-200">
                             {pChildren.length} Bravo
@@ -1148,7 +1148,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
 
                         {pChildren.length === 0 && (
                           <p className="text-[11px] text-slate-400 italic py-2 pl-2">
-                            Tiada Navigasi Bravo di bawah Navigasi Alfa ini. (Navigasi Alfa bertindak sebagai akses terus).
+                            Tiada navigasi bravo di bawah alfa ini. (Alfa bertindak sebagai akses terus).
                           </p>
                         )}
                       </div>
@@ -1176,7 +1176,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                             {renderNavIcon(c.icon, 'w-3 h-3')}
                           </div>
                           <span className="text-xs font-extrabold text-slate-900">
-                            Bekas Navigasi Bravo: <span className="text-violet-700">{c.name}</span>
+                            Bekas Bravo: <span className="text-violet-700">{c.name}</span>
                             {parentOfChild && (
                               <span className="text-slate-400 font-normal ml-1">({parentOfChild.name})</span>
                             )}
@@ -1338,7 +1338,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
 
                         {cGrandchildren.length === 0 && (
                           <p className="text-[11px] text-slate-400 italic py-2 pl-2">
-                            Tiada Navigasi Charlie di bawah Navigasi Bravo ini. Klik "+ Charlie" untuk menambah dokumen fail Drive atau pautan di bawah Navigasi Bravo ini.
+                            Tiada navigasi charlie di bawah bravo ini. Klik "+ Charlie" untuk menambah dokumen fail Drive atau pautan di bawah bravo ini.
                           </p>
                         )}
                       </div>
@@ -1349,7 +1349,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                 {children.length === 0 && (
                   <div className="text-center py-10 border border-dashed border-slate-200 rounded-2xl p-6">
                     <FolderTree className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                    <p className="text-xs font-bold text-slate-500">Tiada Navigasi Bravo untuk dijadikan bekas Navigasi Charlie.</p>
+                    <p className="text-xs font-bold text-slate-500">Tiada Navigasi Bravo untuk dijadikan bekas charlie.</p>
                   </div>
                 )}
               </div>
@@ -1417,7 +1417,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                         }`}
                       >
                         <Layers className="w-3.5 h-3.5 text-indigo-600" />
-                        <span>1. Navigasi Alfa</span>
+                        <span>1. Alfa</span>
                       </button>
 
                       <button
@@ -1436,7 +1436,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                         }`}
                       >
                         <FolderTree className="w-3.5 h-3.5 text-indigo-600" />
-                        <span>2. Navigasi Bravo</span>
+                        <span>2. Bravo</span>
                       </button>
 
                       <button
@@ -1457,7 +1457,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                         }`}
                       >
                         <FileText className="w-3.5 h-3.5 text-violet-600" />
-                        <span>3. Navigasi Charlie</span>
+                        <span>3. Charlie</span>
                       </button>
                     </div>
                   </div>
@@ -1486,7 +1486,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                     <div className="space-y-2 p-3 bg-violet-50/60 rounded-2xl border border-violet-100">
                       <div className="space-y-1">
                         <label className="text-[11px] font-extrabold text-violet-950">
-                          Tapis mengikut Navigasi Alfa (Pilihan):
+                          Tapis mengikut Alfa (Pilihan):
                         </label>
                         <select
                           value={formState.parentFilterId}
@@ -1501,7 +1501,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                           }}
                           className="w-full px-3 py-1.5 rounded-xl border border-violet-200 text-xs bg-white outline-none focus:ring-2 focus:ring-violet-300"
                         >
-                          <option value="">Semua Navigasi Alfa</option>
+                          <option value="">Semua Alfa</option>
                           {parents.map((p) => (
                             <option key={p.id} value={p.id}>
                               {p.name}
@@ -1720,14 +1720,14 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                             <span>Halaman Kosong / Container Navigasi Charlie</span>
                           </div>
                           <p className="text-[11px] text-emerald-700 leading-relaxed">
-                            Navigasi ini akan berfungsi sebagai <b>halaman container</b> yang membolehkan Navigasi Charlie diletakkan di bawahnya. Tidak memerlukan pautan Google Drive atau modul aplikasi khusus.
+                            Navigasi ini akan berfungsi sebagai <b>halaman container</b> yang membolehkan navigasi charlie diletakkan di bawahnya. Tidak memerlukan pautan Google Drive atau modul aplikasi khusus.
                           </p>
                           <div className="text-[10px] text-emerald-900 bg-white/90 p-2.5 rounded-lg border border-emerald-200 font-medium space-y-1">
                             <div className="font-bold flex items-center gap-1 text-emerald-800">
                               <span>✓ Bersedia Menerima Navigasi Charlie:</span>
                             </div>
                             <p className="text-slate-600 leading-normal">
-                              Halaman kosong yang sah ini boleh menerima Navigasi Charlie kemudian. Anda boleh menambah Navigasi Charlie di bawahnya bila-bila masa melalui tab Charlie atau dari paparan container ini.
+                              Halaman kosong yang sah ini boleh menerima navigasi charlie kemudian. Anda boleh menambah navigasi charlie di bawahnya bila-bila masa melalui tab Charlie atau dari paparan container ini.
                             </p>
                           </div>
                         </div>
@@ -1824,7 +1824,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                     /* Parent Destination / Route Configuration */
                     <div className="space-y-1.5">
                       <div className="flex items-center justify-between">
-                        <label className="text-[11px] font-extrabold text-slate-700">Destinasi Modul / Pautan Navigasi Alfa</label>
+                        <label className="text-[11px] font-extrabold text-slate-700">Destinasi Modul / Pautan Alfa</label>
                         <label className="flex items-center gap-1 text-[11px] text-slate-500 cursor-pointer font-medium">
                           <input
                             type="checkbox"
@@ -1859,7 +1859,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                         />
                       )}
                       <p className="text-[10px] text-slate-400">
-                        Jika Navigasi Alfa mempunyai Navigasi Bravo, klik pada Navigasi Alfa akan membuka Navigasi Bravo pertama secara automatik.
+                        Jika navigasi alfa mempunyai bravo, klik pada alfa akan membuka bravo pertama secara automatik.
                       </p>
                     </div>
                   )}
@@ -1976,11 +1976,11 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                 </p>
 
                 <ul className="text-xs text-slate-700 list-disc list-inside space-y-1 bg-slate-50 p-3 rounded-xl border border-slate-200 font-medium">
-                  <li><strong>Navigasi Alfa 1:</strong> Directory Staff</li>
-                  <li><strong>Navigasi Alfa 2:</strong> Rujukan Kolej</li>
-                  <li><strong>Navigasi Alfa 3:</strong> Jadual</li>
-                  <li className="pl-4">↳ <strong>Navigasi Bravo 1:</strong> Jadual Pelajar</li>
-                  <li className="pl-4">↳ <strong>Navigasi Bravo 2:</strong> Jadual Pensyarah</li>
+                  <li><strong>Alfa 1:</strong> Directory Staff</li>
+                  <li><strong>Alfa 2:</strong> Rujukan Kolej</li>
+                  <li><strong>Alfa 3:</strong> Jadual</li>
+                  <li className="pl-4">↳ <strong>Bravo 1:</strong> Jadual Pelajar</li>
+                  <li className="pl-4">↳ <strong>Bravo 2:</strong> Jadual Pensyarah</li>
                 </ul>
 
                 <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">

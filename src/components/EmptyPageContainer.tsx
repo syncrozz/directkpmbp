@@ -278,7 +278,7 @@ export const EmptyPageContainer: React.FC<EmptyPageContainerProps> = ({
                 <p className="text-xs text-slate-500 font-medium mt-1">
                   {grandchildren.length > 0
                     ? `Terdapat ${grandchildren.length} navigasi kandungan disediakan di bawah bekas ini.`
-                    : 'Halaman bekas sedia untuk menempatkan Navigasi Charlie dan fail berkaitan.'}
+                    : 'Halaman bekas sedia untuk menempatkan navigasi charlie dan fail berkaitan.'}
                 </p>
               </div>
             </div>
@@ -500,14 +500,14 @@ export const EmptyPageContainer: React.FC<EmptyPageContainerProps> = ({
               Halaman Bekas Sedia Digunakan
             </h3>
             <p className="text-xs text-slate-600 leading-relaxed max-w-md mx-auto font-medium">
-              Halaman container <b>"{item.name}"</b> telah berjaya diwujudkan. Buat masa ini, belum ada Navigasi Charlie (seperti fail Google Drive atau modul) ditambah di bawah halaman ini.
+              Halaman container <b>"{item.name}"</b> telah berjaya diwujudkan. Buat masa ini, belum ada navigasi charlie (seperti fail Google Drive atau modul) ditambah di bawah halaman ini.
             </p>
           </div>
 
           <div className="p-3 bg-white/80 rounded-2xl border border-amber-100 text-[11px] text-slate-500 font-medium flex items-center gap-2 max-w-sm mx-auto text-left">
             <Info className="w-4 h-4 text-amber-600 shrink-0" />
             <span>
-              Prinsip SES: <i>"Cipta container terlebih dahulu. Tambah Navigasi Charlie apabila diperlukan."</i>
+              Prinsip SES: <i>"Cipta container terlebih dahulu. Tambah navigasi charlie apabila diperlukan."</i>
             </span>
           </div>
 
