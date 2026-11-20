@@ -365,7 +365,6 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [selectedDivision, setSelectedDivision] = useState<DivisionType>('Semua');
-  const [selectedDepartment, setSelectedDepartment] = useState('Semua');
   const [showMobileFilters, setShowMobileFilters] = useState(false);
 
   // Debounce search input by 250ms for high performance
@@ -547,7 +546,6 @@ export default function App() {
     setSearchQuery('');
     setDebouncedSearchQuery('');
     setSelectedDivision('Semua');
-    setSelectedDepartment('Semua');
     setSelectedStudentTarget(null);
     setSelectedLecturerTarget(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -709,22 +707,16 @@ export default function App() {
     [indexedStaffList, debouncedSearchQuery]
   );
 
-  // Filters calculation using shared debounced search matches + Directory Staff filters
-  const uniqueDepartments = ['Semua', ...Array.from(new Set(staffList.map((s) => s.DepartmentID)))];
-
+  // Filters calculation using shared debounced search matches + Directory Staff division tabs
   const filteredStaff = useMemo(() => {
     return searchMatchedStaff.filter((staff) => {
       if (selectedDivision !== 'Semua' && staff.Bahagian !== selectedDivision) {
         return false;
       }
 
-      if (selectedDepartment !== 'Semua' && staff.DepartmentID !== selectedDepartment) {
-        return false;
-      }
-
       return true;
     });
-  }, [searchMatchedStaff, selectedDivision, selectedDepartment]);
+  }, [searchMatchedStaff, selectedDivision]);
 
   const handleClearSearch = () => {
     setSearchQuery('');
@@ -735,7 +727,6 @@ export default function App() {
     setSearchQuery('');
     setDebouncedSearchQuery('');
     setSelectedDivision('Semua');
-    setSelectedDepartment('Semua');
     setShowMobileFilters(false);
   };
 
@@ -1118,7 +1109,7 @@ export default function App() {
                     <span>{filteredStaff.length} staf ditemui</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    {(searchQuery || selectedDivision !== 'Semua' || selectedDepartment !== 'Semua') && (
+                    {(searchQuery || selectedDivision !== 'Semua') && (
                       <button
                         type="button"
                         onClick={resetFilters}
@@ -1145,7 +1136,7 @@ export default function App() {
                 </div>
               )}
 
-              {/* Preserved Directory Filters: Division Category Tabs + Department Selector + Reset */}
+              {/* Preserved Directory Filters: Division Category Tabs + Reset */}
               <div className={`flex-col lg:flex-row lg:items-center lg:justify-between gap-3 ${
                 searchQuery.trim() && !showMobileFilters ? 'hidden sm:flex' : 'flex'
               }`}>
@@ -1210,28 +1201,9 @@ export default function App() {
                   })}
                 </div>
 
-                {/* Jabatan Selector & Reset Filters */}
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 shrink-0">
-                  <div className="relative min-w-[200px]">
-                    <select
-                      value={selectedDepartment}
-                      onChange={(e) => setSelectedDepartment(e.target.value)}
-                      aria-label="Saring mengikut Bahagian atau Jabatan"
-                      className="w-full pl-4 pr-10 py-2.5 bg-white/90 border border-slate-200/80 rounded-2xl text-xs font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 focus:outline-none appearance-none cursor-pointer shadow-2xs"
-                    >
-                      <option value="Semua">Semua Bahagian</option>
-                      {uniqueDepartments.filter(d => d !== 'Semua').map((dept) => (
-                        <option key={dept} value={dept}>
-                          {dept}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="absolute inset-y-0 right-3.5 flex items-center pointer-events-none text-slate-500">
-                      <Filter className="w-3.5 h-3.5" />
-                    </div>
-                  </div>
-
-                  {(searchQuery || selectedDivision !== 'Semua' || selectedDepartment !== 'Semua') && (
+                {/* Reset Filters */}
+                {(searchQuery || selectedDivision !== 'Semua') && (
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 shrink-0">
                     <button
                       onClick={resetFilters}
                       className="px-3.5 py-2.5 text-xs text-indigo-700 hover:text-indigo-950 font-bold flex items-center justify-center gap-1.5 bg-indigo-50/80 hover:bg-indigo-100/80 rounded-2xl border border-indigo-200/80 transition-all cursor-pointer whitespace-nowrap shadow-2xs"
@@ -1239,8 +1211,8 @@ export default function App() {
                       <RotateCcw className="w-3.5 h-3.5" />
                       <span>Set Semula</span>
                     </button>
-                  )}
-                </div>
+                  </div>
+                )}
 
               </div>
 
