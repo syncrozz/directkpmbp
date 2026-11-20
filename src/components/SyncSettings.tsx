@@ -914,7 +914,7 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-500 font-medium leading-relaxed">
-                  Urus menu utama (Directory, Rujukan, Jadual), navigasi anak (Jadual Pelajar, Jadual Pensyarah), susun atur, ikon, keaktifan dan laluan modul secara masa nyata.
+                  Urus menu utama (Directory, Rujukan, Jadual), Navigasi Bravo (Jadual Pelajar, Jadual Pensyarah), Navigasi Charlie, susun atur, ikon, keaktifan dan laluan modul secara masa nyata.
                 </p>
               </div>
             </div>

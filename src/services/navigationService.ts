@@ -425,8 +425,8 @@ export function slugify(text: string): string {
  * Resolves the hierarchical slug for a navigation item.
  * Walks up the parentId chain, omitting root 'parent' (Induk) hubs as per SES specification:
  * - Induk (Level 1 Parent) -> Excluded from child/grandchild path (e.g. Rujukan Kolej)
- * - Anak (Level 2 Child) -> /anak_slug (e.g. /borang)
- * - Cucu (Level 3 Grandchild) -> /anak_slug/cucu_slug (e.g. /borang/bayaran_penceramah, /borang/lampiran_a)
+ * - Bravo (Level 2 Child) -> /anak_slug (e.g. /borang)
+ * - Charlie (Level 3 Grandchild) -> /anak_slug/cucu_slug (e.g. /borang/bayaran_penceramah, /borang/lampiran_a)
  */
 export function getHierarchicalSlug(
   item: NavigationItem,
@@ -444,12 +444,12 @@ export function getHierarchicalSlug(
     return itemSlug;
   }
 
-  // Level 2: Child (Anak)
+  // Level 2: Child (Bravo)
   if (item.type === 'child') {
     return itemSlug;
   }
 
-  // Level 3: Grandchild (Cucu) or nested
+  // Level 3: Grandchild (Charlie) or nested
   const segments: string[] = [itemSlug];
   let currentParentId = item.parentId;
   const visited = new Set<string>([item.id]);
