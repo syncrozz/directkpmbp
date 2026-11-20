@@ -191,27 +191,53 @@ export const LEGACY_JTM_IDS = [
   'ST063', 'ST067', 'ST070'
 ];
 
+export interface CleanupPreview {
+  firestoreReachable: boolean;
+  isAuthenticated: boolean;
+  targetIds: string[];
+  firestoreDocIds: string[];
+  summaryTargetIds: string[];
+  localTargetIds: string[];
+  ambiguousIds: string[];
+  preservedCount: number;
+  expectedRemainingCount: number;
+  selectionCriteria: string;
+  canExecute: boolean;
+  blockReason?: string;
+}
+
 export interface CleanupResult {
   deletedCount: number;
+  removedFromSummaryCount: number;
   remainingCount: number;
+  deletedIds: string[];
   cleanedStaffList: Staff[];
+  firestoreConfirmed: boolean;
+}
+
+export interface FirestoreSaveDetailedResult {
+  firestoreConfirmed: boolean;
+  partialFailure: boolean;
+  errorDetail?: string;
 }
 
 /**
- * Save staff list directly to Firebase Firestore:
- * 1. Writes summary document to system/staff_data.
- * 2. Writes each active staff document in batches of up to 400.
- * 3. Reads all documents from 'staff' collection and deletes any document whose ID
- *    is not in the current staffList (chunked into batches of up to 400),
- *    keeping the 'staff' collection in exact parity with staffList.
+ * Save staff list directly to Firebase Firestore with detailed confirmation & partial-failure reporting.
  */
-export const saveStaffListToFirestore = async (staffList: Staff[]): Promise<boolean> => {
+export const saveStaffListToFirestoreDetailed = async (
+  staffList: Staff[]
+): Promise<FirestoreSaveDetailedResult> => {
   // Guard: Writing requires an active authenticated administrator
   if (!auth.currentUser) {
     console.warn('[Firestore] Notice: Penulisan staf ke Firestore dibatalkan kerana pengguna belum log masuk sebagai pentadbir.');
-    return false;
+    return {
+      firestoreConfirmed: false,
+      partialFailure: false,
+      errorDetail: 'Pengguna belum log masuk sebagai Master Admin.',
+    };
   }
 
+  let wroteSummaryOrBatches = false;
   try {
     // 1. Single summary container document for instant bulk syncing
     const summaryRef = doc(db, 'system', 'staff_data');
@@ -220,6 +246,7 @@ export const saveStaffListToFirestore = async (staffList: Staff[]): Promise<bool
       count: staffList.length,
       data: staffList,
     });
+    wroteSummaryOrBatches = true;
 
     // 2. Individual documents in 'staff' collection (in chunks of up to 400 per batch)
     const chunkSize = 400;
@@ -260,15 +287,33 @@ export const saveStaffListToFirestore = async (staffList: Staff[]): Promise<bool
           await deleteBatch.commit();
         }
       }
-    } catch (cleanupErr) {
+    } catch (cleanupErr: any) {
       console.warn('Perhatian semasa membersihkan dokumen staf terbuang:', cleanupErr);
+      return {
+        firestoreConfirmed: false,
+        partialFailure: true,
+        errorDetail: `Ringkasan dikemas kini, tetapi pembersihan dokumen staf terbuang gagal: ${cleanupErr?.message || cleanupErr}`,
+      };
     }
 
-    return true;
+    return { firestoreConfirmed: true, partialFailure: false };
   } catch (error: any) {
     console.warn('[Firestore] Notice ralat menyimpan senarai staf ke Firebase Firestore:', error?.message || error);
-    return false;
+    return {
+      firestoreConfirmed: false,
+      partialFailure: wroteSummaryOrBatches,
+      errorDetail: error?.message || String(error),
+    };
   }
+};
+
+/**
+ * Save staff list directly to Firebase Firestore:
+ * Returns true only when full write and purge complete cleanly.
+ */
+export const saveStaffListToFirestore = async (staffList: Staff[]): Promise<boolean> => {
+  const res = await saveStaffListToFirestoreDetailed(staffList);
+  return res.firestoreConfirmed;
 };
 
 const withTimeout = <T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> => {
@@ -355,27 +400,191 @@ export const fetchStaffListFromFirestore = async (): Promise<Staff[]> => {
 };
 
 /**
- * Pembersihan sekali jalan:
- * Memadam 13 rekod duplikat lama (Unit JTM) daripada:
- * 1. Koleksi "staff" di Firestore.
- * 2. Dokumen "system/staff_data" di Firestore.
- * 3. LocalStorage "kpmbp_smarthub_staff".
+ * Read-only pre-flight inspection for legacy JTM duplicate cleanup.
+ * Never mutates Firestore or LocalStorage.
+ * Selection criteria: Explicit StaffID allowlist (LEGACY_JTM_IDS) excluding authoritative IDs.
+ * Never matches or deletes based only on staff names.
  */
-export const cleanupLegacyJtmDuplicates = async (): Promise<CleanupResult> => {
-  try {
-    let deletedCount = 0;
+export const previewLegacyJtmDuplicates = async (
+  currentStaffList: Staff[],
+  authoritativeIds: string[] = []
+): Promise<CleanupPreview> => {
+  const authSet = new Set(authoritativeIds.map((id) => id.toUpperCase().trim()).filter(Boolean));
+  const legacySet = new Set(LEGACY_JTM_IDS.map((id) => id.toUpperCase().trim()));
+  const selectionCriteria =
+    'Padanan tepat StaffID legasi (13 ID JTM terasing) yang tiada dalam senarai ID autoritatif asas. Padanan nama sahaja tidak digunakan.';
 
-    // 1. Read all docs from 'staff' collection and delete the 13 legacy IDs or Unit === 'JTM'
+  const isAuthenticated = Boolean(auth.currentUser);
+  const localTargetIds = new Set<string>();
+  const localAmbiguousIds = new Set<string>();
+
+  currentStaffList.forEach((s) => {
+    const id = (s.ID || s.staff_id || '').toUpperCase().trim();
+    const unit = String(s.Unit || '').trim();
+    if (id && legacySet.has(id) && !authSet.has(id)) {
+      localTargetIds.add(id);
+    } else if (unit === 'JTM' && (!id || !legacySet.has(id))) {
+      localAmbiguousIds.add(id || '(TANPA_ID)');
+    }
+  });
+
+  try {
+    let previewTimer: any;
+    const timeoutError = new Promise<never>((_, reject) => {
+      previewTimer = setTimeout(
+        () => reject(new Error('Sambungan Firestore tamat masa semasa semakan pratonton')),
+        5000
+      );
+    });
+    const [staffDocsSnap, staffSummarySnap] = await Promise.race([
+      Promise.all([
+        getDocs(collection(db, 'staff')),
+        getDoc(doc(db, 'system', 'staff_data')),
+      ]),
+      timeoutError,
+    ]).finally(() => {
+      clearTimeout(previewTimer);
+    });
+
+    const firestoreDocIds = new Set<string>();
+    const summaryTargetIds = new Set<string>();
+    const ambiguousIds = new Set<string>(localAmbiguousIds);
+    const preservedIds = new Set<string>();
+
+    staffDocsSnap.forEach((d) => {
+      const data = d.data() as Staff;
+      const id = (data?.ID || data?.staff_id || d.id).toUpperCase().trim();
+      const unit = String(data?.Unit || '').trim();
+      if (id && legacySet.has(id) && !authSet.has(id)) {
+        firestoreDocIds.add(d.id);
+      } else if (unit === 'JTM') {
+        ambiguousIds.add(id || d.id);
+      } else if (id) {
+        preservedIds.add(id);
+      }
+    });
+
+    const summaryData: Staff[] =
+      staffSummarySnap.exists() && Array.isArray(staffSummarySnap.data()?.data)
+        ? staffSummarySnap.data().data
+        : [];
+
+    summaryData.forEach((s) => {
+      const id = (s.ID || s.staff_id || '').toUpperCase().trim();
+      const unit = String(s.Unit || '').trim();
+      if (id && legacySet.has(id) && !authSet.has(id)) {
+        summaryTargetIds.add(id);
+      } else if (unit === 'JTM') {
+        ambiguousIds.add(id || '(TANPA_ID)');
+      } else if (id) {
+        preservedIds.add(id);
+      }
+    });
+
+    const allTargetIds = Array.from(
+      new Set([
+        ...Array.from(firestoreDocIds).map((id) => id.toUpperCase().trim()),
+        ...Array.from(summaryTargetIds),
+        ...Array.from(localTargetIds),
+      ])
+    ).sort();
+
+    const ambiguousList = Array.from(ambiguousIds).sort();
+    const preservedCount =
+      preservedIds.size > 0
+        ? preservedIds.size
+        : currentStaffList.filter((s) => {
+            const id = (s.ID || s.staff_id || '').toUpperCase().trim();
+            return !legacySet.has(id);
+          }).length;
+
+    let canExecute = true;
+    let blockReason: string | undefined;
+
+    if (!isAuthenticated) {
+      canExecute = false;
+      blockReason = 'Pengesahan Master Admin diperlukan sebelum melaksanakan pemadaman di Firestore.';
+    } else if (ambiguousList.length > 0) {
+      canExecute = false;
+      blockReason = `Operasi disekat kerana terdapat ${ambiguousList.length} rekod Unit JTM di luar senarai ID legasi yang tidak dapat dikenal pasti secara yakin (${ambiguousList.join(', ')}).`;
+    } else if (allTargetIds.length === 0) {
+      canExecute = false;
+      blockReason = 'Tiada rekod duplikat legasi ditemui di Firestore atau storan semasa.';
+    }
+
+    return {
+      firestoreReachable: true,
+      isAuthenticated,
+      targetIds: allTargetIds,
+      firestoreDocIds: Array.from(firestoreDocIds).sort(),
+      summaryTargetIds: Array.from(summaryTargetIds).sort(),
+      localTargetIds: Array.from(localTargetIds).sort(),
+      ambiguousIds: ambiguousList,
+      preservedCount,
+      expectedRemainingCount: preservedCount,
+      selectionCriteria,
+      canExecute,
+      blockReason,
+    };
+  } catch (error: any) {
+    return {
+      firestoreReachable: false,
+      isAuthenticated,
+      targetIds: Array.from(localTargetIds).sort(),
+      firestoreDocIds: [],
+      summaryTargetIds: [],
+      localTargetIds: Array.from(localTargetIds).sort(),
+      ambiguousIds: Array.from(localAmbiguousIds).sort(),
+      preservedCount: currentStaffList.length - localTargetIds.size,
+      expectedRemainingCount: currentStaffList.length - localTargetIds.size,
+      selectionCriteria,
+      canExecute: false,
+      blockReason: `Operasi disekat: Gagal membaca koleksi Firestore untuk pengesahan pratonton (${error?.message || 'rangkaian luar talian'}).`,
+    };
+  }
+};
+
+/**
+ * Pembersihan rekod duplikat legasi (13 StaffID JTM terasing):
+ * - Memerlukan sesi Master Admin yang sah (`auth.currentUser`).
+ * - Hanya memadam ID dalam LEGACY_JTM_IDS yang bukan rekod autoritatif.
+ * - Menyekat operasi sekiranya terdapat rekod meragukan (`Unit === 'JTM'` di luar senarai legasi).
+ */
+export const cleanupLegacyJtmDuplicates = async (
+  authoritativeIds: string[] = []
+): Promise<CleanupResult> => {
+  if (!auth.currentUser) {
+    throw new Error('Akses ditolak: Pengesahan Master Admin diperlukan untuk melaksanakan pembersihan di Firestore.');
+  }
+
+  const authSet = new Set(authoritativeIds.map((id) => id.toUpperCase().trim()).filter(Boolean));
+  const legacySet = new Set(LEGACY_JTM_IDS.map((id) => id.toUpperCase().trim()));
+
+  let deletedCount = 0;
+  const deletedIdsSet = new Set<string>();
+
+  try {
+    // 1. Read all docs from 'staff' collection and verify targets strictly by LEGACY_JTM_IDS
     const staffDocsSnap = await getDocs(collection(db, 'staff'));
     const toDeleteDocs: string[] = [];
+    const ambiguousDocs: string[] = [];
 
     staffDocsSnap.forEach((d) => {
       const id = (d.data()?.ID || d.data()?.staff_id || d.id).toUpperCase().trim();
       const unit = String(d.data()?.Unit || '').trim();
-      if (LEGACY_JTM_IDS.includes(id) || unit === 'JTM') {
+      if (id && legacySet.has(id) && !authSet.has(id)) {
         toDeleteDocs.push(d.id);
+        deletedIdsSet.add(id);
+      } else if (unit === 'JTM') {
+        ambiguousDocs.push(id || d.id);
       }
     });
+
+    if (ambiguousDocs.length > 0) {
+      throw new Error(
+        `Operasi disekat: Rekod Unit JTM tidak dapat dipastikan sebagai duplikat (${ambiguousDocs.join(', ')}). Tiada rekod dipadam.`
+      );
+    }
 
     if (toDeleteDocs.length > 0) {
       const chunkSize = 400;
@@ -386,8 +595,8 @@ export const cleanupLegacyJtmDuplicates = async (): Promise<CleanupResult> => {
           batch.delete(doc(db, 'staff', docId));
         });
         await batch.commit();
+        deletedCount += chunk.length;
       }
-      deletedCount = toDeleteDocs.length;
     }
 
     // 2. Fetch and clean system/staff_data
@@ -397,11 +606,16 @@ export const cleanupLegacyJtmDuplicates = async (): Promise<CleanupResult> => {
       currentStaffData = staffSummarySnap.data().data;
     }
 
-    // Also include valid non-legacy docs from staffDocsSnap (like ST089, ST090) if they were not in staff_data
+    let removedFromSummaryCount = 0;
     const cleanMap = new Map<string, Staff>();
     currentStaffData.forEach((s) => {
       const id = (s.ID || s.staff_id || '').toUpperCase().trim();
-      if (!LEGACY_JTM_IDS.includes(id) && s.Unit !== 'JTM') {
+      if (id && legacySet.has(id) && !authSet.has(id)) {
+        removedFromSummaryCount++;
+        deletedIdsSet.add(id);
+        return;
+      }
+      if (id) {
         cleanMap.set(id, s);
       }
     });
@@ -409,7 +623,7 @@ export const cleanupLegacyJtmDuplicates = async (): Promise<CleanupResult> => {
     staffDocsSnap.forEach((d) => {
       const data = d.data() as Staff;
       const id = (data.ID || data.staff_id || d.id).toUpperCase().trim();
-      if (!LEGACY_JTM_IDS.includes(id) && data.Unit !== 'JTM' && data.Nama && data.Jawatan) {
+      if ((!legacySet.has(id) || authSet.has(id)) && data.Nama && data.Jawatan) {
         if (!cleanMap.has(id)) {
           cleanMap.set(id, data);
         } else {
@@ -426,7 +640,7 @@ export const cleanupLegacyJtmDuplicates = async (): Promise<CleanupResult> => {
       s.Bil = String(idx + 1);
     });
 
-    // Save cleaned list to system/staff_data
+    // Save cleaned list to system/staff_data (confirmed by Firestore)
     const summaryRef = doc(db, 'system', 'staff_data');
     await setDoc(summaryRef, {
       updatedAt: new Date().toISOString(),
@@ -434,18 +648,26 @@ export const cleanupLegacyJtmDuplicates = async (): Promise<CleanupResult> => {
       data: cleanedStaffList,
     });
 
-    // 3. Clean LocalStorage
+    // 3. Clean LocalStorage only after Firestore confirms
     if (typeof window !== 'undefined') {
       localStorage.setItem('kpmbp_smarthub_staff', JSON.stringify(cleanedStaffList));
     }
 
     return {
-      deletedCount: deletedCount || LEGACY_JTM_IDS.length,
+      deletedCount,
+      removedFromSummaryCount,
       remainingCount: cleanedStaffList.length,
+      deletedIds: Array.from(deletedIdsSet).sort(),
       cleanedStaffList,
+      firestoreConfirmed: true,
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error('Ralat semasa pembersihan duplikat JTM:', error);
+    if (deletedCount > 0 && error instanceof Error) {
+      (error as any).partialFailure = true;
+      (error as any).deletedCount = deletedCount;
+      (error as any).deletedIds = Array.from(deletedIdsSet).sort();
+    }
     throw error;
   }
 };
@@ -473,15 +695,22 @@ function dedupeCommitteesList(list: StaffCommittee[]): StaffCommittee[] {
 }
 
 /**
- * Save committee list directly to Firebase Firestore
+ * Save committee list directly to Firebase Firestore with detailed partial-failure reporting.
  */
-export const saveCommitteesToFirestore = async (committeesList: StaffCommittee[]): Promise<boolean> => {
+export const saveCommitteesToFirestoreDetailed = async (
+  committeesList: StaffCommittee[]
+): Promise<FirestoreSaveDetailedResult> => {
   // Guard: Writing requires an active authenticated administrator
   if (!auth.currentUser) {
     console.warn('[Firestore] Notice: Penulisan jawatankuasa ke Firestore dibatalkan kerana pengguna belum log masuk sebagai pentadbir.');
-    return false;
+    return {
+      firestoreConfirmed: false,
+      partialFailure: false,
+      errorDetail: 'Pengguna belum log masuk sebagai Master Admin.',
+    };
   }
 
+  let wroteSummaryOrBatches = false;
   try {
     const cleaned = dedupeCommitteesList(committeesList);
 
@@ -492,30 +721,68 @@ export const saveCommitteesToFirestore = async (committeesList: StaffCommittee[]
       count: cleaned.length,
       data: cleaned,
     });
+    wroteSummaryOrBatches = true;
 
-    // 2. Individual committee documents in 'committees' collection
-    try {
-      const chunkSize = 400;
-      for (let i = 0; i < cleaned.length; i += chunkSize) {
-        const chunk = cleaned.slice(i, i + chunkSize);
-        const batch = writeBatch(db);
-        chunk.forEach((c, idx) => {
-          const rawId = c.id || `c-${c.staff_id || 'st'}-${i + idx}`;
-          const docId = rawId.replace(/[\/\s]/g, '_');
-          const commRef = doc(db, 'committees', docId);
-          batch.set(commRef, c, { merge: true });
-        });
-        await batch.commit();
-      }
-    } catch (batchErr) {
-      console.warn('Perhatian semasa menulis koleksi individu jawatankuasa (data ringkasan telah disimpan):', batchErr);
+    // 2. Individual committee documents in 'committees' collection + purge stale documents
+    const chunkSize = 400;
+    const activeDocIds = new Set<string>();
+    for (let i = 0; i < cleaned.length; i += chunkSize) {
+      const chunk = cleaned.slice(i, i + chunkSize);
+      const batch = writeBatch(db);
+      chunk.forEach((c, idx) => {
+        const rawId = c.id || `c-${c.staff_id || 'st'}-${i + idx}`;
+        const docId = rawId.replace(/[\/\s]/g, '_');
+        activeDocIds.add(docId);
+        const commRef = doc(db, 'committees', docId);
+        batch.set(commRef, c, { merge: true });
+      });
+      await batch.commit();
     }
 
-    return true;
+    // Purge stale committee documents so Firestore collection stays in parity
+    try {
+      const allCommSnap = await getDocs(collection(db, 'committees'));
+      const docsToDelete: string[] = [];
+      allCommSnap.forEach((d) => {
+        if (!activeDocIds.has(d.id)) {
+          docsToDelete.push(d.id);
+        }
+      });
+      if (docsToDelete.length > 0) {
+        for (let i = 0; i < docsToDelete.length; i += chunkSize) {
+          const deleteChunk = docsToDelete.slice(i, i + chunkSize);
+          const deleteBatch = writeBatch(db);
+          deleteChunk.forEach((delId) => {
+            deleteBatch.delete(doc(db, 'committees', delId));
+          });
+          await deleteBatch.commit();
+        }
+      }
+    } catch (cleanupErr: any) {
+      return {
+        firestoreConfirmed: false,
+        partialFailure: true,
+        errorDetail: `Ringkasan jawatankuasa dikemas kini, tetapi pembersihan dokumen terbuang gagal: ${cleanupErr?.message || cleanupErr}`,
+      };
+    }
+
+    return { firestoreConfirmed: true, partialFailure: false };
   } catch (error: any) {
     console.warn('[Firestore] Notice ralat menyimpan jawatankuasa ke Firebase Firestore:', error?.message || error);
-    return false;
+    return {
+      firestoreConfirmed: false,
+      partialFailure: wroteSummaryOrBatches,
+      errorDetail: error?.message || String(error),
+    };
   }
+};
+
+/**
+ * Save committee list directly to Firebase Firestore
+ */
+export const saveCommitteesToFirestore = async (committeesList: StaffCommittee[]): Promise<boolean> => {
+  const res = await saveCommitteesToFirestoreDetailed(committeesList);
+  return res.firestoreConfirmed;
 };
 
 /**

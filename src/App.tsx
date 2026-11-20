@@ -60,7 +60,9 @@ import {
   fetchStaffListFromFirestore, 
   fetchCommitteesFromFirestore, 
   saveStaffListToFirestore, 
+  saveStaffListToFirestoreDetailed,
   saveCommitteesToFirestore,
+  saveCommitteesToFirestoreDetailed,
   signOutAdmin,
   subscribeToAuthChanges
 } from './config/firebase';
@@ -488,6 +490,13 @@ export default function App() {
         }
       } else if (res.activeNavId) {
         setActiveHub(res.activeNavId);
+        if (
+          typeof window !== 'undefined' &&
+          res.resolvedDestination === 'daftar' &&
+          (window.location.pathname !== '/daftar' || window.location.hash)
+        ) {
+          window.history.replaceState({ navId: res.activeNavId }, '', '/daftar');
+        }
       } else {
         setActiveHub(res.resolvedDestination || 'directory');
       }
@@ -677,8 +686,57 @@ export default function App() {
     }
   };
 
-  const handleResetStaffData = () => {
-    saveStaffList(INITIAL_STAFF_DATA);
+  const handleResetStaffData = async (): Promise<{
+    ok: boolean;
+    firestoreConfirmed: boolean;
+    partialFailure?: boolean;
+    message: string;
+    affectedIds: string[];
+    remainingCount: number;
+  }> => {
+    if (!auth.currentUser) {
+      return {
+        ok: false,
+        firestoreConfirmed: false,
+        partialFailure: false,
+        message: 'Operasi disekat: Sila log masuk sebagai Master Admin sebelum melaksanakan Reset Data Staf.',
+        affectedIds: [],
+        remainingCount: staffList.length,
+      };
+    }
+
+    const baseIds = new Set(
+      INITIAL_STAFF_DATA.map((s) => (s.ID || s.staff_id || '').toUpperCase().trim()).filter(Boolean)
+    );
+    const removedIds = staffList
+      .map((s) => (s.ID || s.staff_id || '').toUpperCase().trim())
+      .filter((id) => id && !baseIds.has(id));
+
+    const saveRes = await saveStaffListToFirestoreDetailed(INITIAL_STAFF_DATA);
+    if (!saveRes.firestoreConfirmed) {
+      return {
+        ok: false,
+        firestoreConfirmed: false,
+        partialFailure: saveRes.partialFailure,
+        message: saveRes.partialFailure
+          ? `⚠ Reset Data Staf separa berlaku di Firestore (${saveRes.errorDetail || 'sebahagian dokumen tidak dapat dibersihkan'}). Sila semak semula.`
+          : `Reset Data Staf gagal disahkan oleh Firestore (${saveRes.errorDetail || 'ralat rangkaian/izin'}). Data pengeluaran kekal tidak diubah.`,
+        affectedIds: removedIds,
+        remainingCount: staffList.length,
+      };
+    }
+
+    setStaffList(INITIAL_STAFF_DATA);
+    localStorage.setItem('kpmbp_smarthub_staff', JSON.stringify(INITIAL_STAFF_DATA));
+
+    return {
+      ok: true,
+      firestoreConfirmed: true,
+      partialFailure: false,
+      message: `✓ Reset Data Staf disahkan di Firestore. ${INITIAL_STAFF_DATA.length} rekod asas dipulihkan (${removedIds.length} rekod tambahan dipadam).`,
+      affectedIds: removedIds,
+      remainingCount: INITIAL_STAFF_DATA.length,
+    };
   };
 
   const handleImportCommitteeData = (importedCommittees: StaffCommittee[]) => {
@@ -690,9 +748,56 @@ export default function App() {
     });
   };
 
-  const handleResetCommitteeData = () => {
-    localStorage.removeItem('kpmbp_smarthub_committees');
-    loadCommitteesData(staffList);
+  const handleResetCommitteeData = async (): Promise<{
+    ok: boolean;
+    firestoreConfirmed: boolean;
+    partialFailure?: boolean;
+    message: string;
+    affectedIds: string[];
+    remainingCount: number;
+  }> => {
+    if (!auth.currentUser) {
+      return {
+        ok: false,
+        firestoreConfirmed: false,
+        partialFailure: false,
+        message: 'Operasi disekat: Sila log masuk sebagai Master Admin sebelum melaksanakan Reset Jawatankuasa.',
+        affectedIds: [],
+        remainingCount: committees.length,
+      };
+    }
+
+    const defaultCommittees = deduplicateCommittees(generateDefaultCommitteesForStaff(staffList));
+    const defaultIds = new Set(defaultCommittees.map((c) => c.id));
+    const replacedIds = committees
+      .filter((c) => !defaultIds.has(c.id))
+      .map((c) => c.id);
+
+    const saveRes = await saveCommitteesToFirestoreDetailed(defaultCommittees);
+    if (!saveRes.firestoreConfirmed) {
+      return {
+        ok: false,
+        firestoreConfirmed: false,
+        partialFailure: saveRes.partialFailure,
+        message: saveRes.partialFailure
+          ? `⚠ Reset Jawatankuasa separa berlaku di Firestore (${saveRes.errorDetail || 'sebahagian dokumen tidak dapat dibersihkan'}). Sila semak semula.`
+          : `Reset Jawatankuasa gagal disahkan oleh Firestore (${saveRes.errorDetail || 'ralat rangkaian/izin'}). Rekod sedia ada kekal tidak diubah.`,
+        affectedIds: replacedIds,
+        remainingCount: committees.length,
+      };
+    }
+
+    setCommittees(defaultCommittees);
+    localStorage.setItem('kpmbp_smarthub_committees', JSON.stringify(defaultCommittees));
+
+    return {
+      ok: true,
+      firestoreConfirmed: true,
+      partialFailure: false,
+      message: `✓ Reset Jawatankuasa disahkan di Firestore. ${defaultCommittees.length} rekod jawatankuasa lalai dijana semula.`,
+      affectedIds: replacedIds,
+      remainingCount: defaultCommittees.length,
+    };
   };
 
   // Build pre-computed searchable index via shared Unified Search engine
@@ -1456,16 +1561,18 @@ export default function App() {
         totalCommitteeCount={committees.length}
         staffList={staffList}
         committeeList={committees}
+        adminEmail={currentAdmin?.email}
+        onApplyCleanedStaffList={(cleaned) => {
+          setStaffList(cleaned);
+          localStorage.setItem('kpmbp_smarthub_staff', JSON.stringify(cleaned));
+        }}
         onResetStaffData={handleResetStaffData}
         onResetCommitteeData={handleResetCommitteeData}
         onInstallPWA={handleInstallPWA}
         canInstallPWA={!isPwaInstalled}
         onNavigateToRegistration={() => {
           setIsSettingsOpen(false);
-          setActiveHub('daftar');
-          if (typeof window !== 'undefined') {
-            window.location.hash = '#/daftar';
-          }
+          handleSelectDestination('daftar');
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }}
         onOpenNavigationManager={() => {

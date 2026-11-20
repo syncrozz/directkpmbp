@@ -13,7 +13,7 @@
 import React, { useMemo } from 'react';
 import { NavigationItem } from '../types';
 import { renderNavIcon, getHierarchicalSlug } from '../services/navigationService';
-import { Layers, ChevronRight } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 
 interface DynamicNavigationBarProps {
   items: NavigationItem[];
@@ -27,8 +27,6 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
   items,
   activeHub,
   onSelectDestination,
-  isAdminMode = false,
-  onOpenNavManager,
 }) => {
   // 1. Filter only active Parents, sorted by order
   const activeParents = useMemo(() => {
@@ -408,19 +406,6 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
               );
             })}
           </nav>
-
-          {/* Admin Navigation Manager Launcher */}
-          {isAdminMode && onOpenNavManager && (
-            <button
-              type="button"
-              onClick={onOpenNavManager}
-              title="Urus Susunan Navigasi Dinamik (SES v4.5)"
-              className="px-3 py-1.5 sm:py-2 bg-white/90 hover:bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-xl text-xs font-extrabold shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer shrink-0 active:scale-95"
-            >
-              <Layers className="w-3.5 h-3.5 text-indigo-600" />
-              <span className="hidden sm:inline">Urus Navigasi</span>
-            </button>
-          )}
         </div>
 
         {/* ROW 2: SECONDARY (CHILD / BRAVO) NAVIGATION */}

@@ -95,8 +95,8 @@ export const SelfRegistrationPage: React.FC<SelfRegistrationPageProps> = ({
 
   // Copy registration link
   const currentRegistrationUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}${window.location.pathname}#/daftar`
-    : '';
+    ? `${window.location.origin}/daftar`
+    : '/daftar';
 
   const handleCopySlug = () => {
     if (navigator?.clipboard) {
