@@ -277,7 +277,7 @@ export const EmptyPageContainer: React.FC<EmptyPageContainerProps> = ({
     (pdfEntries.length > 0 ? 1 : 0) +
     (linkAndModuleEntries.length > 0 ? 1 : 0);
 
-  const renderContainerCard = (gc: NavigationItem, displayOrder: number) => {
+  const renderContainerCard = (gc: NavigationItem) => {
     const nestedItems = allItems
       .filter((sub) => sub.parentId === gc.id && sub.isActive)
       .sort((a, b) => a.order - b.order);
@@ -303,29 +303,25 @@ export const EmptyPageContainer: React.FC<EmptyPageContainerProps> = ({
         key={gc.id}
         type="button"
         onClick={() => onSelectGrandchild(gc)}
-        className="glass-panel w-full h-full p-4 rounded-2xl sm:rounded-3xl border border-amber-200/90 hover:border-amber-400 bg-white hover:bg-gradient-to-br hover:from-white hover:to-amber-50/40 transition-all cursor-pointer shadow-2xs hover:shadow-md group flex flex-col justify-between gap-3.5 text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-500"
+        className="glass-panel w-full h-full p-4 rounded-2xl sm:rounded-3xl border border-amber-200/90 hover:border-amber-400 bg-white hover:bg-gradient-to-br hover:from-white hover:to-amber-50/40 transition-all cursor-pointer shadow-2xs hover:shadow-md group flex flex-col gap-3.5 text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-amber-500"
       >
-        <div className="space-y-3 min-w-0">
+        <div className="space-y-3 min-w-0 w-full">
           {/* Container Header Row */}
-          <div className="flex items-start gap-3 min-w-0">
+          <div className="flex items-center gap-3 min-w-0">
             <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-200/90 text-amber-600 group-hover:bg-amber-500 group-hover:text-white group-hover:border-amber-500 transition-colors flex items-center justify-center shrink-0 shadow-2xs">
               <Folder className="w-5 h-5 group-hover:hidden" />
               <FolderOpen className="w-5 h-5 hidden group-hover:block" />
             </div>
 
             <div className="min-w-0 flex-1 space-y-0.5">
-              <div className="flex items-center justify-between gap-2 text-[11px] font-bold text-slate-500">
-                <span className="font-mono text-amber-800">
-                  #{displayOrder} · Bekas Folder
-                </span>
-                <span className="tabular-nums text-amber-900 shrink-0">
+              <div className="flex items-center justify-between gap-2">
+                <h4 className="font-sans font-extrabold text-slate-900 group-hover:text-amber-900 transition-colors text-sm sm:text-[15px] leading-snug line-clamp-2">
+                  {gc.name}
+                </h4>
+                <span className="text-[11px] font-bold tabular-nums text-amber-900 shrink-0">
                   {nestedCount} item
                 </span>
               </div>
-
-              <h4 className="font-sans font-extrabold text-slate-900 group-hover:text-amber-900 transition-colors text-sm sm:text-[15px] leading-snug line-clamp-2">
-                {gc.name}
-              </h4>
 
               {customDesc && (
                 <p className="text-xs text-slate-500 font-medium leading-snug line-clamp-1">
@@ -426,11 +422,6 @@ export const EmptyPageContainer: React.FC<EmptyPageContainerProps> = ({
               Belum ada dokumen ditambah di dalam bekas ini.
             </div>
           )}
-        </div>
-
-        <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px] font-extrabold text-amber-700 group-hover:text-amber-800">
-          <span>Buka Senarai Kandungan</span>
-          <ChevronRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5 shrink-0" />
         </div>
       </button>
     );
@@ -751,8 +742,8 @@ export const EmptyPageContainer: React.FC<EmptyPageContainerProps> = ({
                 </h3>
               )}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4 items-stretch">
-                {containerEntries.map(({ gc, displayOrder }) =>
-                  renderContainerCard(gc, displayOrder)
+                {containerEntries.map(({ gc }) =>
+                  renderContainerCard(gc)
                 )}
               </div>
             </section>
