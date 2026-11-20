@@ -22,7 +22,7 @@ import {
 } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 import { COMMITTEE_CSV_DATA } from '../src/data/committeeCSV';
-import { DEFAULT_PORTAL_LINKS } from '../src/services/portalService';
+const DEFAULT_PORTAL_LINKS: Array<Record<string, unknown>> = [];
 import { AUTHORIZED_ADMIN_EMAILS } from '../src/utils/adminAuthService';
 import { FALLBACK_LECTURER_TIMETABLE_IDS } from '../src/services/lecturerTimetableService';
 

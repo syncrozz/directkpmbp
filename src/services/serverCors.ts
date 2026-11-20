@@ -56,14 +56,28 @@ export function parseAllowedOrigins(rawEnv?: string): {
   };
 }
 
-function isSameHostOrigin(origin: string, hostHeader?: string): boolean {
-  if (!hostHeader) return false;
+function extractFirstHeaderValue(value?: string | string[]): string {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return (raw || '').split(',')[0].trim().toLowerCase();
+}
+
+function isSameHostOrigin(
+  origin: string,
+  hostHeader?: string | string[],
+  forwardedHostHeader?: string | string[]
+): boolean {
   try {
     const parsed = new URL(origin);
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
       return false;
     }
-    return parsed.host.toLowerCase() === hostHeader.trim().toLowerCase();
+    const originHost = parsed.host.toLowerCase();
+    const directHost = extractFirstHeaderValue(hostHeader);
+    const forwardedHost = extractFirstHeaderValue(forwardedHostHeader);
+    return (
+      (Boolean(directHost) && originHost === directHost) ||
+      (Boolean(forwardedHost) && originHost === forwardedHost)
+    );
   } catch {
     return false;
   }
@@ -72,7 +86,11 @@ function isSameHostOrigin(origin: string, hostHeader?: string): boolean {
 export function isOriginApproved(
   origin: string,
   allowedOrigins: Set<string>,
-  options: { allowSameHost?: boolean; hostHeader?: string } = {}
+  options: {
+    allowSameHost?: boolean;
+    hostHeader?: string | string[];
+    forwardedHostHeader?: string | string[];
+  } = {}
 ): boolean {
   try {
     const parsed = new URL(origin);
@@ -82,7 +100,10 @@ export function isOriginApproved(
     if (allowedOrigins.has(parsed.origin)) {
       return true;
     }
-    if (options.allowSameHost && isSameHostOrigin(parsed.origin, options.hostHeader)) {
+    if (
+      options.allowSameHost &&
+      isSameHostOrigin(parsed.origin, options.hostHeader, options.forwardedHostHeader)
+    ) {
       return true;
     }
     return false;
@@ -92,16 +113,22 @@ export function isOriginApproved(
 }
 
 /**
- * Express middleware enforcing strict origin-based CORS with OPTIONS 204 preflight.
- * Reads ALLOWED_ORIGINS dynamically (or uses explicit override for testing).
+ * Express middleware enforcing strict origin-based CORS with OPTIONS 204 preflight
+ * on /api/* endpoints. Non-API frontend routes (HTML, Vite ESM modules, static assets)
+ * pass through without cross-origin blocking so reverse-proxied previews render cleanly.
  */
 export function createCorsMiddleware(explicitAllowedOriginsEnv?: string) {
   return (req: Request, res: Response, next: NextFunction) => {
+    const requestPath = (req.originalUrl || req.path || '').split('?')[0];
+    if (requestPath !== '/api' && !requestPath.startsWith('/api/')) {
+      return next();
+    }
+
     const envRaw =
       explicitAllowedOriginsEnv !== undefined
         ? explicitAllowedOriginsEnv
         : process.env.ALLOWED_ORIGINS;
-    const { origins, isExplicitlyConfigured } = parseAllowedOrigins(envRaw);
+    const { origins } = parseAllowedOrigins(envRaw);
 
     res.setHeader('Vary', 'Origin');
 
@@ -114,25 +141,40 @@ export function createCorsMiddleware(explicitAllowedOriginsEnv?: string) {
     }
 
     const originValue = Array.isArray(rawOrigin) ? rawOrigin[0] : rawOrigin;
+    const isCrossSiteFetch =
+      extractFirstHeaderValue(req.headers['sec-fetch-site']) === 'cross-site';
+
+    // Include runtime APP_URL / SHARED_APP_URL origin (e.g. AI Studio / Cloud Run preview URL)
+    for (const runtimeUrl of [process.env.APP_URL, process.env.SHARED_APP_URL]) {
+      if (runtimeUrl) {
+        try {
+          const parsedRuntime = new URL(runtimeUrl.trim());
+          if (parsedRuntime.protocol === 'http:' || parsedRuntime.protocol === 'https:') {
+            origins.add(parsedRuntime.origin);
+          }
+        } catch {
+          // Ignore invalid runtime URL
+        }
+      }
+    }
+
     const approved = isOriginApproved(originValue, origins, {
-      allowSameHost: !isExplicitlyConfigured,
+      allowSameHost: true,
       hostHeader: req.headers.host,
+      forwardedHostHeader: isCrossSiteFetch ? undefined : req.headers['x-forwarded-host'],
     });
 
     if (!approved) {
-      if (req.method === 'OPTIONS' || req.path.startsWith('/api/')) {
-        return res.status(403).json({
-          success: false,
-          code: 'CORS_ORIGIN_FORBIDDEN',
-          error: 'Origin permintaan tidak dibenarkan oleh dasar CORS pelayan.',
-        });
-      }
-      return res.status(403).send('Forbidden Origin');
+      return res.status(403).json({
+        success: false,
+        code: 'CORS_ORIGIN_FORBIDDEN',
+        error: 'Origin permintaan tidak dibenarkan oleh dasar CORS pelayan.',
+      });
     }
 
     const normalizedOrigin = new URL(originValue).origin;
     const allowedMethods =
-      req.path === '/api/platform/snapshot' ? 'POST, OPTIONS' : 'GET, POST, OPTIONS';
+      requestPath === '/api/platform/snapshot' ? 'POST, OPTIONS' : 'GET, POST, OPTIONS';
 
     res.setHeader('Access-Control-Allow-Origin', normalizedOrigin);
     res.setHeader('Access-Control-Allow-Methods', allowedMethods);

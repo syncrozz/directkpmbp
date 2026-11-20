@@ -34,11 +34,180 @@ import {
   PlatformLink,
   PlatformSubscriptionResult,
   PlatformThumbnailSource,
+  PortalMetadata,
 } from '../types';
-import {
-  sanitizeFirestorePayload,
-  optimizeImageFile,
-} from './portalService';
+
+/**
+ * Deeply removes all undefined properties from an object before saving to Firestore.
+ */
+export function sanitizeFirestorePayload<T>(input: T): T {
+  if (input === undefined) {
+    return undefined as any;
+  }
+  if (input === null || typeof input !== 'object') {
+    return input;
+  }
+  if (input instanceof Date || (input as any)?.toMillis !== undefined) {
+    return input;
+  }
+  if (Array.isArray(input)) {
+    return input
+      .filter((item) => item !== undefined)
+      .map((item) => sanitizeFirestorePayload(item)) as any;
+  }
+
+  const sanitized: Record<string, any> = {};
+  for (const [key, value] of Object.entries(input as Record<string, any>)) {
+    if (value !== undefined) {
+      sanitized[key] = sanitizeFirestorePayload(value);
+    }
+  }
+  return sanitized as T;
+}
+
+/**
+ * Client-side image optimizer using HTML5 Canvas (~25KB-45KB WebP/JPEG).
+ */
+export async function optimizeImageFile(
+  file: File,
+  maxWidth = 800,
+  maxHeight = 500,
+  quality = 0.82
+): Promise<{ dataUrl: string; blob: Blob }> {
+  if (file.type === 'image/svg+xml') {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve({ dataUrl: reader.result as string, blob: file });
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth || height > maxHeight) {
+          if (width / maxWidth > height / maxHeight) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          } else {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, width);
+        canvas.height = Math.max(1, height);
+        const ctx = canvas.getContext('2d', { alpha: true });
+        if (!ctx) {
+          const raw = e.target?.result as string;
+          resolve({ dataUrl: raw, blob: file });
+          return;
+        }
+
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0, width, height);
+
+        let format = 'image/webp';
+        let dataUrl = canvas.toDataURL(format, quality);
+
+        if (!dataUrl.startsWith('data:image/webp')) {
+          format = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+          dataUrl = canvas.toDataURL(format, quality);
+        }
+
+        canvas.toBlob(
+          (blob) => {
+            resolve({
+              dataUrl,
+              blob: blob || file,
+            });
+          },
+          format,
+          quality
+        );
+      };
+      img.onerror = () => {
+        const raw = e.target?.result as string;
+        resolve({ dataUrl: raw, blob: file });
+      };
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+export interface MetadataDetectionResult {
+  status: 'success' | 'partial';
+  data: PortalMetadata;
+}
+
+/**
+ * Calls backend smart URL metadata detection service with strict status evaluation.
+ */
+export async function requestUrlMetadata(url: string): Promise<MetadataDetectionResult> {
+  const cleanUrl = url.trim();
+  if (!cleanUrl) {
+    throw new Error('Sila masukkan URL platform yang sah.');
+  }
+
+  let response: Response;
+  try {
+    response = await fetch('/api/metadata/detect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: cleanUrl }),
+    });
+  } catch (netErr: any) {
+    console.error('[MetadataDetect Error] Network failure:', netErr);
+    throw new Error('Ralat sambungan rangkaian ke pelayan metadata. Sila semak sambungan internet anda.');
+  }
+
+  let result: any = null;
+  try {
+    result = await response.json();
+  } catch {
+    // Non-JSON response
+  }
+
+  if (!response.ok) {
+    if (response.status === 400) {
+      throw new Error(result?.error || 'Format URL tidak sah atau akses disekat oleh keselamatan (HTTP 400).');
+    }
+    if (response.status === 504) {
+      throw new Error(result?.error || 'Masa menunggu tamat (Timeout 6.5s) semasa menghubungi pelayan web (HTTP 504).');
+    }
+    if (response.status === 502) {
+      throw new Error(result?.error || 'Laman web sasaran tidak dapat dihubungi atau menyekat permintaan automatik (HTTP 502).');
+    }
+    if (response.status === 500) {
+      throw new Error(result?.error || 'Ralat dalaman pelayan (HTTP 500) semasa memproses metadata laman web.');
+    }
+    throw new Error(result?.error || `Pelayan membalas dengan status kod ralat HTTP ${response.status}.`);
+  }
+
+  if (!result || !result.success || !result.data) {
+    throw new Error(result?.error || 'Gagal mengekstrak metadata yang boleh digunakan.');
+  }
+
+  const data = result.data as PortalMetadata;
+  const hasRichData = Boolean(
+    data.ogImage || (data.title && (data.description || data.ogDescription))
+  );
+
+  return {
+    status: hasRichData ? 'success' : 'partial',
+    data,
+  };
+}
 
 const PLATFORMS_PATH = 'platforms/directkpmbp/platformLinks';
 const PLATFORM_ASSETS_PREFIX = 'platforms/directkpmbp/platform_assets/';
@@ -608,34 +777,91 @@ export type HomepageSnapshotUploadResult =
   | HomepageSnapshotUploadSuccess
   | HomepageSnapshotUploadFailure;
 
+export interface ResolveSnapshotEndpointOptions {
+  baseUrl?: string;
+  isProd?: boolean;
+  hostname?: string;
+}
+
+export class SnapshotEndpointConfigError extends Error {
+  code: 'SNAPSHOT_ENDPOINT_NOT_CONFIGURED' | 'INVALID_ENDPOINT_CONFIG';
+
+  constructor(
+    code: 'SNAPSHOT_ENDPOINT_NOT_CONFIGURED' | 'INVALID_ENDPOINT_CONFIG',
+    message: string
+  ) {
+    super(message);
+    this.name = 'SnapshotEndpointConfigError';
+    this.code = code;
+  }
+}
+
 /**
  * Resolves the snapshot backend endpoint URL cleanly.
- * Uses VITE_SNAPSHOT_API_BASE_URL in split deployments (e.g. Vercel -> Cloud Run),
- * and preserves same-origin '/api/platform/snapshot' when unset.
+ * - Defaults VITE_SNAPSHOT_API_BASE_URL to '' when undefined.
+ * - Uses same-origin '/api/platform/snapshot' in AI Studio / local dev / Cloud Run unified hosting.
+ * - In Vercel/split production without VITE_SNAPSHOT_API_BASE_URL, throws a clear configuration warning
+ *   rather than silently sending requests to a nonexistent Vercel endpoint.
  */
-export function resolveSnapshotEndpointUrl(overrideBaseUrl?: string): string {
+export function resolveSnapshotEndpointUrl(
+  overrideOrOptions?: string | ResolveSnapshotEndpointOptions
+): string {
+  const opts: ResolveSnapshotEndpointOptions =
+    typeof overrideOrOptions === 'string'
+      ? { baseUrl: overrideOrOptions }
+      : overrideOrOptions ?? {};
+
   const rawBase =
-    overrideBaseUrl !== undefined
-      ? overrideBaseUrl
+    opts.baseUrl !== undefined
+      ? opts.baseUrl
       : ((import.meta as any).env?.VITE_SNAPSHOT_API_BASE_URL ?? '');
 
   const trimmed = String(rawBase).trim();
-  if (!trimmed) {
-    return '/api/platform/snapshot';
+  if (trimmed) {
+    const normalized = trimmed.replace(/\/+$/, '');
+    if (!/^https?:\/\/[^/\s]+/i.test(normalized)) {
+      throw new SnapshotEndpointConfigError(
+        'INVALID_ENDPOINT_CONFIG',
+        'Konfigurasi VITE_SNAPSHOT_API_BASE_URL tidak sah. Mestilah bermula dengan https:// atau http://.'
+      );
+    }
+
+    if (normalized.endsWith('/api/platform/snapshot')) {
+      return normalized;
+    }
+
+    return `${normalized}/api/platform/snapshot`;
   }
 
-  const normalized = trimmed.replace(/\/+$/, '');
-  if (!/^https?:\/\/[^/\s]+/i.test(normalized)) {
-    throw new Error(
-      'Konfigurasi VITE_SNAPSHOT_API_BASE_URL tidak sah. Mestilah bermula dengan https:// atau http://.'
+  const runtimeHostname = (
+    opts.hostname !== undefined
+      ? opts.hostname
+      : typeof window !== 'undefined'
+        ? window.location.hostname
+        : ''
+  )
+    .trim()
+    .toLowerCase();
+
+  const isLocalHost =
+    !runtimeHostname ||
+    runtimeHostname === 'localhost' ||
+    runtimeHostname === '127.0.0.1' ||
+    runtimeHostname === '0.0.0.0' ||
+    runtimeHostname === '[::1]';
+
+  const isHostedExpressContainer = runtimeHostname.endsWith('.run.app');
+  const isProductionBuild =
+    opts.isProd !== undefined ? opts.isProd : Boolean((import.meta as any).env?.PROD);
+
+  if (isProductionBuild && !isLocalHost && !isHostedExpressContainer) {
+    throw new SnapshotEndpointConfigError(
+      'SNAPSHOT_ENDPOINT_NOT_CONFIGURED',
+      'Konfigurasi Snapshot Engine belum ditetapkan untuk produksi Vercel (VITE_SNAPSHOT_API_BASE_URL tiada). Sila tetapkan URL servis Google Cloud Run Snapshot Engine pada pemboleh ubah persekitaran Vercel.'
     );
   }
 
-  if (normalized.endsWith('/api/platform/snapshot')) {
-    return normalized;
-  }
-
-  return `${normalized}/api/platform/snapshot`;
+  return '/api/platform/snapshot';
 }
 
 /**
@@ -661,7 +887,7 @@ export async function requestPlatformHomepageSnapshot(
   } catch (cfgErr: any) {
     return {
       ok: false,
-      code: 'INVALID_ENDPOINT_CONFIG',
+      code: cfgErr?.code || 'INVALID_ENDPOINT_CONFIG',
       error: cfgErr?.message || 'Konfigurasi endpoint snapshot tidak sah.',
     };
   }
@@ -693,6 +919,15 @@ export async function requestPlatformHomepageSnapshot(
     });
     json = await res.json().catch(() => null);
     if (!res.ok || !json?.success || !json?.data?.imageBase64) {
+      if (res.status === 405) {
+        return {
+          ok: false,
+          code: 'HTTP_405',
+          error:
+            json?.error ||
+            'Endpoint snapshot memulangkan HTTP 405 (Method Not Allowed). Pastikan VITE_SNAPSHOT_API_BASE_URL dikonfigurasi ke URL servis Google Cloud Run Snapshot Engine yang aktif.',
+        };
+      }
       return {
         ok: false,
         code: json?.code || `HTTP_${res.status}`,

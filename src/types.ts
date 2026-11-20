@@ -74,35 +74,6 @@ export interface StudentTimetable {
   semester?: string;
 }
 
-export interface PortalLink {
-  id: string;
-  title: string;
-  desc: string;
-  url: string;
-  audience: 'Pelajar' | 'Staf' | 'Kedua-dua';
-  category: string;
-  imageUrl?: string;
-  iconUrl?: string;
-  faviconUrl?: string;
-  detectedMeta?: {
-    title?: string;
-    description?: string;
-    ogTitle?: string;
-    ogDescription?: string;
-    ogImage?: string;
-    ogUrl?: string;
-    ogSiteName?: string;
-    favicon?: string;
-    pwaIcon?: string;
-    manifestName?: string;
-  };
-  sortOrder: number;
-  isActive: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  updatedBy?: string;
-}
-
 export interface PortalMetadata {
   url: string;
   finalUrl?: string;
@@ -117,21 +88,6 @@ export interface PortalMetadata {
   manifestUrl?: string;
   manifestName?: string;
   manifestIcons?: Array<{ src: string; sizes?: string; type?: string }>;
-}
-
-export type PortalSyncStatus = 
-  | 'loading'          // Initial loading state
-  | 'ready_empty'      // State A: Successfully queried Firestore, collection empty (eligible for migration)
-  | 'ready_migrated'   // State B: Successfully queried Firestore, contains records (migration complete)
-  | 'permission_denied'// State C: Firestore permission denied (do not show migration banner)
-  | 'error_network';   // State D: Network or connection failure (do not show migration banner)
-
-export interface PortalSubscriptionResult {
-  portals: PortalLink[];
-  isMigrated: boolean;
-  status: PortalSyncStatus;
-  errorMessage?: string;
-  source: 'firestore' | 'fallback';
 }
 
 export type PlatformThumbnailSource =
@@ -201,7 +157,7 @@ export interface NavigationItem {
   icon: string; // Icon identifier e.g. "UserCheck", "BookOpen", "Calendar"
   type: NavigationType; // 'parent' | 'child' | 'grandchild'
   parentId?: string | null; // ID of immediate parent: null for parent, Parent ID for child, Child ID for grandchild
-  destination: string; // Module identifier or route ('directory' | 'rujukan' | 'jadual' | 'jadual-pensyarah' | 'daftar' | custom URL | navId)
+  destination: string; // Module identifier or route ('directory' | 'platform' | 'jadual' | 'jadual-pensyarah' | 'daftar' | custom URL | navId)
   order: number; // Display order index within its parent container
   isActive: boolean; // Active toggle
   createdAt?: string; // ISO string

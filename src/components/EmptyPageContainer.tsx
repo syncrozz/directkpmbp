@@ -278,7 +278,7 @@ export const EmptyPageContainer: React.FC<EmptyPageContainerProps> = ({
                 <p className="text-xs text-slate-500 font-medium mt-1">
                   {grandchildren.length > 0
                     ? `Terdapat ${grandchildren.length} navigasi kandungan disediakan di bawah bekas ini.`
-                    : 'Halaman bekas sedia untuk menempatkan navigasi charlie dan fail berkaitan.'}
+                    : `Halaman bekas sedia untuk menempatkan navigasi ${item.type === 'parent' ? 'bravo' : 'charlie'} dan fail berkaitan.`}
                 </p>
               </div>
             </div>
@@ -500,14 +500,14 @@ export const EmptyPageContainer: React.FC<EmptyPageContainerProps> = ({
               Halaman Bekas Sedia Digunakan
             </h3>
             <p className="text-xs text-slate-600 leading-relaxed max-w-md mx-auto font-medium">
-              Halaman container <b>"{item.name}"</b> telah berjaya diwujudkan. Buat masa ini, belum ada navigasi charlie (seperti fail Google Drive atau modul) ditambah di bawah halaman ini.
+              Halaman container <b>"{item.name}"</b> telah berjaya diwujudkan. Buat masa ini, belum ada navigasi {item.type === 'parent' ? 'bravo' : 'charlie'} (seperti fail Google Drive atau modul) ditambah di bawah halaman ini.
             </p>
           </div>
 
           <div className="p-3 bg-white/80 rounded-2xl border border-amber-100 text-[11px] text-slate-500 font-medium flex items-center gap-2 max-w-sm mx-auto text-left">
             <Info className="w-4 h-4 text-amber-600 shrink-0" />
             <span>
-              Prinsip SES: <i>"Cipta container terlebih dahulu. Tambah navigasi charlie apabila diperlukan."</i>
+              Prinsip SES: <i>"Cipta container terlebih dahulu. Tambah navigasi {item.type === 'parent' ? 'bravo' : 'charlie'} apabila diperlukan."</i>
             </span>
           </div>
 
@@ -519,7 +519,7 @@ export const EmptyPageContainer: React.FC<EmptyPageContainerProps> = ({
                 className="px-4 py-2.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white rounded-xl text-xs font-extrabold shadow-sm transition-all cursor-pointer inline-flex items-center gap-1.5 active:scale-95"
               >
                 <Plus className="w-4 h-4" />
-                <span>+ Tambah Charlie di bawah {item.name}</span>
+                <span>+ Tambah {item.type === 'parent' ? 'Bravo' : 'Charlie'} di bawah {item.name}</span>
               </button>
             </div>
           )}

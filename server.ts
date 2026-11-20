@@ -174,6 +174,16 @@ async function startServer() {
     }
   });
 
+  // Explicit 405 JSON response for non-POST methods on /api/platform/snapshot
+  app.all('/api/platform/snapshot', (_req, res) => {
+    res.setHeader('Allow', 'POST, OPTIONS');
+    return res.status(405).json({
+      success: false,
+      code: 'METHOD_NOT_ALLOWED',
+      error: 'Kaedah HTTP tidak dibenarkan untuk endpoint snapshot. Sila gunakan POST.',
+    });
+  });
+
   // Google Drive PDF Proxy endpoint (Direct binary retrieval with PDF magic byte validation & resourcekey support)
   app.get('/api/pdf/proxy', async (req, res) => {
     const fileId = String(req.query.id || '').trim();
@@ -411,6 +421,15 @@ async function startServer() {
       }
     }
   );
+
+  // Return structured JSON 404 for any unmatched /api/* route instead of falling through to SPA HTML
+  app.use('/api', (_req, res) => {
+    return res.status(404).json({
+      success: false,
+      code: 'NOT_FOUND',
+      error: 'Laluan API tidak ditemui.',
+    });
+  });
 
   // Vite middleware for development (dynamically imported so production Cloud Run omits devDependencies)
   if (process.env.NODE_ENV !== 'production') {

@@ -272,7 +272,7 @@ export const saveStaffListToFirestore = async (staffList: Staff[]): Promise<bool
 };
 
 const withTimeout = <T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> => {
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     return Promise.resolve(fallback);
   }
   let timer: any;
@@ -294,13 +294,11 @@ export const fetchStaffListFromFirestore = async (): Promise<Staff[]> => {
   return withTimeout(
     (async () => {
       try {
-        const docSnap = await getDocs(collection(db, 'system'));
+        const staffSummarySnap = await getDoc(doc(db, 'system', 'staff_data'));
         let foundData: Staff[] = [];
-        docSnap.forEach((d) => {
-          if (d.id === 'staff_data' && Array.isArray(d.data()?.data)) {
-            foundData = d.data().data;
-          }
-        });
+        if (staffSummarySnap.exists() && Array.isArray(staffSummarySnap.data()?.data)) {
+          foundData = staffSummarySnap.data().data;
+        }
 
         // Exclude any legacy JTM duplicates from foundData if present
         foundData = foundData.filter((s) => {
@@ -393,13 +391,11 @@ export const cleanupLegacyJtmDuplicates = async (): Promise<CleanupResult> => {
     }
 
     // 2. Fetch and clean system/staff_data
-    const systemSnap = await getDocs(collection(db, 'system'));
+    const staffSummarySnap = await getDoc(doc(db, 'system', 'staff_data'));
     let currentStaffData: Staff[] = [];
-    systemSnap.forEach((d) => {
-      if (d.id === 'staff_data' && Array.isArray(d.data()?.data)) {
-        currentStaffData = d.data().data;
-      }
-    });
+    if (staffSummarySnap.exists() && Array.isArray(staffSummarySnap.data()?.data)) {
+      currentStaffData = staffSummarySnap.data().data;
+    }
 
     // Also include valid non-legacy docs from staffDocsSnap (like ST089, ST090) if they were not in staff_data
     const cleanMap = new Map<string, Staff>();
@@ -529,13 +525,11 @@ export const fetchCommitteesFromFirestore = async (): Promise<StaffCommittee[]> 
   return withTimeout(
     (async () => {
       try {
-        const docSnap = await getDocs(collection(db, 'system'));
+        const commSummarySnap = await getDoc(doc(db, 'system', 'committee_data'));
         let foundData: StaffCommittee[] = [];
-        docSnap.forEach((d) => {
-          if (d.id === 'committee_data' && d.data()?.data) {
-            foundData = d.data().data;
-          }
-        });
+        if (commSummarySnap.exists() && Array.isArray(commSummarySnap.data()?.data)) {
+          foundData = commSummarySnap.data().data;
+        }
 
         if (foundData.length > 0) {
           return dedupeCommitteesList(foundData);

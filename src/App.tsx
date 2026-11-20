@@ -33,14 +33,13 @@ import { ProfileModal } from './components/ProfileModal';
 import { CommitteeModal } from './components/CommitteeModal';
 import { SyncSettings } from './components/SyncSettings';
 import { AddEditStaffModal } from './components/AddEditStaffModal';
-import { CampusReferenceHub } from './components/CampusReferenceHub';
 import { PlatformHub } from './components/PlatformHub';
 import { AdminPinModal } from './components/AdminPinModal';
 import { SelfRegistrationPage } from './components/SelfRegistrationPage';
 import { StudentTimetableHub } from './components/StudentTimetableHub';
 import { LecturerTimetableHub } from './components/LecturerTimetableHub';
 import { DynamicNavigationBar } from './components/DynamicNavigationBar';
-import { NavigationManagerModal } from './components/NavigationManagerModal';
+import { NavigationManagerModal, NavigationManagerContext } from './components/NavigationManagerModal';
 import { DriveContentViewer } from './components/DriveContentViewer';
 import { EmptyPageContainer } from './components/EmptyPageContainer';
 import { 
@@ -69,7 +68,7 @@ import {
 } from './services/pdfThumbnailService';
 
 export default function App() {
-  // Navigation State ('directory' | 'platform' | 'rujukan' | 'jadual' | 'jadual-pensyarah' | 'daftar' | custom item ID)
+  // Navigation State ('directory' | 'platform' | 'jadual' | 'jadual-pensyarah' | 'daftar' | custom item ID)
   const resolveLeafItem = (item: NavigationItem, allItems: NavigationItem[]): NavigationItem => {
     let target = item;
     if (target.type === 'parent') {
@@ -104,6 +103,7 @@ export default function App() {
   // Dynamic Hierarchical Navigation State (SES v4.4)
   const [navigationItems, setNavigationItems] = useState<NavigationItem[]>(DEFAULT_NAVIGATION_ITEMS);
   const [isNavManagerOpen, setIsNavManagerOpen] = useState(false);
+  const [navManagerContext, setNavManagerContext] = useState<NavigationManagerContext | null>(null);
 
   // Authoritative real-time Firestore synchronization for navigation architecture
   useEffect(() => {
@@ -904,7 +904,10 @@ export default function App() {
             {/* Dynamic Navigation Architecture Manager Button (Hanya muncul semasa Admin Mode Aktif) */}
             {isAdminMode && (
               <button
-                onClick={() => setIsNavManagerOpen(true)}
+                onClick={() => {
+                  setNavManagerContext(null);
+                  setIsNavManagerOpen(true);
+                }}
                 title="Pengurusan Navigasi Dinamik"
                 aria-label="Pengurusan Navigasi Dinamik"
                 className={`relative p-2 sm:p-2.5 rounded-xl sm:rounded-2xl transition-all border cursor-pointer flex items-center justify-center shrink-0 ${
@@ -927,7 +930,10 @@ export default function App() {
         activeHub={activeHub}
         onSelectDestination={handleSelectDestination}
         isAdminMode={isAdminMode}
-        onOpenNavManager={() => setIsNavManagerOpen(true)}
+        onOpenNavManager={() => {
+          setNavManagerContext(null);
+          setIsNavManagerOpen(true);
+        }}
       />
 
       {/* Main Container */}
@@ -936,14 +942,27 @@ export default function App() {
           <EmptyPageContainer
             item={activeNavItem}
             parentItem={navigationItems.find((p) => p.id === activeNavItem.parentId)}
-            grandchildren={navigationItems.filter(
-              (gc) => gc.type === 'grandchild' && gc.parentId === activeNavItem.id && gc.isActive
+            grandchildren={navigationItems.filter((item) =>
+              activeNavItem.type === 'parent'
+                ? item.type === 'child' && item.parentId === activeNavItem.id && item.isActive
+                : item.type === 'grandchild' && item.parentId === activeNavItem.id && item.isActive
             )}
             allItems={navigationItems}
             onSelectGrandchild={(gc) => handleSelectDestination(gc.id || gc.destination)}
             onSelectParent={(pId) => handleSelectDestination(pId)}
             isAdminMode={isAdminMode}
-            onOpenNavManager={() => setIsNavManagerOpen(true)}
+            onOpenNavManager={() => {
+              if (activeNavItem.type === 'child') {
+                setNavManagerContext({
+                  mode: 'contextual-charlie',
+                  bravoParentId: activeNavItem.id,
+                  autoOpenAdd: true,
+                });
+              } else {
+                setNavManagerContext(null);
+              }
+              setIsNavManagerOpen(true);
+            }}
           />
         ) : activeNavItem && (activeNavItem.displayType === 'drive' || Boolean(activeNavItem.driveUrl)) ? (
           <DriveContentViewer
@@ -1223,18 +1242,9 @@ export default function App() {
               setSelectedStaff(staff);
             }}
           />
-        ) : resolvedDestination === 'platform' ? (
+        ) : resolvedDestination === 'platform' || resolvedDestination === 'rujukan' ? (
           <div className="glass-panel rounded-3xl p-6 md:p-8 border border-white/55 shadow-sm">
             <PlatformHub isAdminMode={isAdminMode} />
-          </div>
-        ) : resolvedDestination === 'rujukan' ? (
-          <div className="glass-panel rounded-3xl p-6 md:p-8 border border-white/55 shadow-sm">
-            <CampusReferenceHub 
-              isAdminMode={isAdminMode}
-              onNavigateToTimetables={() => {
-                handleSelectDestination('jadual');
-              }}
-            />
           </div>
         ) : resolvedDestination === 'daftar' ? (
           <SelfRegistrationPage
@@ -1393,9 +1403,13 @@ export default function App() {
       {/* Dynamic Navigation Architecture Management Modal (SES v4.4) */}
       <NavigationManagerModal
         isOpen={isNavManagerOpen}
-        onClose={() => setIsNavManagerOpen(false)}
+        onClose={() => {
+          setIsNavManagerOpen(false);
+          setNavManagerContext(null);
+        }}
         items={navigationItems}
         onItemsChange={setNavigationItems}
+        initialContext={navManagerContext}
       />
 
       {/* Confirmation Dialog for Exiting Admin Mode */}

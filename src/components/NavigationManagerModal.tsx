@@ -13,7 +13,7 @@
  * visual icon pickers, clean slug editing, and reordering capabilities.
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Layers,
@@ -63,11 +63,18 @@ import {
   extractGoogleDriveFileId
 } from '../services/pdfThumbnailService';
 
+export interface NavigationManagerContext {
+  mode: 'contextual-charlie';
+  bravoParentId: string;
+  autoOpenAdd?: boolean;
+}
+
 interface NavigationManagerModalProps {
   isOpen: boolean;
   onClose: () => void;
   items: NavigationItem[];
   onItemsChange?: (items: NavigationItem[]) => void;
+  initialContext?: NavigationManagerContext | null;
 }
 
 interface FormState {
@@ -92,11 +99,13 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
   isOpen,
   onClose,
   items,
-  onItemsChange
+  onItemsChange,
+  initialContext = null,
 }) => {
   const [activeTab, setActiveTab] = useState<'parents' | 'children' | 'grandchildren'>('parents');
   const [isSaving, setIsSaving] = useState(false);
   const [notice, setNotice] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
+  const prevIsOpenRef = useRef(false);
 
   // Edit/Create Sub-modal state
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -175,6 +184,18 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
     return map;
   }, [children, grandchildren]);
 
+  const contextualBravoItem = useMemo(() => {
+    if (initialContext?.mode !== 'contextual-charlie' || !initialContext.bravoParentId) return null;
+    return children.find((c) => c.id === initialContext.bravoParentId) || null;
+  }, [initialContext, children]);
+
+  const contextualAlfaItem = useMemo(() => {
+    if (!contextualBravoItem?.parentId) return null;
+    return parents.find((p) => p.id === contextualBravoItem.parentId) || null;
+  }, [contextualBravoItem, parents]);
+
+  const isContextualCharlieMode = Boolean(contextualBravoItem);
+
   const liveDriveParsed = useMemo(
     () => parseTakwimLink(formState.driveUrl),
     [formState.driveUrl]
@@ -185,7 +206,12 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
   const [isBulkGeneratingThumbnails, setIsBulkGeneratingThumbnails] = useState(false);
   const [bulkThumbnailProgress, setBulkThumbnailProgress] = useState<{ completed: number; total: number } | null>(null);
 
-  const eligiblePdfItems = useMemo(() => items.filter(isEligibleDrivePdf), [items]);
+  const eligiblePdfItems = useMemo(() => {
+    if (contextualBravoItem) {
+      return (grandchildrenByChild.get(contextualBravoItem.id) || []).filter(isEligibleDrivePdf);
+    }
+    return items.filter(isEligibleDrivePdf);
+  }, [items, contextualBravoItem, grandchildrenByChild]);
   const readyThumbnailsCount = useMemo(
     () => eligiblePdfItems.filter((i) => i.thumbnailUrl && (i.thumbnailStatus === 'generated' || i.thumbnailStatus === 'ready')).length,
     [eligiblePdfItems]
@@ -300,9 +326,32 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
     setIsEditorOpen(true);
   };
 
+  // Initialize modal context only on open transition (never reset on live Firestore updates while open)
+  useEffect(() => {
+    if (isOpen && !prevIsOpenRef.current) {
+      setNotice(null);
+      setItemToDelete(null);
+      setShowResetConfirm(false);
+
+      if (contextualBravoItem) {
+        setActiveTab('grandchildren');
+        if (initialContext?.autoOpenAdd) {
+          handleAddNew('grandchild', contextualBravoItem.id);
+        } else {
+          setIsEditorOpen(false);
+        }
+      } else {
+        setActiveTab('parents');
+        setIsEditorOpen(false);
+      }
+    }
+    prevIsOpenRef.current = isOpen;
+  }, [isOpen, contextualBravoItem, initialContext]);
+
   // Open Form for Editing Existing Item
   const handleEdit = (item: NavigationItem) => {
     setEditingItem(item);
+    const isParentEmptyPage = item.type === 'parent' && item.displayType === 'empty_page';
     const isStandardModule = KNOWN_MODULE_DESTINATIONS.some((m) => m.id === item.destination);
     const itemDisplayType: NavigationDisplayType = item.displayType || (item.driveUrl ? 'drive' : 'module');
 
@@ -324,9 +373,9 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
       displayType: itemDisplayType,
       driveUrl: item.driveUrl || '',
       displayTitle: item.displayTitle || '',
-      destination: isStandardModule ? item.destination : 'custom',
-      customDestination: isStandardModule ? '' : item.destination,
-      useCustomDestination: !isStandardModule && itemDisplayType !== 'drive',
+      destination: isParentEmptyPage ? 'empty_page' : isStandardModule ? item.destination : 'custom',
+      customDestination: isParentEmptyPage || isStandardModule ? '' : item.destination,
+      useCustomDestination: !isParentEmptyPage && !isStandardModule && itemDisplayType !== 'drive',
       isActive: item.isActive,
     });
     setNotice(null);
@@ -361,7 +410,10 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
     }
 
     const isDriveDisplay = (formState.type === 'child' || formState.type === 'grandchild') && formState.displayType === 'drive';
-    const isEmptyPageDisplay = (formState.type === 'child' || formState.type === 'grandchild') && formState.displayType === 'empty_page';
+    const isParentEmptyPage = formState.type === 'parent' && !formState.useCustomDestination && formState.destination === 'empty_page';
+    const isEmptyPageDisplay =
+      isParentEmptyPage ||
+      ((formState.type === 'child' || formState.type === 'grandchild') && formState.displayType === 'empty_page');
 
     let finalDest = '';
     if (isDriveDisplay) {
@@ -413,7 +465,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
               type: formState.type,
               parentId: formState.type === 'parent' ? undefined : formState.parentId,
               destination: finalDest,
-              displayType: formState.type === 'parent' ? undefined : formState.displayType,
+              displayType: formState.type === 'parent' ? (isParentEmptyPage ? 'empty_page' : undefined) : formState.displayType,
               driveUrl: isDriveDisplay ? formState.driveUrl.trim() : undefined,
               displayTitle: isDriveDisplay ? (formState.displayTitle.trim() || formState.name.trim()) : undefined,
               isActive: formState.isActive,
@@ -445,7 +497,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
           type: formState.type,
           parentId: formState.type === 'parent' ? undefined : formState.parentId,
           destination: (isDriveDisplay || isEmptyPageDisplay) ? newId : finalDest,
-          displayType: formState.type === 'parent' ? undefined : formState.displayType,
+          displayType: formState.type === 'parent' ? (isParentEmptyPage ? 'empty_page' : undefined) : formState.displayType,
           driveUrl: isDriveDisplay ? formState.driveUrl.trim() : undefined,
           displayTitle: isDriveDisplay ? (formState.displayTitle.trim() || formState.name.trim()) : undefined,
           order: nextOrder,
@@ -667,14 +719,20 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                 <Layers className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="font-sans font-extrabold text-slate-900 text-base sm:text-lg leading-tight flex items-center gap-2">
-                  <span>Pengurusan Navigasi Dinamik</span>
+                <h3 className="font-sans font-extrabold text-slate-900 text-base sm:text-lg leading-tight flex items-center gap-2 flex-wrap">
+                  <span>
+                    {isContextualCharlieMode && contextualBravoItem
+                      ? `Urus Charlie — ${contextualBravoItem.name}`
+                      : 'Pengurusan Navigasi Dinamik'}
+                  </span>
                   <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
-                    SES v4.4 (3 Peringkat)
+                    {isContextualCharlieMode ? 'SES v4.5 • Mod Konteks Charlie' : 'SES v4.4 (3 Peringkat)'}
                   </span>
                 </h3>
                 <p className="text-xs text-slate-500 font-medium">
-                  Urus hierarki Alfa → Bravo → Charlie secara dinamik dengan storan masa nyata Firestore
+                  {isContextualCharlieMode && contextualBravoItem
+                    ? `Charlie di bawah: ${contextualBravoItem.name}${contextualAlfaItem ? ` (${contextualAlfaItem.name})` : ''}`
+                    : 'Urus hierarki Alfa → Bravo → Charlie secara dinamik dengan storan masa nyata Firestore'}
                 </p>
               </div>
             </div>
@@ -762,73 +820,152 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
             </div>
           )}
 
-          {/* Tab Navigation: Parents vs Children vs Grandchildren */}
-          <div className="flex items-center justify-between gap-3 mt-4 border-b border-slate-100 pb-3 shrink-0 flex-wrap">
-            <div className="flex items-center gap-2 flex-wrap">
-              <button
-                type="button"
-                onClick={() => setActiveTab('parents')}
-                className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 ${
-                  activeTab === 'parents'
-                    ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                }`}
-              >
-                <Layers className="w-3.5 h-3.5" />
-                <span>Navigasi Utama ({parents.length})</span>
-              </button>
+          {/* Contextual Charlie Header Bar OR Full Hierarchical Stepped Tree Tabs */}
+          {isContextualCharlieMode && contextualBravoItem ? (
+            <div
+              data-contextual-charlie-parent={contextualBravoItem.id}
+              className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-4 border-b border-violet-100 pb-3.5 shrink-0 bg-violet-50/60 px-3.5 py-3 rounded-2xl border"
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-xl bg-violet-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  {renderNavIcon(contextualBravoItem.icon, 'w-4 h-4')}
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs sm:text-sm font-black text-slate-900 truncate">
+                      Charlie di bawah: <span className="text-violet-700">{contextualBravoItem.name}</span>
+                    </span>
+                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-white text-violet-700 border border-violet-200 shrink-0">
+                      {(grandchildrenByChild.get(contextualBravoItem.id) || []).length} Charlie
+                    </span>
+                  </div>
+                  {contextualAlfaItem && (
+                    <p className="text-[11px] text-slate-500 font-medium truncate">
+                      Induk Alfa: <span className="font-bold text-slate-700">{contextualAlfaItem.name}</span>
+                    </p>
+                  )}
+                </div>
+              </div>
 
               <button
                 type="button"
-                onClick={() => setActiveTab('children')}
-                className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 ${
-                  activeTab === 'children'
-                    ? 'bg-indigo-600 text-white shadow-xs'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                }`}
+                onClick={() => handleAddNew('grandchild', contextualBravoItem.id)}
+                className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-extrabold shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-95 shrink-0 self-start sm:self-auto"
               >
-                <FolderTree className="w-3.5 h-3.5" />
-                <span>Navigasi Bravo ({children.length})</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveTab('grandchildren')}
-                className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 ${
-                  activeTab === 'grandchildren'
-                    ? 'bg-violet-600 text-white shadow-xs'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                }`}
-              >
-                <FileText className="w-3.5 h-3.5" />
-                <span>Navigasi Charlie ({grandchildren.length})</span>
+                <Plus className="w-4 h-4" />
+                <span>Tambah Charlie</span>
               </button>
             </div>
+          ) : (
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mt-4 border-b border-slate-100 pb-3.5 shrink-0">
+              <div
+                role="tablist"
+                aria-label="Tahap Hierarki Navigasi"
+                className="flex flex-col gap-1.5 min-w-0 flex-1"
+              >
+                {/* Level 1: Alfa — Primary Root Alignment */}
+                <div className="flex items-center min-w-0">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={activeTab === 'parents'}
+                    data-nav-level="alfa"
+                    onClick={() => setActiveTab('parents')}
+                    className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 max-w-full ${
+                      activeTab === 'parents'
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                    }`}
+                  >
+                    <Layers className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">Navigasi Utama ({parents.length})</span>
+                  </button>
+                </div>
 
-            <button
-              type="button"
-              onClick={() =>
-                handleAddNew(
-                  activeTab === 'parents' ? 'parent' : activeTab === 'children' ? 'child' : 'grandchild'
-                )
-              }
-              className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-extrabold shadow-xs transition-all cursor-pointer flex items-center gap-1.5 active:scale-95 shrink-0"
-            >
-              <Plus className="w-4 h-4" />
-              <span>
-                {activeTab === 'parents'
-                  ? 'Tambah Alfa'
-                  : activeTab === 'children'
-                  ? 'Tambah Bravo'
-                  : 'Tambah Charlie'}
-              </span>
-            </button>
-          </div>
+                {/* Level 2: Bravo — Indented Right Relative to Alfa */}
+                <div className="flex items-center pl-4 sm:pl-7 min-w-0">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span
+                      aria-hidden="true"
+                      className={`inline-flex items-center justify-center shrink-0 transition-colors ${
+                        activeTab === 'children' ? 'text-indigo-500' : 'text-slate-300'
+                      }`}
+                    >
+                      <CornerDownRight className="w-3.5 h-3.5" />
+                    </span>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={activeTab === 'children'}
+                      data-nav-level="bravo"
+                      onClick={() => setActiveTab('children')}
+                      className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 max-w-full ${
+                        activeTab === 'children'
+                          ? 'bg-indigo-600 text-white shadow-xs'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                      }`}
+                    >
+                      <FolderTree className="w-3.5 h-3.5 shrink-0" />
+                      <span className="truncate">Navigasi Bravo ({children.length})</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Level 3: Charlie — Indented Further Right Relative to Bravo */}
+                <div className="flex items-center pl-8 sm:pl-14 min-w-0">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span
+                      aria-hidden="true"
+                      className={`inline-flex items-center justify-center shrink-0 transition-colors ${
+                        activeTab === 'grandchildren' ? 'text-violet-500' : 'text-slate-300'
+                      }`}
+                    >
+                      <CornerDownRight className="w-3.5 h-3.5" />
+                    </span>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={activeTab === 'grandchildren'}
+                      data-nav-level="charlie"
+                      onClick={() => setActiveTab('grandchildren')}
+                      className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 max-w-full ${
+                        activeTab === 'grandchildren'
+                          ? 'bg-violet-600 text-white shadow-xs'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                      }`}
+                    >
+                      <FileText className="w-3.5 h-3.5 shrink-0" />
+                      <span className="truncate">Navigasi Charlie ({grandchildren.length})</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  handleAddNew(
+                    activeTab === 'parents' ? 'parent' : activeTab === 'children' ? 'child' : 'grandchild'
+                  )
+                }
+                className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-extrabold shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-95 shrink-0 self-start sm:self-end"
+              >
+                <Plus className="w-4 h-4" />
+                <span>
+                  {activeTab === 'parents'
+                    ? 'Tambah Alfa'
+                    : activeTab === 'children'
+                    ? 'Tambah Bravo'
+                    : 'Tambah Charlie'}
+                </span>
+              </button>
+            </div>
+          )}
 
           {/* Main Scrollable Content Area */}
           <div className="flex-1 overflow-y-auto py-3 space-y-4 pr-1">
             {/* SECTION A: PARENT NAVIGATION LIST */}
-            {activeTab === 'parents' && (
+            {!isContextualCharlieMode && activeTab === 'parents' && (
               <div className="space-y-2.5">
                 {parents.map((p, idx) => {
                   const childCount = (childrenByParent.get(p.id) || []).length;
@@ -878,6 +1015,10 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                             {childCount > 0 ? (
                               <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 border border-violet-200">
                                 {childCount} Sub-Menu
+                              </span>
+                            ) : p.displayType === 'empty_page' ? (
+                              <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
+                                Container Kosong
                               </span>
                             ) : (
                               <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
@@ -950,7 +1091,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
             )}
 
             {/* SECTION B: CHILD NAVIGATION LIST (Grouped by Parent) */}
-            {activeTab === 'children' && (
+            {!isContextualCharlieMode && activeTab === 'children' && (
               <div className="space-y-5">
                 {parents.map((p) => {
                   const pChildren = (childrenByParent.get(p.id) || []).sort((a, b) => a.order - b.order);
@@ -1159,9 +1300,9 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
             )}
 
             {/* SECTION C: GRANDCHILD NAVIGATION LIST (Grouped by Child container) */}
-            {activeTab === 'grandchildren' && (
+            {(isContextualCharlieMode || activeTab === 'grandchildren') && (
               <div className="space-y-5">
-                {children.map((c) => {
+                {(contextualBravoItem ? [contextualBravoItem] : children).map((c) => {
                   const parentOfChild = parents.find((p) => p.id === c.parentId);
                   const cGrandchildren = (grandchildrenByChild.get(c.id) || []).sort((a, b) => a.order - b.order);
 
@@ -1358,22 +1499,30 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
 
           {/* Footer Controls */}
           <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => setShowResetConfirm(true)}
-              disabled={isSaving}
-              className="text-[11px] font-extrabold text-slate-500 hover:text-amber-800 bg-slate-100 hover:bg-amber-50 px-3 py-1.5 rounded-xl border border-slate-200 hover:border-amber-200 flex items-center gap-1.5 cursor-pointer transition-colors"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Reset Struktur Lalai</span>
-            </button>
+            {isContextualCharlieMode && contextualBravoItem ? (
+              <span className="text-[11px] font-bold text-slate-500">
+                Menunjukkan item Charlie di bawah <span className="text-violet-700 font-extrabold">{contextualBravoItem.name}</span> sahaja
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowResetConfirm(true)}
+                disabled={isSaving}
+                className="text-[11px] font-extrabold text-slate-500 hover:text-amber-800 bg-slate-100 hover:bg-amber-50 px-3 py-1.5 rounded-xl border border-slate-200 hover:border-amber-200 flex items-center gap-1.5 cursor-pointer transition-colors"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Reset Struktur Lalai</span>
+              </button>
+            )}
 
             <button
               type="button"
               onClick={onClose}
-              className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-extrabold shadow-sm cursor-pointer"
+              className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-extrabold shadow-sm cursor-pointer ml-auto"
             >
-              Selesai
+              {isContextualCharlieMode && contextualBravoItem
+                ? `Kembali ke ${contextualBravoItem.name}`
+                : 'Selesai'}
             </button>
           </div>
 
@@ -1396,142 +1545,168 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                 </div>
 
                 <form onSubmit={handleFormSubmit} className="space-y-3.5">
-                  {/* Type Selector (Parent vs Child vs Grandchild) */}
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-extrabold text-slate-700">Peringkat Hierarki Navigasi</label>
-                    <div className="grid grid-cols-3 gap-2">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setFormState((prev) => ({
-                            ...prev,
-                            type: 'parent',
-                            parentId: '',
-                            displayType: 'module',
-                          }))
-                        }
-                        className={`py-2 px-2.5 rounded-xl text-xs font-extrabold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                          formState.type === 'parent'
-                            ? 'bg-indigo-50 border-indigo-500 text-indigo-900 ring-2 ring-indigo-200'
-                            : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                        }`}
-                      >
-                        <Layers className="w-3.5 h-3.5 text-indigo-600" />
-                        <span>1. Alfa</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setFormState((prev) => ({
-                            ...prev,
-                            type: 'child',
-                            parentId: parents[0]?.id || '',
-                          }))
-                        }
-                        className={`py-2 px-2.5 rounded-xl text-xs font-extrabold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                          formState.type === 'child'
-                            ? 'bg-indigo-50 border-indigo-500 text-indigo-900 ring-2 ring-indigo-200'
-                            : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                        }`}
-                      >
-                        <FolderTree className="w-3.5 h-3.5 text-indigo-600" />
-                        <span>2. Bravo</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setFormState((prev) => ({
-                            ...prev,
-                            type: 'grandchild',
-                            parentId: children[0]?.id || '',
-                            parentFilterId: children[0]?.parentId || parents[0]?.id || '',
-                            displayType: 'drive',
-                          }))
-                        }
-                        className={`py-2 px-2.5 rounded-xl text-xs font-extrabold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                          formState.type === 'grandchild'
-                            ? 'bg-violet-50 border-violet-500 text-violet-900 ring-2 ring-violet-200'
-                            : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                        }`}
-                      >
-                        <FileText className="w-3.5 h-3.5 text-violet-600" />
-                        <span>3. Charlie</span>
-                      </button>
+                  {/* Type Selector (Hidden/Locked in Contextual Charlie Mode) */}
+                  {isContextualCharlieMode && contextualBravoItem ? (
+                    <div className="p-3 bg-violet-50/80 rounded-2xl border border-violet-200 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-8 h-8 rounded-xl bg-violet-600 text-white flex items-center justify-center shrink-0">
+                          {renderNavIcon(contextualBravoItem.icon, 'w-4 h-4')}
+                        </div>
+                        <div className="min-w-0">
+                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-violet-700 block">
+                            Konteks Induk Tetap (Charlie)
+                          </span>
+                          <p className="text-xs font-extrabold text-slate-900 truncate">
+                            Charlie di bawah: <span className="text-violet-700">{contextualBravoItem.name}</span>
+                            {contextualAlfaItem ? (
+                              <span className="text-slate-500 font-semibold"> ({contextualAlfaItem.name})</span>
+                            ) : null}
+                          </p>
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-white text-violet-800 border border-violet-200 shrink-0">
+                        {contextualBravoItem.id}
+                      </span>
                     </div>
-                  </div>
-
-                  {/* Parent Association Dropdown (Only for Child) */}
-                  {formState.type === 'child' && (
-                    <div className="space-y-1">
-                      <label className="text-[11px] font-extrabold text-slate-700">Pilih Navigasi Alfa (Parent)</label>
-                      <select
-                        value={formState.parentId}
-                        onChange={(e) => setFormState({ ...formState, parentId: e.target.value })}
-                        required
-                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white outline-none focus:ring-2 focus:ring-indigo-200"
-                      >
-                        {parents.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-
-                  {/* Grandchild Association: Select Child Container (Only for Grandchild) */}
-                  {formState.type === 'grandchild' && (
-                    <div className="space-y-2 p-3 bg-violet-50/60 rounded-2xl border border-violet-100">
+                  ) : (
+                    <>
                       <div className="space-y-1">
-                        <label className="text-[11px] font-extrabold text-violet-950">
-                          Tapis mengikut Alfa (Pilihan):
-                        </label>
-                        <select
-                          value={formState.parentFilterId}
-                          onChange={(e) => {
-                            const newParentFilter = e.target.value;
-                            const availableCh = children.filter((c) => !newParentFilter || c.parentId === newParentFilter);
-                            setFormState({
-                              ...formState,
-                              parentFilterId: newParentFilter,
-                              parentId: availableCh[0]?.id || formState.parentId,
-                            });
-                          }}
-                          className="w-full px-3 py-1.5 rounded-xl border border-violet-200 text-xs bg-white outline-none focus:ring-2 focus:ring-violet-300"
-                        >
-                          <option value="">Semua Alfa</option>
-                          {parents.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name}
-                            </option>
-                          ))}
-                        </select>
+                        <label className="text-[11px] font-extrabold text-slate-700">Peringkat Hierarki Navigasi</label>
+                        <div className="grid grid-cols-3 gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setFormState((prev) => ({
+                                ...prev,
+                                type: 'parent',
+                                parentId: '',
+                                displayType: 'module',
+                              }))
+                            }
+                            className={`py-2 px-2.5 rounded-xl text-xs font-extrabold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                              formState.type === 'parent'
+                                ? 'bg-indigo-50 border-indigo-500 text-indigo-900 ring-2 ring-indigo-200'
+                                : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                            }`}
+                          >
+                            <Layers className="w-3.5 h-3.5 text-indigo-600" />
+                            <span>1. Alfa</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setFormState((prev) => ({
+                                ...prev,
+                                type: 'child',
+                                parentId: parents[0]?.id || '',
+                              }))
+                            }
+                            className={`py-2 px-2.5 rounded-xl text-xs font-extrabold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                              formState.type === 'child'
+                                ? 'bg-indigo-50 border-indigo-500 text-indigo-900 ring-2 ring-indigo-200'
+                                : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                            }`}
+                          >
+                            <FolderTree className="w-3.5 h-3.5 text-indigo-600" />
+                            <span>2. Bravo</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setFormState((prev) => ({
+                                ...prev,
+                                type: 'grandchild',
+                                parentId: children[0]?.id || '',
+                                parentFilterId: children[0]?.parentId || parents[0]?.id || '',
+                                displayType: 'drive',
+                              }))
+                            }
+                            className={`py-2 px-2.5 rounded-xl text-xs font-extrabold border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                              formState.type === 'grandchild'
+                                ? 'bg-violet-50 border-violet-500 text-violet-900 ring-2 ring-violet-200'
+                                : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                            }`}
+                          >
+                            <FileText className="w-3.5 h-3.5 text-violet-600" />
+                            <span>3. Charlie</span>
+                          </button>
+                        </div>
                       </div>
 
-                      <div className="space-y-1">
-                        <label className="text-[11px] font-extrabold text-violet-950 flex items-center gap-1">
-                          <CornerDownRight className="w-3 h-3 text-violet-600" />
-                          <span>Pilih Navigasi Bravo (Bekas / Container) *</span>
-                        </label>
-                        <select
-                          value={formState.parentId}
-                          onChange={(e) => setFormState({ ...formState, parentId: e.target.value })}
-                          required
-                          className="w-full px-3 py-2 rounded-xl border border-violet-300 text-xs bg-white font-bold text-violet-900 outline-none focus:ring-2 focus:ring-violet-300 shadow-2xs"
-                        >
-                          {childrenForGrandchildForm.map((c) => {
-                            const pName = parents.find((p) => p.id === c.parentId)?.name;
-                            return (
-                              <option key={c.id} value={c.id}>
-                                {c.name} {pName ? `(di bawah ${pName})` : ''}
+                      {/* Parent Association Dropdown (Only for Child) */}
+                      {formState.type === 'child' && (
+                        <div className="space-y-1">
+                          <label className="text-[11px] font-extrabold text-slate-700">Pilih Navigasi Alfa (Parent)</label>
+                          <select
+                            value={formState.parentId}
+                            onChange={(e) => setFormState({ ...formState, parentId: e.target.value })}
+                            required
+                            className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white outline-none focus:ring-2 focus:ring-indigo-200"
+                          >
+                            {parents.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name}
                               </option>
-                            );
-                          })}
-                        </select>
-                      </div>
-                    </div>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      {/* Grandchild Association: Select Child Container (Only for Grandchild) */}
+                      {formState.type === 'grandchild' && (
+                        <div className="space-y-2 p-3 bg-violet-50/60 rounded-2xl border border-violet-100">
+                          <div className="space-y-1">
+                            <label className="text-[11px] font-extrabold text-violet-950">
+                              Tapis mengikut Alfa (Pilihan):
+                            </label>
+                            <select
+                              value={formState.parentFilterId}
+                              onChange={(e) => {
+                                const newParentFilter = e.target.value;
+                                const availableCh = children.filter((c) => !newParentFilter || c.parentId === newParentFilter);
+                                setFormState({
+                                  ...formState,
+                                  parentFilterId: newParentFilter,
+                                  parentId: availableCh[0]?.id || formState.parentId,
+                                });
+                              }}
+                              className="w-full px-3 py-1.5 rounded-xl border border-violet-200 text-xs bg-white outline-none focus:ring-2 focus:ring-violet-300"
+                            >
+                              <option value="">Semua Alfa</option>
+                              {parents.map((p) => (
+                                <option key={p.id} value={p.id}>
+                                  {p.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div className="space-y-1">
+                            <label className="text-[11px] font-extrabold text-violet-950 flex items-center gap-1">
+                              <CornerDownRight className="w-3 h-3 text-violet-600" />
+                              <span>Pilih Navigasi Bravo (Bekas / Container) *</span>
+                            </label>
+                            <select
+                              value={formState.parentId}
+                              onChange={(e) => setFormState({ ...formState, parentId: e.target.value })}
+                              required
+                              className="w-full px-3 py-2 rounded-xl border border-violet-300 text-xs bg-white font-bold text-violet-900 outline-none focus:ring-2 focus:ring-violet-300 shadow-2xs"
+                            >
+                              {childrenForGrandchildForm.map((c) => {
+                                const pName = parents.find((p) => p.id === c.parentId)?.name;
+                                return (
+                                  <option key={c.id} value={c.id}>
+                                    {c.name} {pName ? `(di bawah ${pName})` : ''}
+                                  </option>
+                                );
+                              })}
+                            </select>
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
 
                   {/* Display Name */}
@@ -1815,7 +1990,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                             />
                           )}
                           <p className="text-[10px] text-slate-400">
-                            Modul sasaran dalam aplikasi: <code>directory</code>, <code>platform</code>, <code>rujukan</code>, <code>jadual</code>, <code>jadual-pensyarah</code>, <code>daftar</code>.
+                            Modul sasaran dalam aplikasi: <code>directory</code>, <code>platform</code>, <code>jadual</code>, <code>jadual-pensyarah</code>, <code>daftar</code>.
                           </p>
                         </div>
                       )}
@@ -1842,6 +2017,9 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                           onChange={(e) => setFormState({ ...formState, destination: e.target.value })}
                           className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs bg-white outline-none focus:ring-2 focus:ring-indigo-200"
                         >
+                          <option value="empty_page">
+                            Container Kosong (Pages Kosong — Bekas Navigasi Bravo)
+                          </option>
                           {KNOWN_MODULE_DESTINATIONS.map((mod) => (
                             <option key={mod.id} value={mod.id}>
                               {mod.name}
@@ -1859,7 +2037,9 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                         />
                       )}
                       <p className="text-[10px] text-slate-400">
-                        Jika navigasi alfa mempunyai bravo, klik pada alfa akan membuka bravo pertama secara automatik.
+                        {!formState.useCustomDestination && formState.destination === 'empty_page'
+                          ? 'Sesuai untuk kategori induk baharu: memaparkan halaman bekas kosong sehingga navigasi bravo ditambah (apabila bravo wujud, klik pada alfa akan membuka bravo pertama secara automatik).'
+                          : 'Jika navigasi alfa mempunyai bravo, klik pada alfa akan membuka bravo pertama secara automatik.'}
                       </p>
                     </div>
                   )}
