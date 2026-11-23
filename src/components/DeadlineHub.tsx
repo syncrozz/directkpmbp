@@ -22,6 +22,7 @@ import {
   Loader2,
   Paperclip,
   Pencil,
+  Plus,
   RefreshCw,
   RotateCcw,
   Search,
@@ -42,6 +43,7 @@ import {
 import { auth } from '../config/firebase';
 import {
   DEADLINE_CATEGORIES,
+  DEADLINE_TIMEZONE,
   DeadlineDisplayStatus,
   DeadlineFilterTab,
   filterAndSortDeadlines,
@@ -53,11 +55,13 @@ import {
   getKualaLumpurNowParts,
   getOriginalPublishedAt,
   isDeadlineUpdated,
+  isValidIsoDate,
   resolveDeadlineDisplayStatus,
   validateDeadlineCandidate,
 } from '../utils/deadlineStatus';
 import {
   changeDeadlineStoredStatus,
+  createManualDeadline,
   deletePublishedDeadline,
   getProtectedSourceEvidenceUrl,
   subscribeToDeadlineAuditLogs,
@@ -183,7 +187,9 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
   const [captureInitialTab, setCaptureInitialTab] = useState<'upload' | 'paste' | 'queue'>('paste');
   const [detailRecord, setDetailRecord] = useState<DeadlineRecord | null>(null);
   const [editingRecord, setEditingRecord] = useState<DeadlineRecord | null>(null);
+  const [isCreatingManual, setIsCreatingManual] = useState(false);
   const [editReason, setEditReason] = useState('');
+  const [modalStaffSearch, setModalStaffSearch] = useState('');
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<DeadlineRecord | null>(null);
   const [isAuditDrawerOpen, setIsAuditDrawerOpen] = useState(false);
@@ -192,6 +198,55 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
     text: string;
   } | null>(null);
   const [evidenceSignedUrls, setEvidenceSignedUrls] = useState<Record<string, string>>({});
+
+  const availableDepartments = useMemo(() => {
+    const set = new Set<string>([
+      'Pengurusan',
+      'Akademik',
+      'Sokongan Akademik',
+      'Pentadbiran',
+      'HEA',
+      'HEP',
+    ]);
+    staffList.forEach((s) => {
+      if (s.Bahagian?.trim()) set.add(s.Bahagian.trim());
+      if (s.Unit?.trim()) set.add(s.Unit.trim());
+      if (s.DepartmentID?.trim()) set.add(s.DepartmentID.trim());
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [staffList]);
+
+  const openCreateManualModal = () => {
+    const adminEmail = (currentAdmin?.email || auth.currentUser?.email || 'admin').toLowerCase();
+    const nowIso = new Date().toISOString();
+    setIsCreatingManual(true);
+    setEditReason('');
+    setModalStaffSearch('');
+    setEditingRecord({
+      id: '',
+      title: '',
+      description: '',
+      requiredAction: '',
+      category: 'Akademik',
+      targetAudience: [],
+      targetDepartments: [],
+      targetStaffIds: [],
+      dueDate: klNowParts.dateStr,
+      dueTime: '',
+      timezone: DEADLINE_TIMEZONE,
+      actionUrl: '',
+      actionLabel: '',
+      attachments: [],
+      instructions: '',
+      status: 'ACTIVE',
+      isPublished: true,
+      sourceType: 'PASTED_TEXT',
+      createdAt: nowIso,
+      createdBy: adminEmail,
+      updatedAt: nowIso,
+      updatedBy: adminEmail,
+    });
+  };
 
   // Subscribe to published deadlines (for all staff) OR all deadlines (for verified Master Admin)
   useEffect(() => {
@@ -297,14 +352,55 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
   const handleSaveManualEdit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingRecord) return;
-    const original = deadlines.find((d) => d.id === editingRecord.id);
-    if (!original) return;
 
     const validation = validateDeadlineCandidate(editingRecord);
     if (!validation.valid) {
       setActionFeedback({ type: 'error', text: validation.errors.join(' ') });
       return;
     }
+
+    if (isCreatingManual) {
+      try {
+        setIsSavingEdit(true);
+        setActionFeedback(null);
+        await createManualDeadline({
+          record: {
+            title: editingRecord.title,
+            description: editingRecord.description,
+            requiredAction: editingRecord.requiredAction,
+            category: editingRecord.category,
+            targetAudience: editingRecord.targetAudience,
+            targetDepartments: editingRecord.targetDepartments,
+            targetStaffIds: editingRecord.targetStaffIds,
+            dueDate: editingRecord.dueDate,
+            dueTime: editingRecord.dueTime,
+            actionUrl: editingRecord.actionUrl,
+            actionLabel: editingRecord.actionLabel,
+            instructions: editingRecord.instructions,
+          },
+          reason: editReason.trim() || undefined,
+        });
+        setEditingRecord(null);
+        setIsCreatingManual(false);
+        setEditReason('');
+        setModalStaffSearch('');
+        setActionFeedback({
+          type: 'success',
+          text: `Tarikh akhir "${editingRecord.title}" berjaya dicipta dan diterbitkan.`,
+        });
+      } catch (err: any) {
+        setActionFeedback({
+          type: 'error',
+          text: err?.message || 'Gagal mencipta rekod tarikh akhir.',
+        });
+      } finally {
+        setIsSavingEdit(false);
+      }
+      return;
+    }
+
+    const original = deadlines.find((d) => d.id === editingRecord.id);
+    if (!original) return;
 
     try {
       setIsSavingEdit(true);
@@ -318,7 +414,9 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
         setDetailRecord({ ...editingRecord, updatedAt: new Date().toISOString() });
       }
       setEditingRecord(null);
+      setIsCreatingManual(false);
       setEditReason('');
+      setModalStaffSearch('');
       setActionFeedback({
         type: 'success',
         text: `Rekod "${editingRecord.title}" berjaya dikemas kini.`,
@@ -392,6 +490,15 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
 
           {isAdminMode && (
             <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={openCreateManualModal}
+                className="px-3.5 py-2 rounded-xl bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200 text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs transition-colors whitespace-nowrap shrink-0"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Tambah Manual</span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => {
@@ -698,8 +805,10 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
                           <CalendarClock className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
                           <div className="min-w-0 space-y-0.5">
                             <div className="font-semibold text-slate-900 tabular-nums">
-                              Tarikh Akhir: {formatDueDateDisplay(record.dueDate)} ·{' '}
-                              {formatDueTimeDisplay(record.dueTime)}
+                              Tarikh Akhir: {formatDueDateDisplay(record.dueDate)}
+                              {isValidIsoDate(record.dueDate)
+                                ? ` · ${formatDueTimeDisplay(record.dueTime)}`
+                                : ''}
                             </div>
                             <div
                               className={`text-[11px] font-mono font-bold tabular-nums ${meta.textClass}`}
@@ -710,7 +819,7 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
                         </div>
 
                         {(publishedLabel || updatedLabel) && (
-                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500 tabular-nums pl-5.5">
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500 tabular-nums pl-[22px]">
                             {publishedLabel && <span>Diterbitkan: {publishedLabel}</span>}
                             {publishedLabel && updatedLabel && (
                               <span aria-hidden="true">·</span>
@@ -726,7 +835,7 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
                         {(targetSummary ||
                           (record.targetStaffIds || []).length > 0 ||
                           (record.attachments || []).length > 0) && (
-                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500 pl-5.5">
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500 pl-[22px]">
                             {(targetSummary || (record.targetStaffIds || []).length > 0) && (
                               <span className="truncate max-w-full">
                                 Sasaran:{' '}
@@ -783,8 +892,10 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
                             <button
                               type="button"
                               onClick={() => {
+                                setIsCreatingManual(false);
                                 setEditingRecord({ ...record });
                                 setEditReason('');
+                                setModalStaffSearch('');
                               }}
                               title="Sunting rekod"
                               className="px-2 py-1 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-indigo-700 font-semibold flex items-center gap-1 cursor-pointer"
@@ -1143,24 +1254,30 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
         );
       })()}
 
-      {/* Admin Quick Manual Edit Modal */}
+      {/* Admin Manual Create / Edit Modal */}
       {editingRecord && isAdminMode && (
         <div
           className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5 overflow-y-auto"
-          onClick={() => setEditingRecord(null)}
+          onClick={() => {
+            setEditingRecord(null);
+            setIsCreatingManual(false);
+          }}
         >
           <form
             onSubmit={handleSaveManualEdit}
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-xl bg-white rounded-3xl shadow-2xl border border-slate-200 p-6 space-y-4 text-left text-xs max-h-[90vh] overflow-y-auto"
+            className="w-full max-w-2xl bg-white rounded-3xl shadow-2xl border border-slate-200 p-6 space-y-4 text-left text-xs max-h-[90vh] overflow-y-auto"
           >
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-base font-extrabold text-slate-900">
-                Sunting Rekod Tarikh Akhir
+                {isCreatingManual ? 'Tambah Rekod Tarikh Akhir Baharu' : 'Sunting Rekod Tarikh Akhir'}
               </h3>
               <button
                 type="button"
-                onClick={() => setEditingRecord(null)}
+                onClick={() => {
+                  setEditingRecord(null);
+                  setIsCreatingManual(false);
+                }}
                 aria-label="Tutup modal suntingan"
                 className="p-1.5 rounded-full hover:bg-slate-100 text-slate-500 cursor-pointer"
               >
@@ -1178,12 +1295,15 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
                   onChange={(e) =>
                     setEditingRecord({ ...editingRecord, title: e.target.value })
                   }
+                  placeholder="Contoh: Penghantaran Markah Penilaian Berterusan"
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 font-semibold text-slate-900"
                 />
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Tarikh Akhir *</label>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Tarikh Akhir (Asia/Kuala_Lumpur) *
+                </label>
                 <input
                   type="date"
                   required
@@ -1228,7 +1348,28 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Pautan Tindakan</label>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Sasaran Audiens (Dipisahkan Koma)
+                </label>
+                <input
+                  type="text"
+                  value={(editingRecord.targetAudience || []).join(', ')}
+                  onChange={(e) =>
+                    setEditingRecord({
+                      ...editingRecord,
+                      targetAudience: e.target.value
+                        .split(',')
+                        .map((v) => v.trim())
+                        .filter(Boolean),
+                    })
+                  }
+                  placeholder="Contoh: Semua Pensyarah, Staf Pentadbiran"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Pautan Tindakan (URL)</label>
                 <input
                   type="url"
                   value={editingRecord.actionUrl}
@@ -1236,6 +1377,19 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
                     setEditingRecord({ ...editingRecord, actionUrl: e.target.value })
                   }
                   placeholder="https://..."
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Label Butang Tindakan</label>
+                <input
+                  type="text"
+                  value={editingRecord.actionLabel || ''}
+                  onChange={(e) =>
+                    setEditingRecord({ ...editingRecord, actionLabel: e.target.value })
+                  }
+                  placeholder="Buka Pautan Tindakan"
                   className="w-full px-3 py-2 rounded-xl border border-slate-200"
                 />
               </div>
@@ -1260,19 +1414,150 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
                   onChange={(e) =>
                     setEditingRecord({ ...editingRecord, requiredAction: e.target.value })
                   }
+                  placeholder="Contoh: Lengkapkan borang dan muat naik dokumen sokongan"
                   className="w-full px-3 py-2 rounded-xl border border-slate-200"
                 />
               </div>
 
               <div className="sm:col-span-2">
                 <label className="block font-bold text-slate-700 mb-1">
-                  Sebab Kemaskini (Untuk Rekod Audit)
+                  Arahan Langkah Demi Langkah
+                </label>
+                <textarea
+                  rows={2}
+                  value={editingRecord.instructions || ''}
+                  onChange={(e) =>
+                    setEditingRecord({ ...editingRecord, instructions: e.target.value })
+                  }
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200"
+                />
+              </div>
+
+              <div className="sm:col-span-2 space-y-1.5">
+                <label className="block font-bold text-slate-700">
+                  Jabatan / Unit Terlibat
+                </label>
+                <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-2 rounded-xl border border-slate-200 bg-slate-50/60">
+                  {availableDepartments.map((dept) => {
+                    const active = (editingRecord.targetDepartments || []).some(
+                      (d) => d.toLowerCase() === dept.toLowerCase()
+                    );
+                    return (
+                      <button
+                        key={dept}
+                        type="button"
+                        onClick={() => {
+                          const cur = editingRecord.targetDepartments || [];
+                          const next = active
+                            ? cur.filter((d) => d.toLowerCase() !== dept.toLowerCase())
+                            : [...cur, dept];
+                          setEditingRecord({ ...editingRecord, targetDepartments: next });
+                        }}
+                        className={`px-2 py-1 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer ${
+                          active
+                            ? 'bg-indigo-600 text-white border-indigo-600'
+                            : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'
+                        }`}
+                      >
+                        {dept}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="sm:col-span-2 space-y-1.5">
+                <label className="block font-bold text-slate-700">
+                  Staf Khusus Terlibat ({(editingRecord.targetStaffIds || []).length})
+                </label>
+                <input
+                  type="text"
+                  value={modalStaffSearch}
+                  onChange={(e) => setModalStaffSearch(e.target.value)}
+                  placeholder="Cari nama atau ID staf untuk tambah..."
+                  className="w-full px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-xs"
+                />
+                {modalStaffSearch.trim() && (
+                  <div className="border border-slate-200 rounded-xl bg-white divide-y divide-slate-100 max-h-28 overflow-y-auto">
+                    {staffList
+                      .filter((s) => {
+                        const q = modalStaffSearch.trim().toLowerCase();
+                        return (
+                          s.Nama.toLowerCase().includes(q) ||
+                          (s.StaffID || s.ID || '').toLowerCase().includes(q) ||
+                          (s.Unit || '').toLowerCase().includes(q)
+                        );
+                      })
+                      .slice(0, 8)
+                      .map((stf) => {
+                        const sId = stf.StaffID || stf.ID;
+                        const alreadyAdded = (editingRecord.targetStaffIds || []).includes(sId);
+                        return (
+                          <button
+                            key={sId}
+                            type="button"
+                            onClick={() => {
+                              const cur = editingRecord.targetStaffIds || [];
+                              const next = alreadyAdded
+                                ? cur.filter((id) => id !== sId)
+                                : [...cur, sId];
+                              setEditingRecord({ ...editingRecord, targetStaffIds: next });
+                            }}
+                            className="w-full px-3 py-1.5 text-left text-[11px] flex items-center justify-between hover:bg-indigo-50 cursor-pointer"
+                          >
+                            <span className="font-semibold text-slate-800 truncate">
+                              {sId} — {stf.Nama}
+                            </span>
+                            <span className="font-bold text-indigo-600 shrink-0">
+                              {alreadyAdded ? 'Dipilih ✓' : '+ Tambah'}
+                            </span>
+                          </button>
+                        );
+                      })}
+                  </div>
+                )}
+                {(editingRecord.targetStaffIds || []).length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {(editingRecord.targetStaffIds || []).map((sid) => {
+                      const match = staffList.find((s) => (s.StaffID || s.ID) === sid);
+                      return (
+                        <button
+                          key={sid}
+                          type="button"
+                          onClick={() =>
+                            setEditingRecord({
+                              ...editingRecord,
+                              targetStaffIds: (editingRecord.targetStaffIds || []).filter(
+                                (id) => id !== sid
+                              ),
+                            })
+                          }
+                          className="px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-800 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+                        >
+                          <span>{match ? `${sid} (${match.Nama.split(' ')[0]})` : sid}</span>
+                          <X className="w-3 h-3" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="block font-bold text-slate-700 mb-1">
+                  {isCreatingManual
+                    ? 'Nota Rekod (Untuk Rekod Audit)'
+                    : 'Sebab Kemaskini (Untuk Rekod Audit)'}
                 </label>
                 <input
                   type="text"
                   value={editReason}
                   onChange={(e) => setEditReason(e.target.value)}
-                  placeholder="Contoh: Pindaan tarikh baharu mengikut memo terbaharu"
+                  placeholder={
+                    isCreatingManual
+                      ? 'Contoh: Hebahan rasmi daripada memo pengurusan'
+                      : 'Contoh: Pindaan tarikh baharu mengikut memo terbaharu'
+                  }
                   className="w-full px-3 py-2 rounded-xl border border-slate-200"
                 />
               </div>
@@ -1281,7 +1566,10 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
             <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"
-                onClick={() => setEditingRecord(null)}
+                onClick={() => {
+                  setEditingRecord(null);
+                  setIsCreatingManual(false);
+                }}
                 className="px-4 py-2 rounded-xl border border-slate-200 font-semibold text-slate-700 cursor-pointer"
               >
                 Batal
@@ -1292,7 +1580,7 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
                 className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold flex items-center gap-1.5 cursor-pointer"
               >
                 {isSavingEdit && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                <span>Simpan Perubahan</span>
+                <span>{isCreatingManual ? 'Terbitkan Rekod' : 'Simpan Perubahan'}</span>
               </button>
             </div>
           </form>

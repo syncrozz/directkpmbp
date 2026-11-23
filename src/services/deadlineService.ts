@@ -804,6 +804,109 @@ export async function publishApprovedDrafts(params: {
 }
 
 /**
+ * Allows Master Admin to manually create and publish a new deadline record with full audit trail.
+ */
+export async function createManualDeadline(params: {
+  record: {
+    title: string;
+    description?: string;
+    requiredAction?: string;
+    category: DeadlineRecord['category'];
+    targetAudience?: string[];
+    targetDepartments?: string[];
+    targetStaffIds?: string[];
+    dueDate: string;
+    dueTime?: string;
+    actionUrl?: string;
+    actionLabel?: string;
+    instructions?: string;
+  };
+  reason?: string;
+}): Promise<DeadlineRecord> {
+  if (!auth.currentUser) {
+    throw new Error('Sesi Master Admin diperlukan.');
+  }
+
+  const check = validateDeadlineCandidate(params.record);
+  if (!check.valid) {
+    throw new Error(check.errors.join(' '));
+  }
+
+  const verifiedEmail = (auth.currentUser.email || '').trim().toLowerCase();
+  const uid = auth.currentUser.uid;
+  const nowIso = new Date().toISOString();
+  const deadlineId = generateSafeDocId('dl');
+
+  const actionUrl = (params.record.actionUrl || '').trim().slice(0, 2000);
+  const newRecord: DeadlineRecord = {
+    id: deadlineId,
+    title: params.record.title.trim().slice(0, 200),
+    description: (params.record.description || '').trim().slice(0, 2000),
+    requiredAction: (params.record.requiredAction || '').trim().slice(0, 500),
+    category: params.record.category,
+    targetAudience: (params.record.targetAudience || []).slice(0, 30),
+    targetDepartments: (params.record.targetDepartments || []).slice(0, 30),
+    targetStaffIds: (params.record.targetStaffIds || []).slice(0, 100),
+    dueDate: params.record.dueDate.trim(),
+    dueTime: (params.record.dueTime || '').trim(),
+    timezone: DEADLINE_TIMEZONE,
+    actionUrl,
+    actionLabel: actionUrl
+      ? (params.record.actionLabel || 'Buka Pautan Tindakan').trim().slice(0, 120)
+      : '',
+    attachments: [],
+    instructions: (params.record.instructions || '').trim().slice(0, 4000),
+    status: 'ACTIVE',
+    isPublished: true,
+    sourceType: 'PASTED_TEXT',
+    sourceSummary: 'Dicipta secara manual oleh Master Admin.',
+    sourceEvidencePaths: [],
+    confidenceScore: 1,
+    createdAt: nowIso,
+    createdBy: verifiedEmail,
+    updatedAt: nowIso,
+    updatedBy: verifiedEmail,
+    publishedAt: nowIso,
+    publishedBy: verifiedEmail,
+  };
+
+  const batch = writeBatch(db);
+  batch.set(doc(db, DEADLINES_COL, deadlineId), sanitizeFirestorePayload(newRecord));
+
+  const logId = generateSafeDocId('audit');
+  const auditLog: DeadlineAuditLog = {
+    id: logId,
+    deadlineId,
+    deadlineTitle: newRecord.title,
+    action: 'CREATED',
+    updatedValues: {
+      title: newRecord.title,
+      dueDate: newRecord.dueDate,
+      dueTime: newRecord.dueTime,
+      category: newRecord.category,
+      status: newRecord.status,
+      targetAudience: newRecord.targetAudience,
+      targetDepartments: newRecord.targetDepartments,
+    },
+    reason: (params.reason || 'Dicipta secara manual oleh Master Admin').slice(0, 1000),
+    sourceType: 'PASTED_TEXT',
+    sourceRef: 'Manual Admin Entry',
+    performedBy: verifiedEmail,
+    performedByUid: uid,
+    performedAt: nowIso,
+  };
+  batch.set(doc(db, DEADLINE_AUDIT_COL, logId), sanitizeFirestorePayload(auditLog));
+
+  try {
+    await batch.commit();
+    return newRecord;
+  } catch (err) {
+    logFirestoreBoundaryError(err, OperationType.WRITE, `${DEADLINES_COL}/${deadlineId}`);
+    throw new Error(parseFriendlyFirestoreError(err));
+  }
+}
+
+/**
  * Allows Master Admin to manually edit a published deadline with full audit trail.
  */
 export async function updatePublishedDeadline(params: {
