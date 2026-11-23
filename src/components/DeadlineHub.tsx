@@ -6,13 +6,15 @@
  * Official KPMBP Announcement & Deadline Listing with Master Admin Management
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Archive,
   ArchiveRestore,
   Building2,
   CalendarClock,
+  Check,
   Clock,
+  Copy,
   ExternalLink,
   Eye,
   EyeOff,
@@ -20,6 +22,7 @@ import {
   Filter,
   History,
   Loader2,
+  MoreVertical,
   Paperclip,
   Pencil,
   Plus,
@@ -28,6 +31,7 @@ import {
   Search,
   ShieldAlert,
   Sparkles,
+  Tag,
   Trash2,
   Users,
   X,
@@ -50,7 +54,6 @@ import {
   formatDeadlineCountdown,
   formatDueDateDisplay,
   formatDueTimeDisplay,
-  formatKLDateDisplay,
   formatKLDateTimeDisplay,
   getKualaLumpurNowParts,
   getOriginalPublishedAt,
@@ -182,6 +185,10 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
     }
   }, [isAdminMode, activeFilter]);
 
+  useEffect(() => {
+    setOpenMenuId(null);
+  }, [activeFilter, selectedCategory, localSearch, globalSearchQuery]);
+
   // Modals & Drawers
   const [isCaptureModalOpen, setIsCaptureModalOpen] = useState(false);
   const [captureInitialTab, setCaptureInitialTab] = useState<'upload' | 'paste' | 'queue'>('paste');
@@ -198,6 +205,86 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
     text: string;
   } | null>(null);
   const [evidenceSignedUrls, setEvidenceSignedUrls] = useState<Record<string, string>>({});
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null);
+  const menuTriggerRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const copyTimerRef = useRef<number | null>(null);
+  const handledDeepLinkRef = useRef(false);
+
+  const canCopyAnnouncementLink =
+    typeof navigator !== 'undefined' && Boolean(navigator.clipboard?.writeText);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimerRef.current !== null) {
+        window.clearTimeout(copyTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!openMenuId) return;
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest(`[data-deadline-menu-root="${openMenuId}"]`)) {
+        return;
+      }
+      setOpenMenuId(null);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        const closingId = openMenuId;
+        setOpenMenuId(null);
+        menuTriggerRefs.current[closingId]?.focus();
+      }
+    };
+
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [openMenuId]);
+
+  useEffect(() => {
+    if (handledDeepLinkRef.current || isLoading || deadlines.length === 0) return;
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const targetId = params.get('deadline')?.trim();
+    if (!targetId) {
+      handledDeepLinkRef.current = true;
+      return;
+    }
+    const matched = deadlines.find((d) => d.id === targetId);
+    if (matched) {
+      setDetailRecord(matched);
+    }
+    handledDeepLinkRef.current = true;
+  }, [isLoading, deadlines]);
+
+  const handleCopyAnnouncementLink = async (record: DeadlineRecord) => {
+    if (!canCopyAnnouncementLink || typeof window === 'undefined') return;
+    const shareUrl = `${window.location.origin}/deadline?deadline=${encodeURIComponent(record.id)}`;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopiedLinkId(record.id);
+      if (copyTimerRef.current !== null) {
+        window.clearTimeout(copyTimerRef.current);
+      }
+      copyTimerRef.current = window.setTimeout(() => {
+        setCopiedLinkId((prev) => (prev === record.id ? null : prev));
+      }, 2000);
+    } catch {
+      setActionFeedback({
+        type: 'error',
+        text: 'Tidak dapat menyalin pautan pengumuman ke papan keratan.',
+      });
+    }
+  };
 
   const availableDepartments = useMemo(() => {
     const set = new Set<string>([
@@ -734,49 +821,193 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
                   record.status,
                   now
                 );
-                const publishedLabel = formatKLDateDisplay(originalPublishedAt);
-                const updatedLabel = isUpdated
+                const publishedDateTimeLabel = formatKLDateTimeDisplay(originalPublishedAt);
+                const updatedDateTimeLabel = isUpdated
                   ? formatKLDateTimeDisplay(record.updatedAt)
                   : '';
                 const actionSnippet = record.requiredAction || record.instructions;
-                const targetSummary = [
-                  ...(record.targetDepartments || []),
-                  ...(record.targetAudience || []),
-                ]
-                  .filter(Boolean)
-                  .slice(0, 3)
-                  .join(' · ');
+                const departments = (record.targetDepartments || []).filter(Boolean);
+                const audience = (record.targetAudience || []).filter(Boolean);
+                const staffTargetCount = (record.targetStaffIds || []).length;
+                const attachmentsCount = (record.attachments || []).length;
+                const hasTargetMetadata =
+                  departments.length > 0 || audience.length > 0 || staffTargetCount > 0;
+                const hasCategory = Boolean(record.category?.trim());
+                const hasAnyMenuMetadata =
+                  hasCategory ||
+                  Boolean(publishedDateTimeLabel) ||
+                  Boolean(updatedDateTimeLabel) ||
+                  hasTargetMetadata ||
+                  attachmentsCount > 0;
+                const isMenuOpen = openMenuId === record.id;
+                const isLinkCopied = copiedLinkId === record.id;
 
                 return (
                   <article
                     key={record.id}
-                    className="glass-card rounded-2xl p-4 sm:p-5 border border-slate-200/80 bg-white/95 flex flex-col justify-between gap-3.5 shadow-2xs"
+                    className={`glass-card relative rounded-2xl p-4 sm:p-5 border border-slate-200/80 bg-white/95 flex flex-col justify-between gap-4 shadow-2xs ${
+                      isMenuOpen ? 'z-30' : 'z-0'
+                    }`}
                   >
-                    <div className="space-y-3 min-w-0">
-                      {/* 1. Status Badge + Clean Unboxed Category / Updated Indicator */}
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-1.5 min-w-0 text-xs">
-                          <span className="font-bold text-indigo-700 truncate">
-                            {record.category}
-                          </span>
-                          {isUpdated && (
-                            <>
-                              <span aria-hidden="true" className="text-slate-300">
-                                ·
-                              </span>
-                              <span className="inline-flex items-center gap-1 font-semibold text-amber-700 whitespace-nowrap shrink-0">
-                                <RefreshCw className="w-3 h-3" />
-                                <span>Dikemas Kini</span>
-                              </span>
-                            </>
-                          )}
-                        </div>
-
+                    <div className="space-y-3.5 min-w-0">
+                      {/* 1. Prominent Status Badge + Subtle Top-Right Three-Dot Overflow Menu */}
+                      <div className="flex items-start justify-between gap-2">
                         <span
-                          className={`px-2.5 py-0.5 rounded-lg text-[11px] font-bold border whitespace-nowrap shrink-0 ${meta.badgeClass}`}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border whitespace-nowrap shrink-0 ${meta.badgeClass}`}
                         >
                           {meta.label}
                         </span>
+
+                        {(hasAnyMenuMetadata || canCopyAnnouncementLink) && (
+                          <div className="relative shrink-0" data-deadline-menu-root={record.id}>
+                            <button
+                              ref={(el) => {
+                                menuTriggerRefs.current[record.id] = el;
+                              }}
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpenMenuId((prev) => (prev === record.id ? null : record.id));
+                              }}
+                              aria-label={`Pilihan dan maklumat tambahan untuk ${record.title}`}
+                              aria-haspopup="menu"
+                              aria-expanded={isMenuOpen}
+                              aria-controls={`deadline-overflow-menu-${record.id}`}
+                              className={`w-9 h-9 -mr-1.5 -mt-1.5 rounded-xl inline-flex items-center justify-center transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                                isMenuOpen
+                                  ? 'bg-slate-100 text-slate-800'
+                                  : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100/80'
+                              }`}
+                            >
+                              <MoreVertical className="w-4 h-4" />
+                            </button>
+
+                            {isMenuOpen && (
+                              <div
+                                id={`deadline-overflow-menu-${record.id}`}
+                                role="menu"
+                                aria-label={`Maklumat tambahan ${record.title}`}
+                                onClick={(e) => e.stopPropagation()}
+                                className="absolute right-0 top-full mt-1 w-72 max-w-[calc(100vw-3rem)] rounded-2xl bg-white border border-slate-200/95 shadow-xl p-3 z-40 space-y-2.5 text-left"
+                              >
+                                {hasAnyMenuMetadata && (
+                                  <div className="space-y-2 text-xs">
+                                    {hasCategory && (
+                                      <div className="flex items-start gap-2.5">
+                                        <Tag className="w-3.5 h-3.5 text-indigo-500 shrink-0 mt-0.5" />
+                                        <div className="min-w-0">
+                                          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                            Maklumat Kategori
+                                          </div>
+                                          <div className="font-semibold text-slate-800 break-words">
+                                            {record.category}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {publishedDateTimeLabel && (
+                                      <div className="flex items-start gap-2.5">
+                                        <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                                        <div className="min-w-0">
+                                          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                            Tarikh Diterbitkan
+                                          </div>
+                                          <div className="font-medium text-slate-700 tabular-nums">
+                                            {publishedDateTimeLabel}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {updatedDateTimeLabel && (
+                                      <div className="flex items-start gap-2.5">
+                                        <RefreshCw className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                                        <div className="min-w-0">
+                                          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                            Tarikh Dikemas Kini
+                                          </div>
+                                          <div className="font-medium text-amber-800 tabular-nums">
+                                            {updatedDateTimeLabel}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {hasTargetMetadata && (
+                                      <div className="flex items-start gap-2.5">
+                                        <Users className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                                        <div className="min-w-0 space-y-0.5">
+                                          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                            Sasaran / Jabatan
+                                          </div>
+                                          {departments.length > 0 && (
+                                            <div className="font-medium text-slate-700 break-words">
+                                              {departments.join(', ')}
+                                            </div>
+                                          )}
+                                          {audience.length > 0 && (
+                                            <div className="text-[11px] text-slate-600 break-words">
+                                              {audience.join(', ')}
+                                            </div>
+                                          )}
+                                          {staffTargetCount > 0 && (
+                                            <div className="text-[11px] text-slate-500">
+                                              {staffTargetCount} staf dikenal pasti
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {attachmentsCount > 0 && (
+                                      <div className="flex items-start gap-2.5">
+                                        <Paperclip className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                                        <div className="min-w-0">
+                                          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                            Lampiran
+                                          </div>
+                                          <div className="font-medium text-slate-700">
+                                            {attachmentsCount} lampiran disertakan
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+
+                                {canCopyAnnouncementLink && (
+                                  <div
+                                    className={
+                                      hasAnyMenuMetadata ? 'pt-2 border-t border-slate-100' : ''
+                                    }
+                                  >
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      onClick={() => handleCopyAnnouncementLink(record)}
+                                      className="w-full px-2.5 py-2 rounded-xl hover:bg-slate-50 focus:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 text-xs font-semibold text-slate-700 flex items-center gap-2 cursor-pointer transition-colors"
+                                    >
+                                      {isLinkCopied ? (
+                                        <>
+                                          <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                          <span className="text-emerald-700">
+                                            Pautan Pengumuman Disalin
+                                          </span>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Copy className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                          <span>Salin Pautan Pengumuman</span>
+                                        </>
+                                      )}
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       {/* 2. Title & 3. Short Description */}
@@ -791,74 +1022,36 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
                         )}
                       </div>
 
-                      {/* 4. Required Action or Instruction */}
+                      {/* 4. Required Action / Instructions */}
                       {actionSnippet && (
-                        <div className="rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-700 leading-relaxed">
+                        <div className="rounded-xl bg-slate-50 px-3 py-2.5 text-xs text-slate-700 leading-relaxed">
                           <span className="font-semibold text-slate-900">Tindakan: </span>
                           <span className="line-clamp-2 break-words">{actionSnippet}</span>
                         </div>
                       )}
 
-                      {/* 5, 6, 7. Deadline Date/Time, Publication Date, Last Updated Date */}
-                      <div className="space-y-1.5 pt-1 text-xs text-slate-600">
-                        <div className="flex items-start gap-2">
-                          <CalendarClock className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
-                          <div className="min-w-0 space-y-0.5">
-                            <div className="font-semibold text-slate-900 tabular-nums">
-                              Tarikh Akhir: {formatDueDateDisplay(record.dueDate)}
-                              {isValidIsoDate(record.dueDate)
-                                ? ` · ${formatDueTimeDisplay(record.dueTime)}`
-                                : ''}
-                            </div>
+                      {/* 5 & 6. Deadline Date/Time & Countdown / Urgency Indicator */}
+                      <div className="flex items-start gap-2 pt-0.5 text-xs text-slate-600">
+                        <CalendarClock className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+                        <div className="min-w-0 space-y-0.5">
+                          <div className="font-semibold text-slate-900 tabular-nums">
+                            Tarikh Akhir: {formatDueDateDisplay(record.dueDate)}
+                            {isValidIsoDate(record.dueDate)
+                              ? ` · ${formatDueTimeDisplay(record.dueTime)}`
+                              : ''}
+                          </div>
+                          {countdown && (
                             <div
                               className={`text-[11px] font-mono font-bold tabular-nums ${meta.textClass}`}
                             >
                               {countdown}
                             </div>
-                          </div>
+                          )}
                         </div>
-
-                        {(publishedLabel || updatedLabel) && (
-                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500 tabular-nums pl-[22px]">
-                            {publishedLabel && <span>Diterbitkan: {publishedLabel}</span>}
-                            {publishedLabel && updatedLabel && (
-                              <span aria-hidden="true">·</span>
-                            )}
-                            {updatedLabel && (
-                              <span className="text-amber-800 font-medium">
-                                Dikemas kini: {updatedLabel}
-                              </span>
-                            )}
-                          </div>
-                        )}
-
-                        {(targetSummary ||
-                          (record.targetStaffIds || []).length > 0 ||
-                          (record.attachments || []).length > 0) && (
-                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500 pl-[22px]">
-                            {(targetSummary || (record.targetStaffIds || []).length > 0) && (
-                              <span className="truncate max-w-full">
-                                Sasaran:{' '}
-                                {targetSummary ||
-                                  `${record.targetStaffIds.length} staf dikenal pasti`}
-                              </span>
-                            )}
-                            {(targetSummary || (record.targetStaffIds || []).length > 0) &&
-                              (record.attachments || []).length > 0 && (
-                                <span aria-hidden="true">·</span>
-                              )}
-                            {(record.attachments || []).length > 0 && (
-                              <span className="inline-flex items-center gap-1 shrink-0">
-                                <Paperclip className="w-3 h-3" />
-                                <span>{record.attachments.length} lampiran</span>
-                              </span>
-                            )}
-                          </div>
-                        )}
                       </div>
                     </div>
 
-                    {/* 8 & 9. Primary Action + Lihat Butiran + Admin Controls */}
+                    {/* 7 & 8. Primary External Action + Lihat Butiran + Admin Controls */}
                     <div className="pt-3 border-t border-slate-100 space-y-2.5">
                       <div className="flex items-center gap-2">
                         {record.actionUrl && (
@@ -866,7 +1059,7 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
                             href={record.actionUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="flex-1 min-w-0 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold inline-flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap"
+                            className="flex-1 min-w-0 px-3.5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold inline-flex items-center justify-center gap-1.5 transition-colors whitespace-nowrap shadow-2xs"
                           >
                             <span className="truncate">
                               {record.actionLabel || 'Buka Pautan Tindakan'}
@@ -877,8 +1070,11 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
 
                         <button
                           type="button"
-                          onClick={() => setDetailRecord(record)}
-                          className={`px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 cursor-pointer whitespace-nowrap ${
+                          onClick={() => {
+                            setOpenMenuId(null);
+                            setDetailRecord(record);
+                          }}
+                          className={`px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-semibold text-slate-700 cursor-pointer whitespace-nowrap ${
                             record.actionUrl ? 'shrink-0' : 'flex-1'
                           }`}
                         >
