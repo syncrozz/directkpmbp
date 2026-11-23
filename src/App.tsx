@@ -56,6 +56,7 @@ import {
   resolveNavigationFromUrl
 } from './services/navigationService';
 import { verifyGoogleAdmin, clearLegacyAdminState } from './utils/adminAuthService';
+import { buildDeadlineSharePath, extractDeadlineShareTarget } from './utils/deadlineStatus';
 import { 
   auth,
   fetchStaffListFromFirestore, 
@@ -477,33 +478,62 @@ export default function App() {
   useEffect(() => {
     const handleUrlChange = () => {
       const res = resolveNavigationFromUrl(navigationItems);
+      const syncDeadlineOrCanonicalUrl = (
+        navId: string,
+        fallbackCanonicalPath: string,
+        isDeadlineRoute: boolean
+      ) => {
+        if (typeof window === 'undefined') return;
+        if (isDeadlineRoute) {
+          const shareTarget = extractDeadlineShareTarget(
+            window.location.pathname,
+            window.location.search,
+            window.location.hash
+          );
+          if (shareTarget.deadlineId) {
+            const canonicalSharePath = buildDeadlineSharePath(shareTarget.deadlineId);
+            const nextParams = new URLSearchParams(window.location.search);
+            nextParams.delete('deadline');
+            const remSearch = nextParams.toString();
+            const nextUrl = remSearch ? `${canonicalSharePath}?${remSearch}` : canonicalSharePath;
+            if (
+              window.location.pathname !== canonicalSharePath ||
+              shareTarget.isLegacyQuery ||
+              window.location.hash
+            ) {
+              window.history.replaceState({ navId, deadlineId: shareTarget.deadlineId }, '', nextUrl);
+            }
+            return;
+          }
+          if (shareTarget.isShortRoute && shareTarget.isInvalid) {
+            return;
+          }
+        }
+        if (window.location.pathname !== fallbackCanonicalPath || window.location.hash) {
+          window.history.replaceState({ navId }, '', fallbackCanonicalPath);
+        }
+      };
+
       if (res.matchedItem) {
         const itemToActivate = resolveLeafItem(res.matchedItem, navigationItems);
         setActiveHub(itemToActivate.id);
-
-        // Canonical Hierarchical URL Synchronization & Legacy Slug Redirect
-        if (typeof window !== 'undefined') {
-          const canonicalPath = getHierarchicalPath(itemToActivate, navigationItems);
-          const currentPath = window.location.pathname;
-          if (currentPath !== canonicalPath || window.location.hash) {
-            window.history.replaceState({ navId: itemToActivate.id }, '', canonicalPath);
-          }
-        }
+        const canonicalPath = getHierarchicalPath(itemToActivate, navigationItems);
+        const isDeadlineDest =
+          itemToActivate.destination === 'deadline' ||
+          itemToActivate.destination === 'deadline-hub' ||
+          itemToActivate.id === 'nav_deadline_hub';
+        syncDeadlineOrCanonicalUrl(itemToActivate.id, canonicalPath, isDeadlineDest);
       } else if (res.activeNavId) {
         setActiveHub(res.activeNavId);
         if (
-          typeof window !== 'undefined' &&
-          (res.resolvedDestination === 'daftar' ||
-            res.resolvedDestination === 'deadline' ||
-            res.resolvedDestination === 'deadline-hub')
+          res.resolvedDestination === 'daftar' ||
+          res.resolvedDestination === 'deadline' ||
+          res.resolvedDestination === 'deadline-hub'
         ) {
-          const targetPath =
-            res.resolvedDestination === 'deadline' || res.resolvedDestination === 'deadline-hub'
-              ? '/deadline'
-              : '/daftar';
-          if (window.location.pathname !== targetPath || window.location.hash) {
-            window.history.replaceState({ navId: res.activeNavId }, '', targetPath);
-          }
+          const isDeadlineDest =
+            res.resolvedDestination === 'deadline' || res.resolvedDestination === 'deadline-hub';
+          const targetPath = isDeadlineDest ? '/deadline' : '/daftar';
+          syncDeadlineOrCanonicalUrl(res.activeNavId, targetPath, isDeadlineDest);
         }
       } else {
         setActiveHub(res.resolvedDestination || 'directory');

@@ -799,3 +799,82 @@ export function filterAndSortDeadlines(params: {
     return (a.record.dueTime || '23:59').localeCompare(b.record.dueTime || '23:59');
   });
 }
+
+export interface DeadlineShareTarget {
+  isShortRoute: boolean;
+  isLegacyQuery: boolean;
+  deadlineId: string | null;
+  isInvalid: boolean;
+}
+
+const VALID_SHARE_ID_REGEX = /^[a-zA-Z0-9_.-]{1,128}$/;
+
+function decodeShareSegment(raw: string): string {
+  try {
+    return decodeURIComponent(raw).trim();
+  } catch {
+    return raw.trim();
+  }
+}
+
+export function isValidDeadlineShareId(id?: string | null): boolean {
+  if (!id || typeof id !== 'string') return false;
+  const trimmed = id.trim();
+  if (!VALID_SHARE_ID_REGEX.test(trimmed)) return false;
+  if (trimmed === '.' || trimmed === '..' || trimmed.includes('..')) return false;
+  return true;
+}
+
+export function buildDeadlineSharePath(deadlineId: string): string {
+  return `/d/${encodeURIComponent(deadlineId.trim())}`;
+}
+
+export function extractDeadlineShareTarget(
+  pathname: string = '',
+  search: string = '',
+  hash: string = ''
+): DeadlineShareTarget {
+  const cleanPath = (pathname || '').replace(/^\/+|\/+$/g, '').trim();
+  const cleanHash = (hash || '').replace(/^#\/?/, '').trim();
+
+  const hashParts = cleanHash.split('?');
+  const hashPath = (hashParts[0] || '').replace(/^\/+|\/+$/g, '').trim();
+  const hashSearch = hashParts[1] ? `?${hashParts[1]}` : '';
+
+  const effectivePath = cleanPath && cleanPath !== 'index.html' ? cleanPath : hashPath;
+  const lowerPath = effectivePath.toLowerCase();
+
+  // 1. Canonical short route: /d/{deadlineId}
+  if (lowerPath === 'd' || lowerPath.startsWith('d/')) {
+    const sub = effectivePath.slice(1).replace(/^\/+/, '');
+    if (!sub) {
+      return { isShortRoute: true, isLegacyQuery: false, deadlineId: null, isInvalid: false };
+    }
+    if (sub.includes('/')) {
+      return { isShortRoute: true, isLegacyQuery: false, deadlineId: null, isInvalid: true };
+    }
+    const decoded = decodeShareSegment(sub);
+    if (!isValidDeadlineShareId(decoded)) {
+      return { isShortRoute: true, isLegacyQuery: false, deadlineId: null, isInvalid: true };
+    }
+    return { isShortRoute: true, isLegacyQuery: false, deadlineId: decoded, isInvalid: false };
+  }
+
+  // 2. Legacy query format: /deadline?deadline={deadlineId}
+  const effectiveSearch = search || hashSearch;
+  if (effectiveSearch) {
+    const params = new URLSearchParams(effectiveSearch);
+    if (params.has('deadline')) {
+      const rawParam = decodeShareSegment(params.get('deadline') || '');
+      if (!rawParam) {
+        return { isShortRoute: false, isLegacyQuery: true, deadlineId: null, isInvalid: false };
+      }
+      if (!isValidDeadlineShareId(rawParam)) {
+        return { isShortRoute: false, isLegacyQuery: true, deadlineId: null, isInvalid: true };
+      }
+      return { isShortRoute: false, isLegacyQuery: true, deadlineId: rawParam, isInvalid: false };
+    }
+  }
+
+  return { isShortRoute: false, isLegacyQuery: false, deadlineId: null, isInvalid: false };
+}

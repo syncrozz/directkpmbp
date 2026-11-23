@@ -51,6 +51,8 @@ import {
   DEADLINE_TIMEZONE,
   DeadlineDisplayStatus,
   DeadlineFilterTab,
+  buildDeadlineSharePath,
+  extractDeadlineShareTarget,
   filterAndSortDeadlines,
   formatDeadlineCountdown,
   formatDueDateDisplay,
@@ -208,9 +210,11 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
   const [evidenceSignedUrls, setEvidenceSignedUrls] = useState<Record<string, string>>({});
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null);
+  const [deepLinkNotice, setDeepLinkNotice] = useState<string | null>(null);
+  const [locationTick, setLocationTick] = useState(0);
   const menuTriggerRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const copyTimerRef = useRef<number | null>(null);
-  const handledDeepLinkRef = useRef(false);
+  const resolvedDeepLinkIdRef = useRef<string | null>(null);
 
   const canCopyAnnouncementLink =
     typeof navigator !== 'undefined' && Boolean(navigator.clipboard?.writeText);
@@ -277,10 +281,24 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
     bodyEl.style.width = '100%';
     bodyEl.style.overscrollBehavior = 'none';
 
+    const closeDetailModal = () => {
+      setDetailRecord(null);
+      if (typeof window !== 'undefined') {
+        const shareTarget = extractDeadlineShareTarget(
+          window.location.pathname,
+          window.location.search,
+          window.location.hash
+        );
+        if (shareTarget.isShortRoute || shareTarget.isLegacyQuery) {
+          window.history.replaceState({ navId: 'nav_deadline_hub' }, '', '/deadline');
+        }
+      }
+    };
+
     const handleDetailEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && !editingRecord && !deleteTarget && !isAuditDrawerOpen && !isCaptureModalOpen) {
         event.preventDefault();
-        setDetailRecord(null);
+        closeDetailModal();
       }
     };
 
@@ -300,24 +318,81 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
   }, [detailRecord, editingRecord, deleteTarget, isAuditDrawerOpen, isCaptureModalOpen]);
 
   useEffect(() => {
-    if (handledDeepLinkRef.current || isLoading || deadlines.length === 0) return;
     if (typeof window === 'undefined') return;
-    const params = new URLSearchParams(window.location.search);
-    const targetId = params.get('deadline')?.trim();
-    if (!targetId) {
-      handledDeepLinkRef.current = true;
+    const onPopState = () => {
+      resolvedDeepLinkIdRef.current = null;
+      setLocationTick((n) => n + 1);
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const shareTarget = extractDeadlineShareTarget(
+      window.location.pathname,
+      window.location.search,
+      window.location.hash
+    );
+
+    if (shareTarget.isInvalid) {
+      setDeepLinkNotice('Pautan pengumuman tidak sah atau rekod tidak lagi tersedia untuk paparan umum.');
       return;
     }
+
+    if (!shareTarget.deadlineId) {
+      setDeepLinkNotice(null);
+      return;
+    }
+
+    if (isLoading) return;
+
+    const targetId = shareTarget.deadlineId;
+    if (resolvedDeepLinkIdRef.current === targetId) return;
+
     const matched = deadlines.find((d) => d.id === targetId);
     if (matched) {
+      resolvedDeepLinkIdRef.current = targetId;
+      setDeepLinkNotice(null);
       setDetailRecord(matched);
+    } else {
+      setDeepLinkNotice(
+        'Pengumuman yang dipautkan tidak ditemui, telah dinyahaktifkan, atau tidak lagi tersedia untuk paparan umum.'
+      );
     }
-    handledDeepLinkRef.current = true;
-  }, [isLoading, deadlines]);
+  }, [isLoading, deadlines, isAdminMode, locationTick]);
+
+  const handleCloseDetailModal = () => {
+    setDetailRecord(null);
+    if (typeof window !== 'undefined') {
+      const shareTarget = extractDeadlineShareTarget(
+        window.location.pathname,
+        window.location.search,
+        window.location.hash
+      );
+      if (shareTarget.isShortRoute || shareTarget.isLegacyQuery) {
+        window.history.replaceState({ navId: 'nav_deadline_hub' }, '', '/deadline');
+      }
+    }
+  };
+
+  const handleDismissDeepLinkNotice = () => {
+    setDeepLinkNotice(null);
+    if (typeof window !== 'undefined') {
+      const shareTarget = extractDeadlineShareTarget(
+        window.location.pathname,
+        window.location.search,
+        window.location.hash
+      );
+      if (shareTarget.isShortRoute || shareTarget.isLegacyQuery) {
+        window.history.replaceState({ navId: 'nav_deadline_hub' }, '', '/deadline');
+      }
+    }
+  };
 
   const handleCopyAnnouncementLink = async (record: DeadlineRecord) => {
     if (!canCopyAnnouncementLink || typeof window === 'undefined') return;
-    const shareUrl = `${window.location.origin}/deadline?deadline=${encodeURIComponent(record.id)}`;
+    const shareUrl = `${window.location.origin}${buildDeadlineSharePath(record.id)}`;
     try {
       await navigator.clipboard.writeText(shareUrl);
       setCopiedLinkId(record.id);
@@ -688,6 +763,26 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
             className="cursor-pointer opacity-70 hover:opacity-100 shrink-0"
           >
             <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {deepLinkNotice && (
+        <div
+          role="status"
+          className="px-4 py-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-semibold flex items-center justify-between gap-3"
+        >
+          <div className="flex items-start gap-2 min-w-0">
+            <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <span className="min-w-0 break-words">{deepLinkNotice}</span>
+          </div>
+          <button
+            type="button"
+            onClick={handleDismissDeepLinkNotice}
+            aria-label="Tutup notis pautan"
+            className="px-2.5 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 text-[11px] font-bold cursor-pointer shrink-0"
+          >
+            Tutup
           </button>
         </div>
       )}
@@ -1227,7 +1322,7 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
           return (
             <div
               className="fixed inset-0 z-[100] bg-slate-950/65 backdrop-blur-sm flex items-stretch sm:items-center justify-center p-0 sm:p-5 overflow-hidden"
-              onClick={() => setDetailRecord(null)}
+              onClick={handleCloseDetailModal}
             >
               <div
                 className="w-full h-[100dvh] max-h-[100dvh] sm:h-auto sm:max-w-2xl sm:max-h-[90dvh] bg-white rounded-none sm:rounded-3xl shadow-2xl border-0 sm:border sm:border-slate-200 flex flex-col overflow-hidden text-left"
@@ -1264,7 +1359,7 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
 
                   <button
                     type="button"
-                    onClick={() => setDetailRecord(null)}
+                    onClick={handleCloseDetailModal}
                     aria-label="Tutup butiran"
                     className="w-10 h-10 sm:w-9 sm:h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 cursor-pointer shrink-0 flex items-center justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                   >

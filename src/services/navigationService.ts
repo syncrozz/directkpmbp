@@ -682,6 +682,14 @@ export function resolveNavigationFromUrl(
     return createResult(dirItem, 'nav_directory', 'directory');
   }
 
+  // Short Deadline Share Route: /d/{deadlineId} (SES v4.5)
+  if (cleanToken === 'd' || cleanToken.startsWith('d/')) {
+    const deadlineItem = items.find(
+      (i) => i.destination === 'deadline' || i.destination === 'deadline-hub' || i.id === 'nav_deadline_hub'
+    );
+    return createResult(deadlineItem, 'nav_deadline_hub', 'deadline');
+  }
+
   // Priority 1: Match Exact Hierarchical Slug (e.g. "borang/bayaran_penceramah", "borang", "jadual_pelajar")
   const matchByHierarchicalSlug = items.find((i) => {
     const hSlug = getHierarchicalSlug(i, items).toLowerCase();
