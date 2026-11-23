@@ -133,8 +133,10 @@ export function resolveChromiumExecutablePath(): string | null {
   }
 
   const homeDir = process.env.HOME || '';
+  const configuredBrowsersDir = (process.env.PLAYWRIGHT_BROWSERS_PATH || '').trim();
   const candidates: Array<string | undefined> = [
     playwrightExecutable,
+    ...(configuredBrowsersDir ? findPlaywrightDirExecutables(configuredBrowsersDir) : []),
     '/ms-playwright/chrome-headless-shell-linux64/chrome-headless-shell',
     ...findPlaywrightDirExecutables('/ms-playwright'),
     ...(homeDir ? findPlaywrightDirExecutables(`${homeDir}/.cache/ms-playwright`) : []),

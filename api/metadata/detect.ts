@@ -399,10 +399,25 @@ const DEFAULT_ALLOWED_ORIGINS = new Set([
   'https://directkpmbp.syncrozz.com',
   'https://syncrozz-platform.web.app',
   'https://syncrozz-platform.firebaseapp.com',
+  'https://syncrozz4.web.app',
+  'https://syncrozz4.firebaseapp.com',
   'http://localhost:3000',
   'http://127.0.0.1:3000',
   'http://localhost:5173',
 ]);
+
+function normalizeRuntimeOrigin(raw?: string): string | null {
+  const trimmed = (raw || '').trim();
+  if (!trimmed || trimmed === '*') return null;
+  const candidate = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  try {
+    const u = new URL(candidate);
+    if (u.protocol === 'http:' || u.protocol === 'https:') return u.origin;
+  } catch {
+    // ignore invalid runtime host/url
+  }
+  return null;
+}
 
 function applyExactCors(req: IncomingMessage, res: ServerResponse): boolean {
   res.setHeader('Vary', 'Origin');
@@ -434,8 +449,27 @@ function applyExactCors(req: IncomingMessage, res: ServerResponse): boolean {
     }
   }
 
-  const hostHeader = String(req.headers.host || '').trim().toLowerCase();
-  const sameHost = !envOrigins && hostHeader && new URL(normalizedOrigin).host.toLowerCase() === hostHeader;
+  for (const runtimeCandidate of [
+    process.env.APP_URL,
+    process.env.SHARED_APP_URL,
+    process.env.VERCEL_URL,
+    process.env.VERCEL_BRANCH_URL,
+    process.env.VERCEL_PROJECT_PRODUCTION_URL,
+  ]) {
+    const rtOrigin = normalizeRuntimeOrigin(runtimeCandidate);
+    if (rtOrigin) allowed.add(rtOrigin);
+  }
+
+  const originHost = new URL(normalizedOrigin).host.toLowerCase();
+  const hostHeader = String(req.headers.host || '').split(',')[0].trim().toLowerCase();
+  const isCrossSite = String(req.headers['sec-fetch-site'] || '').split(',')[0].trim().toLowerCase() === 'cross-site';
+  const forwardedHost = isCrossSite
+    ? ''
+    : String(req.headers['x-forwarded-host'] || '').split(',')[0].trim().toLowerCase();
+  const sameHost =
+    (Boolean(hostHeader) && originHost === hostHeader) ||
+    (Boolean(forwardedHost) && originHost === forwardedHost);
+
   if (!allowed.has(normalizedOrigin) && !sameHost) {
     res.statusCode = 403;
     res.setHeader('Content-Type', 'application/json');

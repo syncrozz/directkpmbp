@@ -10,15 +10,47 @@
  */
 
 import type { Request, Response, NextFunction } from 'express';
+import firebaseConfig from '../../firebase-applet-config.json' with { type: 'json' };
 
-export const DEFAULT_ALLOWED_ORIGINS = [
-  'https://directkpmbp.syncrozz.com',
-  'https://syncrozz-platform.web.app',
-  'https://syncrozz-platform.firebaseapp.com',
-  'http://localhost:3000',
-  'http://127.0.0.1:3000',
-  'http://localhost:5173',
-] as const;
+function normalizeOriginCandidate(rawValue?: string): string | null {
+  const candidate = (rawValue || '').trim();
+  if (!candidate || candidate === '*') return null;
+  const withProtocol = /^https?:\/\//i.test(candidate) ? candidate : `https://${candidate}`;
+  try {
+    const parsed = new URL(withProtocol);
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      return parsed.origin;
+    }
+  } catch {
+    // Ignore invalid URL/host candidate
+  }
+  return null;
+}
+
+function buildFirebaseConfigOrigins(): string[] {
+  const derived: string[] = [];
+  const projectId = (firebaseConfig.projectId || '').trim();
+  if (projectId) {
+    derived.push(`https://${projectId}.web.app`, `https://${projectId}.firebaseapp.com`);
+  }
+  const authDomainOrigin = normalizeOriginCandidate(firebaseConfig.authDomain);
+  if (authDomainOrigin) {
+    derived.push(authDomainOrigin);
+  }
+  return derived;
+}
+
+export const DEFAULT_ALLOWED_ORIGINS = Array.from(
+  new Set([
+    'https://directkpmbp.syncrozz.com',
+    'https://syncrozz-platform.web.app',
+    'https://syncrozz-platform.firebaseapp.com',
+    ...buildFirebaseConfigOrigins(),
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'http://localhost:5173',
+  ])
+);
 
 /**
  * Parses comma-separated ALLOWED_ORIGINS into normalized origin strings.
@@ -144,17 +176,17 @@ export function createCorsMiddleware(explicitAllowedOriginsEnv?: string) {
     const isCrossSiteFetch =
       extractFirstHeaderValue(req.headers['sec-fetch-site']) === 'cross-site';
 
-    // Include runtime APP_URL / SHARED_APP_URL origin (e.g. AI Studio / Cloud Run preview URL)
-    for (const runtimeUrl of [process.env.APP_URL, process.env.SHARED_APP_URL]) {
-      if (runtimeUrl) {
-        try {
-          const parsedRuntime = new URL(runtimeUrl.trim());
-          if (parsedRuntime.protocol === 'http:' || parsedRuntime.protocol === 'https:') {
-            origins.add(parsedRuntime.origin);
-          }
-        } catch {
-          // Ignore invalid runtime URL
-        }
+    // Automatically include runtime platform URLs if provided by the hosting environment
+    for (const runtimeCandidate of [
+      process.env.APP_URL,
+      process.env.SHARED_APP_URL,
+      process.env.VERCEL_URL,
+      process.env.VERCEL_BRANCH_URL,
+      process.env.VERCEL_PROJECT_PRODUCTION_URL,
+    ]) {
+      const normalized = normalizeOriginCandidate(runtimeCandidate);
+      if (normalized) {
+        origins.add(normalized);
       }
     }
 
