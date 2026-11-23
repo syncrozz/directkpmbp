@@ -77,6 +77,7 @@ const KEYWORD_VARIATION_GROUPS: string[][] = [
   ['kewangan', 'bayaran', 'payment', 'claim', 'tuntutan'],
   ['penceramah', 'speaker', 'ceramah'],
   ['bekas', 'container', 'folder', 'arkib', 'archive'],
+  ['deadline', 'deadlines', 'tarikh', 'akhir', 'hebahan', 'notis', 'due', 'submission', 'hantar'],
 ];
 
 const SYNONYM_LOOKUP: Map<string, string[]> = (() => {

@@ -184,6 +184,166 @@ export interface NavigationItem {
   searchableKeywords?: string;
 }
 
+export type DeadlineCategory =
+  | 'Akademik'
+  | 'HEA'
+  | 'HEP'
+  | 'Pengurusan'
+  | 'Pentadbiran'
+  | 'Penilaian'
+  | 'Pencalonan'
+  | 'Dokumentasi'
+  | 'Other';
+
+export type DeadlineComputedStatus =
+  | 'UPCOMING'
+  | 'DUE_TODAY'
+  | 'EXPIRED'
+  | 'INACTIVE'
+  | 'ARCHIVED';
+
+export type DeadlineStoredStatus = 'ACTIVE' | 'INACTIVE' | 'ARCHIVED';
+
+export type DeadlineSourceType = 'SCREENSHOT' | 'PDF' | 'PASTED_TEXT';
+
+export interface DeadlineAttachment {
+  name: string;
+  url: string;
+  type?: string;
+}
+
+export interface DeadlineSourceEvidence {
+  type: DeadlineSourceType;
+  fileNames?: string[];
+  mimeTypes?: string[];
+  storagePaths?: string[];
+  textExcerpt?: string;
+  pastedText?: string;
+  uploadedAt: string;
+  uploadedBy?: string;
+}
+
+export interface DeadlineConfidence {
+  overall: number;
+  date: number;
+  time: number;
+  action: number;
+  audience: number;
+  url: number;
+}
+
+export interface DeadlineDuplicateMatch {
+  matchedExistingId: string;
+  matchedTitle: string;
+  matchedDueDate: string;
+  matchedDueTime?: string;
+  matchedRequiredAction?: string;
+  matchedActionUrl?: string;
+  matchedTargetAudience?: string[];
+  similarityLevel: 'none' | 'possible' | 'high';
+  score: number;
+  reasons: string[];
+  recommendation: 'create_new' | 'update_existing' | 'ignore';
+  rationale: string;
+}
+
+export interface DeadlineRecord {
+  id: string;
+  title: string;
+  description: string;
+  requiredAction: string;
+  category: DeadlineCategory;
+  targetAudience: string[];
+  targetDepartments: string[];
+  targetStaffIds: string[];
+  dueDate: string; // YYYY-MM-DD (Asia/Kuala_Lumpur)
+  dueTime: string; // HH:mm (24h) or ""
+  timezone: 'Asia/Kuala_Lumpur';
+  actionUrl: string;
+  actionLabel: string;
+  attachments: DeadlineAttachment[];
+  instructions: string;
+  status: DeadlineStoredStatus;
+  isPublished: boolean;
+  sourceType: DeadlineSourceType;
+  sourceSummary?: string;
+  sourceEvidencePaths?: string[];
+  confidenceScore?: number;
+  createdAt: string;
+  createdBy: string;
+  updatedAt: string;
+  updatedBy: string;
+  publishedAt?: string;
+  publishedBy?: string;
+  archivedAt?: string;
+}
+
+export interface DeadlineDraft {
+  id: string;
+  submissionBatchId: string;
+  sourceType: DeadlineSourceType;
+  sourceEvidence: DeadlineSourceEvidence;
+  title: string;
+  description: string;
+  requiredAction: string;
+  category: DeadlineCategory;
+  targetAudience: string[];
+  targetDepartments: string[];
+  targetStaffIds: string[];
+  dueDate: string;
+  dueTime: string;
+  timezone: 'Asia/Kuala_Lumpur';
+  announcementDate?: string;
+  actionUrl: string;
+  actionLabel: string;
+  attachments: DeadlineAttachment[];
+  instructions: string;
+  sourceExcerpt: string;
+  confidence: DeadlineConfidence;
+  missingFields: string[];
+  ambiguousFields: string[];
+  ambiguityReason?: string;
+  requiresReview: boolean;
+  duplicateMatch?: DeadlineDuplicateMatch | null;
+  reviewStatus: 'pending' | 'approved' | 'rejected' | 'published' | 'ignored';
+  resolutionAction: 'create' | 'update_existing' | 'ignore';
+  targetExistingDeadlineId?: string;
+  updateReason?: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  createdAt: string;
+  createdBy: string;
+  updatedAt: string;
+}
+
+export type DeadlineAuditAction =
+  | 'CREATED'
+  | 'PUBLISHED'
+  | 'UPDATED_FROM_AI'
+  | 'UPDATED_MANUAL'
+  | 'ARCHIVED'
+  | 'RESTORED'
+  | 'STATUS_CHANGED'
+  | 'IGNORED_DRAFT'
+  | 'DELETED';
+
+export interface DeadlineAuditLog {
+  id: string;
+  deadlineId: string;
+  deadlineTitle: string;
+  draftId?: string;
+  action: DeadlineAuditAction;
+  previousValues?: Record<string, any>;
+  updatedValues?: Record<string, any>;
+  reason?: string;
+  sourceType?: DeadlineSourceType;
+  sourceRef?: string;
+  performedBy: string;
+  performedByUid?: string;
+  performedAt: string;
+}
+
+
 
 
 

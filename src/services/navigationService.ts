@@ -35,11 +35,13 @@ import {
   Award,
   Briefcase,
   Building,
-  CheckCircle2
+  CheckCircle2,
+  CalendarClock
 } from 'lucide-react';
 
 export const LOCAL_STORAGE_NAV_KEY = 'kpmbp_navigation_items_v4';
 export const UPPK_GRADING_MIGRATED_KEY = 'kpmbp_uppk_grading_migrated_v1';
+export const DEADLINE_HUB_NAV_MIGRATED_KEY = 'kpmbp_deadline_hub_nav_migrated_v1';
 
 /**
  * Default Initial Navigation Structure (SES v4.4 Section 2)
@@ -178,6 +180,18 @@ export const DEFAULT_NAVIGATION_ITEMS: NavigationItem[] = [
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
   },
+  {
+    id: 'nav_deadline_hub',
+    name: 'Deadline Hub',
+    icon: 'CalendarClock',
+    type: 'parent',
+    destination: 'deadline-hub',
+    slug: 'deadline_hub',
+    order: 3,
+    isActive: true,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  },
 ];
 
 /**
@@ -188,6 +202,7 @@ export const KNOWN_MODULE_DESTINATIONS = [
   { id: 'platform', name: 'Platform (Hab Platform Luar & Aplikasi)' },
   { id: 'jadual', name: 'Jadual Pelajar (Jadual Waktu Kelas)' },
   { id: 'jadual-pensyarah', name: 'Jadual Pensyarah (Jadual Waktu Pensyarah)' },
+  { id: 'deadline-hub', name: 'Deadline Hub (Pengurusan Tarikh Akhir AI)' },
   { id: 'daftar', name: 'Pendaftaran Staf Baharu' },
 ] as const;
 
@@ -198,6 +213,7 @@ export const AVAILABLE_NAV_ICONS = [
   { name: 'UserCheck', label: 'Staf / Pengguna' },
   { name: 'BookOpen', label: 'Buku / Rujukan' },
   { name: 'Calendar', label: 'Kalendar / Jadual' },
+  { name: 'CalendarClock', label: 'Tarikh Akhir / Deadline Hub' },
   { name: 'GraduationCap', label: 'Akademik / Pensyarah' },
   { name: 'FileText', label: 'Dokumen / Panduan' },
   { name: 'Link', label: 'Pautan / Portal' },
@@ -225,6 +241,7 @@ export function renderNavIcon(iconName: string, className = 'w-4 h-4'): React.Re
     UserCheck,
     BookOpen,
     Calendar,
+    CalendarClock,
     GraduationCap,
     FileText,
     Link: LinkIcon,
@@ -280,7 +297,7 @@ export function validateNavigationDestination(dest: string, displayType?: string
 
   return {
     valid: false,
-    error: `Destinasi "${trimmed}" tidak sah. Pilih modul sedia ada (directory, platform, jadual, jadual-pensyarah, daftar) atau pautan sah (https://..., #...).`,
+    error: `Destinasi "${trimmed}" tidak sah. Pilih modul sedia ada (directory, platform, jadual, jadual-pensyarah, deadline-hub, daftar) atau pautan sah (https://..., #...).`,
   };
 }
 
@@ -730,6 +747,18 @@ export function resolveNavigationFromUrl(
     return createResult(platformItem, 'nav_rujukan_platform', 'platform');
   }
 
+  if (
+    cleanToken === 'deadline-hub' ||
+    cleanToken === 'deadline_hub' ||
+    cleanToken === 'deadlines' ||
+    cleanToken === 'deadline'
+  ) {
+    const deadlineItem = items.find(
+      (i) => i.destination === 'deadline-hub' || i.id === 'nav_deadline_hub'
+    );
+    return createResult(deadlineItem, 'nav_deadline_hub', 'deadline-hub');
+  }
+
   if (cleanToken === 'daftar') {
     const daftarItem = items.find((i) => i.destination === 'daftar');
     return createResult(daftarItem, 'daftar', 'daftar');
@@ -977,6 +1006,41 @@ export function ensureRujukanPlatformNavigation(items: NavigationItem[]): Naviga
 }
 
 /**
+ * One-time idempotent migration adding Deadline Hub parent tab to existing configured
+ * navigation caches/Firestore docs without resurrecting it if explicitly deleted later.
+ */
+export function migrateDeadlineHubIfNeeded(items: NavigationItem[]): { items: NavigationItem[]; migrated: boolean } {
+  const alreadyHasDeadlineHub = items.some(
+    (i) =>
+      i.id === 'nav_deadline_hub' ||
+      i.destination === 'deadline-hub' ||
+      (i.slug && i.slug.toLowerCase() === 'deadline_hub')
+  );
+
+  if (alreadyHasDeadlineHub) {
+    return { items, migrated: false };
+  }
+
+  const maxParentOrder = items
+    .filter((i) => i.type === 'parent')
+    .reduce((max, p) => Math.max(max, Number.isFinite(p.order) ? p.order : 0), -1);
+
+  const defaultDeadlineHub = DEFAULT_NAVIGATION_ITEMS.find((i) => i.id === 'nav_deadline_hub');
+  if (!defaultDeadlineHub) {
+    return { items, migrated: false };
+  }
+
+  const nextItem: NavigationItem = {
+    ...defaultDeadlineHub,
+    order: maxParentOrder + 1,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  return { items: [...items, nextItem], migrated: true };
+}
+
+/**
  * Reference to Firestore navigation configuration document
  * Path: /platforms/directkpmbp/config/navigation
  * Covered by rule: match /platforms/directkpmbp/{document=**} { allow read: if true; allow write: if isAuthorizedAdmin(); }
@@ -993,15 +1057,18 @@ export function subscribeToNavigation(callback: (items: NavigationItem[]) => voi
     try {
       const cached = localStorage.getItem(LOCAL_STORAGE_NAV_KEY);
       const alreadyMigratedLocal = localStorage.getItem(UPPK_GRADING_MIGRATED_KEY) === '1';
+      const alreadyDeadlineMigratedLocal = localStorage.getItem(DEADLINE_HUB_NAV_MIGRATED_KEY) === '1';
       if (cached) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          if (alreadyMigratedLocal) {
-            initialItems = normalizeNavigationList(ensureRujukanPlatformNavigation(parsed));
-          } else {
-            const migration = migrateUppkGradingIfNeeded(parsed);
-            initialItems = normalizeNavigationList(ensureRujukanPlatformNavigation(migration.items));
+          let workingItems = parsed;
+          if (!alreadyMigratedLocal) {
+            workingItems = migrateUppkGradingIfNeeded(workingItems).items;
           }
+          if (!alreadyDeadlineMigratedLocal) {
+            workingItems = migrateDeadlineHubIfNeeded(workingItems).items;
+          }
+          initialItems = normalizeNavigationList(ensureRujukanPlatformNavigation(workingItems));
         }
       }
     } catch (_e) {
@@ -1020,7 +1087,8 @@ export function subscribeToNavigation(callback: (items: NavigationItem[]) => voi
           return;
         }
         const migration = migrateUppkGradingIfNeeded(DEFAULT_NAVIGATION_ITEMS);
-        const defaults = normalizeNavigationList(ensureRujukanPlatformNavigation(migration.items));
+        const deadlineMigration = migrateDeadlineHubIfNeeded(migration.items);
+        const defaults = normalizeNavigationList(ensureRujukanPlatformNavigation(deadlineMigration.items));
         if (typeof window !== 'undefined') {
           localStorage.setItem(LOCAL_STORAGE_NAV_KEY, JSON.stringify(defaults));
         }
@@ -1033,32 +1101,44 @@ export function subscribeToNavigation(callback: (items: NavigationItem[]) => voi
 
       const isConfigured = Boolean(data?.isConfigured);
       const alreadyMigratedRemote = Boolean(data?.uppkGradingMigrated);
+      const alreadyDeadlineMigratedRemote = Boolean(data?.deadlineHubNavMigrated);
       const baseItems = isConfigured
         ? rawItems
         : rawItems.length > 0
         ? rawItems
         : DEFAULT_NAVIGATION_ITEMS;
 
-      let normalizedItems: NavigationItem[];
+      let workingItems = baseItems;
+      let anyMigrationPerformed = false;
 
-      if (alreadyMigratedRemote) {
-        normalizedItems = normalizeNavigationList(ensureRujukanPlatformNavigation(baseItems));
-      } else {
-        const migration = migrateUppkGradingIfNeeded(baseItems);
-        normalizedItems = normalizeNavigationList(ensureRujukanPlatformNavigation(migration.items));
+      if (!alreadyMigratedRemote) {
+        const uppkMigration = migrateUppkGradingIfNeeded(workingItems);
+        workingItems = uppkMigration.items;
+        if (uppkMigration.migrated) anyMigrationPerformed = true;
+      }
 
-        if (migration.migrated) {
-          // Persist migrated UPPK container structure to Firestore in background once
-          saveNavigationItems(normalizedItems).catch((err) => {
-            console.warn('[NavigationService] Background auto-migration persist notice:', err?.message || err);
-          });
-        }
+      if (!alreadyDeadlineMigratedRemote) {
+        const deadlineMigration = migrateDeadlineHubIfNeeded(workingItems);
+        workingItems = deadlineMigration.items;
+        if (deadlineMigration.migrated) anyMigrationPerformed = true;
+      }
+
+      const normalizedItems = normalizeNavigationList(ensureRujukanPlatformNavigation(workingItems));
+
+      if ((anyMigrationPerformed || !alreadyDeadlineMigratedRemote) && auth.currentUser) {
+        // Persist one-time container/module migration to Firestore once an admin session is active
+        saveNavigationItems(normalizedItems).catch((err) => {
+          console.warn('[NavigationService] Background auto-migration persist notice:', err?.message || err);
+        });
       }
 
       if (typeof window !== 'undefined') {
         localStorage.setItem(LOCAL_STORAGE_NAV_KEY, JSON.stringify(normalizedItems));
         if (alreadyMigratedRemote) {
           localStorage.setItem(UPPK_GRADING_MIGRATED_KEY, '1');
+        }
+        if (alreadyDeadlineMigratedRemote) {
+          localStorage.setItem(DEADLINE_HUB_NAV_MIGRATED_KEY, '1');
         }
       }
 
@@ -1093,6 +1173,7 @@ export async function saveNavigationItems(items: NavigationItem[]): Promise<bool
       items: normalized,
       isConfigured: true,
       uppkGradingMigrated: true,
+      deadlineHubNavMigrated: true,
       updatedAt: new Date().toISOString(),
       updatedBy: auth.currentUser?.email || 'admin',
     },
@@ -1102,6 +1183,7 @@ export async function saveNavigationItems(items: NavigationItem[]): Promise<bool
   if (typeof window !== 'undefined') {
     localStorage.setItem(LOCAL_STORAGE_NAV_KEY, JSON.stringify(normalized));
     localStorage.setItem(UPPK_GRADING_MIGRATED_KEY, '1');
+    localStorage.setItem(DEADLINE_HUB_NAV_MIGRATED_KEY, '1');
   }
 
   return true;

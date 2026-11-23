@@ -5,6 +5,7 @@ import { detectUrlMetadata } from './src/services/serverMetadata.ts';
 import { verifyMasterAdminRequest } from './src/services/serverFirebaseAuth.ts';
 import { captureHomepageSnapshot } from './src/services/serverSnapshot.ts';
 import { createCorsMiddleware } from './src/services/serverCors.ts';
+import { extractDeadlinesWithGemini, DeadlineAiError } from './src/services/serverDeadlineAi.ts';
 
 async function startServer() {
   const app = express();
@@ -13,8 +14,11 @@ async function startServer() {
   // Strict origin-allowlist CORS middleware (handles OPTIONS 204 preflight, no wildcard '*')
   app.use(createCorsMiddleware());
 
-  // JSON body parser
-  app.use(express.json());
+  // JSON body parser (skip /api/deadlines/extract which uses a 25MB parser)
+  app.use((req, res, next) => {
+    if (req.path === '/api/deadlines/extract') return next();
+    return express.json()(req, res, next);
+  });
 
   // Health check endpoint
   app.get('/api/health', (req, res) => {
@@ -421,6 +425,53 @@ async function startServer() {
       }
     }
   );
+
+  // AI Deadline Capture endpoint (Master Admin only, server-side @google/genai extraction)
+  app.post(
+    '/api/deadlines/extract',
+    express.json({ limit: '25mb' }),
+    async (req, res) => {
+      const authResult = await verifyMasterAdminRequest(req);
+      if (!authResult.authorized) {
+        return res.status(authResult.status).json({
+          success: false,
+          code: authResult.status === 401 ? 'UNAUTHENTICATED' : 'FORBIDDEN',
+          error: authResult.error || 'Akses ditolak. Hanya Master Admin dibenarkan mengakses AI Deadline Capture.',
+        });
+      }
+
+      try {
+        const result = await extractDeadlinesWithGemini(req.body || {});
+        return res.status(200).json({
+          success: true,
+          data: result,
+        });
+      } catch (err: any) {
+        if (err instanceof DeadlineAiError) {
+          return res.status(err.statusCode).json({
+            success: false,
+            code: err.code,
+            error: err.message,
+          });
+        }
+        console.error('[DeadlineExtract] Unexpected error:', err?.message || err);
+        return res.status(500).json({
+          success: false,
+          code: 'DEADLINE_EXTRACT_FAILED',
+          error: 'Ralat dalaman pelayan semasa mengekstrak tarikh akhir.',
+        });
+      }
+    }
+  );
+
+  app.all('/api/deadlines/extract', (_req, res) => {
+    res.setHeader('Allow', 'POST, OPTIONS');
+    return res.status(405).json({
+      success: false,
+      code: 'METHOD_NOT_ALLOWED',
+      error: 'Kaedah HTTP tidak dibenarkan untuk AI Deadline Capture. Sila gunakan POST.',
+    });
+  });
 
   // Return structured JSON 404 for any unmatched /api/* route instead of falling through to SPA HTML
   app.use('/api', (_req, res) => {

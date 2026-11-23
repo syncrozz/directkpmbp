@@ -54,6 +54,12 @@ service cloud.firestore {
         && (val == '' || val.matches('^https?://.+'));
     }
 
+    function isValidStringList(val, maxItems, maxLen) {
+      return val is list
+        && val.size() <= maxItems
+        && (val.size() == 0 || (val[0] is string && val[0].size() <= maxLen));
+    }
+
     // --- PlatformLink Blueprint Validation ---
     function isValidPlatformDetectedMeta(meta) {
       return meta is map
@@ -118,6 +124,150 @@ service cloud.firestore {
         && (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 64))
         && (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64))
         && (!('updatedBy' in data) || (data.updatedBy is string && data.updatedBy.size() <= 200));
+    }
+
+    // --- Syncrozz Deadline Hub Blueprint Validation ---
+    function isValidDeadlineCategory(cat) {
+      return cat is string
+        && cat in ['Akademik', 'HEA', 'HEP', 'Pengurusan', 'Pentadbiran', 'Penilaian', 'Pencalonan', 'Dokumentasi', 'Other'];
+    }
+
+    function isValidDeadlineSourceType(st) {
+      return st is string && st in ['SCREENSHOT', 'PDF', 'PASTED_TEXT'];
+    }
+
+    function isValidDeadline(data, deadlineId) {
+      return data.keys().hasAll([
+          'id', 'title', 'category', 'dueDate', 'timezone',
+          'status', 'isPublished', 'sourceType',
+          'createdAt', 'createdBy', 'updatedAt', 'updatedBy'
+        ])
+        && data.keys().hasOnly([
+          'id', 'title', 'description', 'requiredAction', 'category',
+          'targetAudience', 'targetDepartments', 'targetStaffIds',
+          'dueDate', 'dueTime', 'timezone', 'actionUrl', 'actionLabel',
+          'attachments', 'instructions', 'status', 'isPublished',
+          'sourceType', 'sourceSummary', 'sourceEvidencePaths', 'confidenceScore',
+          'createdAt', 'createdBy', 'updatedAt', 'updatedBy',
+          'publishedAt', 'publishedBy', 'archivedAt'
+        ])
+        && data.id is string
+        && data.id == deadlineId
+        && data.title is string
+        && data.title.size() >= 1
+        && data.title.size() <= 200
+        && (!('description' in data) || (data.description is string && data.description.size() <= 2000))
+        && (!('requiredAction' in data) || (data.requiredAction is string && data.requiredAction.size() <= 500))
+        && isValidDeadlineCategory(data.category)
+        && (!('targetAudience' in data) || isValidStringList(data.targetAudience, 30, 120))
+        && (!('targetDepartments' in data) || isValidStringList(data.targetDepartments, 30, 120))
+        && (!('targetStaffIds' in data) || isValidStringList(data.targetStaffIds, 100, 64))
+        && data.dueDate is string
+        && data.dueDate.matches('^\\d{4}-\\d{2}-\\d{2}$')
+        && (!('dueTime' in data) || (data.dueTime is string && (data.dueTime == '' || data.dueTime.matches('^([01]\\d|2[0-3]):[0-5]\\d$'))))
+        && data.timezone == 'Asia/Kuala_Lumpur'
+        && (!('actionUrl' in data) || isValidOptionalHttpUrl(data.actionUrl))
+        && (!('actionLabel' in data) || (data.actionLabel is string && data.actionLabel.size() <= 120))
+        && (!('attachments' in data) || (data.attachments is list && data.attachments.size() <= 20))
+        && (!('instructions' in data) || (data.instructions is string && data.instructions.size() <= 4000))
+        && data.status is string
+        && data.status in ['ACTIVE', 'INACTIVE', 'ARCHIVED']
+        && data.isPublished is bool
+        && isValidDeadlineSourceType(data.sourceType)
+        && (!('sourceSummary' in data) || (data.sourceSummary is string && data.sourceSummary.size() <= 500))
+        && (!('sourceEvidencePaths' in data) || isValidStringList(data.sourceEvidencePaths, 20, 500))
+        && (!('confidenceScore' in data) || (data.confidenceScore is number && data.confidenceScore >= 0 && data.confidenceScore <= 1))
+        && data.createdAt is string && data.createdAt.size() <= 64
+        && data.createdBy is string && data.createdBy.size() <= 200
+        && data.updatedAt is string && data.updatedAt.size() <= 64
+        && data.updatedBy is string && data.updatedBy.size() <= 200
+        && (!('publishedAt' in data) || (data.publishedAt is string && data.publishedAt.size() <= 64))
+        && (!('publishedBy' in data) || (data.publishedBy is string && data.publishedBy.size() <= 200))
+        && (!('archivedAt' in data) || (data.archivedAt is string && data.archivedAt.size() <= 64));
+    }
+
+    function isValidDeadlineDraft(data, draftId) {
+      return data.keys().hasAll([
+          'id', 'submissionBatchId', 'sourceType', 'title', 'category',
+          'timezone', 'reviewStatus', 'resolutionAction',
+          'createdAt', 'createdBy', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'submissionBatchId', 'sourceType', 'sourceEvidence',
+          'title', 'description', 'requiredAction', 'category',
+          'targetAudience', 'targetDepartments', 'targetStaffIds',
+          'dueDate', 'dueTime', 'timezone', 'announcementDate',
+          'actionUrl', 'actionLabel', 'attachments', 'instructions',
+          'sourceExcerpt', 'confidence', 'missingFields', 'ambiguousFields',
+          'ambiguityReason', 'requiresReview', 'duplicateMatch',
+          'reviewStatus', 'resolutionAction', 'targetExistingDeadlineId',
+          'updateReason', 'reviewedBy', 'reviewedAt',
+          'createdAt', 'createdBy', 'updatedAt'
+        ])
+        && data.id is string
+        && data.id == draftId
+        && data.submissionBatchId is string && data.submissionBatchId.size() <= 128
+        && isValidDeadlineSourceType(data.sourceType)
+        && (!('sourceEvidence' in data) || data.sourceEvidence is map)
+        && data.title is string && data.title.size() <= 200
+        && (!('description' in data) || (data.description is string && data.description.size() <= 2000))
+        && (!('requiredAction' in data) || (data.requiredAction is string && data.requiredAction.size() <= 500))
+        && isValidDeadlineCategory(data.category)
+        && (!('targetAudience' in data) || isValidStringList(data.targetAudience, 30, 120))
+        && (!('targetDepartments' in data) || isValidStringList(data.targetDepartments, 30, 120))
+        && (!('targetStaffIds' in data) || isValidStringList(data.targetStaffIds, 100, 64))
+        && (!('dueDate' in data) || (data.dueDate is string && (data.dueDate == '' || data.dueDate.matches('^\\d{4}-\\d{2}-\\d{2}$'))))
+        && (!('dueTime' in data) || (data.dueTime is string && (data.dueTime == '' || data.dueTime.matches('^([01]\\d|2[0-3]):[0-5]\\d$'))))
+        && data.timezone == 'Asia/Kuala_Lumpur'
+        && (!('announcementDate' in data) || (data.announcementDate is string && data.announcementDate.size() <= 32))
+        && (!('actionUrl' in data) || isValidOptionalHttpUrl(data.actionUrl))
+        && (!('actionLabel' in data) || (data.actionLabel is string && data.actionLabel.size() <= 120))
+        && (!('attachments' in data) || (data.attachments is list && data.attachments.size() <= 20))
+        && (!('instructions' in data) || (data.instructions is string && data.instructions.size() <= 4000))
+        && (!('sourceExcerpt' in data) || (data.sourceExcerpt is string && data.sourceExcerpt.size() <= 2000))
+        && (!('confidence' in data) || data.confidence is map)
+        && (!('missingFields' in data) || isValidStringList(data.missingFields, 20, 64))
+        && (!('ambiguousFields' in data) || isValidStringList(data.ambiguousFields, 20, 64))
+        && (!('ambiguityReason' in data) || (data.ambiguityReason is string && data.ambiguityReason.size() <= 1000))
+        && (!('requiresReview' in data) || data.requiresReview is bool)
+        && (!('duplicateMatch' in data) || data.duplicateMatch == null || data.duplicateMatch is map)
+        && data.reviewStatus in ['pending', 'approved', 'rejected', 'published', 'ignored']
+        && data.resolutionAction in ['create', 'update_existing', 'ignore']
+        && (!('targetExistingDeadlineId' in data) || (data.targetExistingDeadlineId is string && data.targetExistingDeadlineId.size() <= 128))
+        && (!('updateReason' in data) || (data.updateReason is string && data.updateReason.size() <= 500))
+        && (!('reviewedBy' in data) || (data.reviewedBy is string && data.reviewedBy.size() <= 200))
+        && (!('reviewedAt' in data) || (data.reviewedAt is string && data.reviewedAt.size() <= 64))
+        && data.createdAt is string && data.createdAt.size() <= 64
+        && data.createdBy is string && data.createdBy.size() <= 200
+        && data.updatedAt is string && data.updatedAt.size() <= 64;
+    }
+
+    function isValidDeadlineAuditLog(data, logId) {
+      return data.keys().hasAll([
+          'id', 'deadlineId', 'deadlineTitle', 'action', 'performedBy', 'performedAt'
+        ])
+        && data.keys().hasOnly([
+          'id', 'deadlineId', 'deadlineTitle', 'draftId', 'action',
+          'previousValues', 'updatedValues', 'reason', 'sourceType',
+          'sourceRef', 'performedBy', 'performedByUid', 'performedAt'
+        ])
+        && data.id is string
+        && data.id == logId
+        && data.deadlineId is string && data.deadlineId.size() >= 1 && data.deadlineId.size() <= 128
+        && data.deadlineTitle is string && data.deadlineTitle.size() >= 1 && data.deadlineTitle.size() <= 200
+        && (!('draftId' in data) || (data.draftId is string && data.draftId.size() <= 128))
+        && data.action in [
+          'CREATED', 'PUBLISHED', 'UPDATED_FROM_AI', 'UPDATED_MANUAL',
+          'ARCHIVED', 'RESTORED', 'STATUS_CHANGED', 'IGNORED_DRAFT', 'DELETED'
+        ]
+        && (!('previousValues' in data) || data.previousValues is map)
+        && (!('updatedValues' in data) || data.updatedValues is map)
+        && (!('reason' in data) || (data.reason is string && data.reason.size() <= 1000))
+        && (!('sourceType' in data) || isValidDeadlineSourceType(data.sourceType))
+        && (!('sourceRef' in data) || (data.sourceRef is string && data.sourceRef.size() <= 500))
+        && data.performedBy is string && data.performedBy.size() >= 1 && data.performedBy.size() <= 200
+        && (!('performedByUid' in data) || (data.performedByUid is string && data.performedByUid.size() <= 128))
+        && data.performedAt is string && data.performedAt.size() <= 64;
     }
 
     // --- Staff Collection ---
@@ -196,6 +346,68 @@ service cloud.firestore {
       allow delete: if isAuthorizedAdmin()
         && isValidId(configId)
         && configId in ['navigation', 'takwim', 'portalMeta'];
+    }
+
+    // --- Syncrozz Deadline Hub: Published Deadlines ---
+    // Query-enforced: Ordinary staff only read/list published non-inactive deadlines; Admins have full management access
+    match /deadlines/{deadlineId} {
+      allow get, list: if isAuthorizedAdmin()
+        || (resource.data.isPublished == true && resource.data.status in ['ACTIVE', 'ARCHIVED']);
+      allow create: if isAuthorizedAdmin()
+        && isValidId(deadlineId)
+        && isValidDeadline(request.resource.data, deadlineId)
+        && request.resource.data.createdBy == request.auth.token.email;
+      allow update: if isAuthorizedAdmin()
+        && isValidId(deadlineId)
+        && isValidDeadline(request.resource.data, deadlineId)
+        && request.resource.data.id == resource.data.id
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'title', 'description', 'requiredAction', 'category',
+          'targetAudience', 'targetDepartments', 'targetStaffIds',
+          'dueDate', 'dueTime', 'timezone', 'actionUrl', 'actionLabel',
+          'attachments', 'instructions', 'status', 'isPublished',
+          'sourceType', 'sourceSummary', 'sourceEvidencePaths', 'confidenceScore',
+          'updatedAt', 'updatedBy', 'publishedAt', 'publishedBy', 'archivedAt'
+        ]);
+      allow delete: if isAuthorizedAdmin() && isValidId(deadlineId);
+    }
+
+    // --- Syncrozz Deadline Hub: AI Extraction Drafts (Strictly Master Admin Only) ---
+    match /deadline_drafts/{draftId} {
+      allow get, list: if isAuthorizedAdmin();
+      allow create: if isAuthorizedAdmin()
+        && isValidId(draftId)
+        && isValidDeadlineDraft(request.resource.data, draftId)
+        && request.resource.data.createdBy == request.auth.token.email;
+      allow update: if isAuthorizedAdmin()
+        && isValidId(draftId)
+        && isValidDeadlineDraft(request.resource.data, draftId)
+        && request.resource.data.id == resource.data.id
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'title', 'description', 'requiredAction', 'category',
+          'targetAudience', 'targetDepartments', 'targetStaffIds',
+          'dueDate', 'dueTime', 'timezone', 'announcementDate',
+          'actionUrl', 'actionLabel', 'attachments', 'instructions',
+          'sourceExcerpt', 'confidence', 'missingFields', 'ambiguousFields',
+          'ambiguityReason', 'requiresReview', 'duplicateMatch',
+          'reviewStatus', 'resolutionAction', 'targetExistingDeadlineId',
+          'updateReason', 'reviewedBy', 'reviewedAt', 'updatedAt'
+        ]);
+      allow delete: if isAuthorizedAdmin() && isValidId(draftId);
+    }
+
+    // --- Syncrozz Deadline Hub: Immutable Audit Logs (Strictly Master Admin Only) ---
+    match /deadline_audit_logs/{logId} {
+      allow get, list: if isAuthorizedAdmin();
+      allow create: if isAuthorizedAdmin()
+        && isValidId(logId)
+        && isValidDeadlineAuditLog(request.resource.data, logId)
+        && request.resource.data.performedBy == request.auth.token.email;
+      allow update, delete: if false;
     }
   }
 }

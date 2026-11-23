@@ -110,6 +110,115 @@
         "updatedBy": { "type": "string", "maxLength": 200 }
       },
       "required": ["id", "name", "url", "sortOrder", "isActive"]
+    },
+    "deadline": {
+      "title": "DeadlineRecord",
+      "description": "Rekod tarikh akhir rasmi Syncrozz Deadline Hub KPMBP",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-\\.]+$" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "requiredAction": { "type": "string", "maxLength": 500 },
+        "category": {
+          "type": "string",
+          "enum": ["Akademik", "HEA", "HEP", "Pengurusan", "Pentadbiran", "Penilaian", "Pencalonan", "Dokumentasi", "Other"]
+        },
+        "targetAudience": { "type": "array", "items": { "type": "string" } },
+        "targetDepartments": { "type": "array", "items": { "type": "string" } },
+        "targetStaffIds": { "type": "array", "items": { "type": "string" } },
+        "dueDate": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+        "dueTime": { "type": "string" },
+        "timezone": { "type": "string", "enum": ["Asia/Kuala_Lumpur"] },
+        "actionUrl": { "type": "string", "maxLength": 2000 },
+        "actionLabel": { "type": "string", "maxLength": 120 },
+        "attachments": { "type": "array" },
+        "instructions": { "type": "string", "maxLength": 4000 },
+        "status": { "type": "string", "enum": ["ACTIVE", "INACTIVE", "ARCHIVED"] },
+        "isPublished": { "type": "boolean" },
+        "sourceType": { "type": "string", "enum": ["SCREENSHOT", "PDF", "PASTED_TEXT"] },
+        "sourceSummary": { "type": "string", "maxLength": 500 },
+        "sourceEvidencePaths": { "type": "array", "items": { "type": "string" } },
+        "confidenceScore": { "type": "number" },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "createdBy": { "type": "string", "maxLength": 200 },
+        "updatedAt": { "type": "string", "maxLength": 64 },
+        "updatedBy": { "type": "string", "maxLength": 200 },
+        "publishedAt": { "type": "string", "maxLength": 64 },
+        "publishedBy": { "type": "string", "maxLength": 200 },
+        "archivedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "title", "category", "dueDate", "timezone", "status", "isPublished", "sourceType", "createdAt", "createdBy", "updatedAt", "updatedBy"]
+    },
+    "deadlineDraft": {
+      "title": "DeadlineDraft",
+      "description": "Draf ekstrak AI tarikh akhir yang menunggu semakan & pengesahan Master Admin",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-\\.]+$" },
+        "submissionBatchId": { "type": "string", "maxLength": 128 },
+        "sourceType": { "type": "string", "enum": ["SCREENSHOT", "PDF", "PASTED_TEXT"] },
+        "sourceEvidence": { "type": "object" },
+        "title": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "requiredAction": { "type": "string", "maxLength": 500 },
+        "category": {
+          "type": "string",
+          "enum": ["Akademik", "HEA", "HEP", "Pengurusan", "Pentadbiran", "Penilaian", "Pencalonan", "Dokumentasi", "Other"]
+        },
+        "targetAudience": { "type": "array", "items": { "type": "string" } },
+        "targetDepartments": { "type": "array", "items": { "type": "string" } },
+        "targetStaffIds": { "type": "array", "items": { "type": "string" } },
+        "dueDate": { "type": "string", "maxLength": 32 },
+        "dueTime": { "type": "string", "maxLength": 16 },
+        "timezone": { "type": "string", "enum": ["Asia/Kuala_Lumpur"] },
+        "announcementDate": { "type": "string", "maxLength": 32 },
+        "actionUrl": { "type": "string", "maxLength": 2000 },
+        "actionLabel": { "type": "string", "maxLength": 120 },
+        "attachments": { "type": "array" },
+        "instructions": { "type": "string", "maxLength": 4000 },
+        "sourceExcerpt": { "type": "string", "maxLength": 2000 },
+        "confidence": { "type": "object" },
+        "missingFields": { "type": "array", "items": { "type": "string" } },
+        "ambiguousFields": { "type": "array", "items": { "type": "string" } },
+        "ambiguityReason": { "type": "string", "maxLength": 1000 },
+        "requiresReview": { "type": "boolean" },
+        "duplicateMatch": { "type": ["object", "null"] },
+        "reviewStatus": { "type": "string", "enum": ["pending", "approved", "rejected", "published", "ignored"] },
+        "resolutionAction": { "type": "string", "enum": ["create", "update_existing", "ignore"] },
+        "targetExistingDeadlineId": { "type": "string", "maxLength": 128 },
+        "updateReason": { "type": "string", "maxLength": 500 },
+        "reviewedBy": { "type": "string", "maxLength": 200 },
+        "reviewedAt": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string", "maxLength": 64 },
+        "createdBy": { "type": "string", "maxLength": 200 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "submissionBatchId", "sourceType", "title", "category", "timezone", "reviewStatus", "resolutionAction", "createdAt", "createdBy", "updatedAt"]
+    },
+    "deadlineAuditLog": {
+      "title": "DeadlineAuditLog",
+      "description": "Rekod audit perubahan dan penerbitan tarikh akhir",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-\\.]+$" },
+        "deadlineId": { "type": "string", "maxLength": 128 },
+        "deadlineTitle": { "type": "string", "maxLength": 200 },
+        "draftId": { "type": "string", "maxLength": 128 },
+        "action": {
+          "type": "string",
+          "enum": ["CREATED", "PUBLISHED", "UPDATED_FROM_AI", "UPDATED_MANUAL", "ARCHIVED", "RESTORED", "STATUS_CHANGED", "IGNORED_DRAFT", "DELETED"]
+        },
+        "previousValues": { "type": "object" },
+        "updatedValues": { "type": "object" },
+        "reason": { "type": "string", "maxLength": 1000 },
+        "sourceType": { "type": "string", "enum": ["SCREENSHOT", "PDF", "PASTED_TEXT"] },
+        "sourceRef": { "type": "string", "maxLength": 500 },
+        "performedBy": { "type": "string", "maxLength": 200 },
+        "performedByUid": { "type": "string", "maxLength": 128 },
+        "performedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["id", "deadlineId", "deadlineTitle", "action", "performedBy", "performedAt"]
     }
   },
   "firestore": {
@@ -140,6 +249,18 @@
     "/platforms/directkpmbp/platformLinks/{platformId}": {
       "schema": "platformLink",
       "description": "Koleksi terasing pautan platform luar bagi tab Platform di bawah Rujukan Kolej"
+    },
+    "/deadlines/{deadlineId}": {
+      "schema": "deadline",
+      "description": "Rekod tarikh akhir rasmi yang diterbitkan ke Syncrozz Deadline Hub"
+    },
+    "/deadline_drafts/{draftId}": {
+      "schema": "deadlineDraft",
+      "description": "Draf ekstrak AI tarikh akhir untuk semakan Master Admin"
+    },
+    "/deadline_audit_logs/{logId}": {
+      "schema": "deadlineAuditLog",
+      "description": "Log audit tarikh akhir (dicipta, dikemas kini, diterbitkan, diarkibkan)"
     }
   }
 }

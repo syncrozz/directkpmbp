@@ -45,6 +45,33 @@ service firebase.storage {
         ];
     }
 
+    // Enforce max 15MB source evidence file for AI Deadline Capture (images, PDF, plain text)
+    function isValidDeadlineSourceFile() {
+      return request.resource != null
+        && request.resource.size > 0
+        && request.resource.size <= 15 * 1024 * 1024
+        && request.resource.contentType in [
+          'image/png',
+          'image/jpeg',
+          'image/webp',
+          'application/pdf',
+          'text/plain'
+        ];
+    }
+
+    // Enforce max 15MB supporting attachment file attached to published deadlines
+    function isValidDeadlineAttachmentFile() {
+      return request.resource != null
+        && request.resource.size > 0
+        && request.resource.size <= 15 * 1024 * 1024
+        && request.resource.contentType in [
+          'image/png',
+          'image/jpeg',
+          'image/webp',
+          'application/pdf'
+        ];
+    }
+
     // --- Platform Module Assets (Logo & Thumbnail uploads) ---
     match /platforms/directkpmbp/platform_assets/{assetFile} {
       allow read: if true;
@@ -63,6 +90,20 @@ service firebase.storage {
     match /platforms/directkpmbp/portal_assets/{assetFile} {
       allow read: if true;
       allow create, update: if isDirectKpmbpAdmin() && isValidImage();
+      allow delete: if isDirectKpmbpAdmin();
+    }
+
+    // --- Syncrozz Deadline Hub: Protected Source Evidence (Strictly Master Admin Only) ---
+    match /platforms/directkpmbp/deadline_sources/{sourceFile} {
+      allow read: if isDirectKpmbpAdmin();
+      allow create, update: if isDirectKpmbpAdmin() && isValidDeadlineSourceFile();
+      allow delete: if isDirectKpmbpAdmin();
+    }
+
+    // --- Syncrozz Deadline Hub: Public Supporting Attachments (Published Deadlines) ---
+    match /platforms/directkpmbp/deadline_attachments/{attachmentFile} {
+      allow read: if true;
+      allow create, update: if isDirectKpmbpAdmin() && isValidDeadlineAttachmentFile();
       allow delete: if isDirectKpmbpAdmin();
     }
   }

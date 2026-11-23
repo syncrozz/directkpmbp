@@ -40,6 +40,7 @@ import { AdminPinModal } from './components/AdminPinModal';
 import { SelfRegistrationPage } from './components/SelfRegistrationPage';
 import { StudentTimetableHub } from './components/StudentTimetableHub';
 import { LecturerTimetableHub } from './components/LecturerTimetableHub';
+import { DeadlineHub } from './components/DeadlineHub';
 import { DynamicNavigationBar } from './components/DynamicNavigationBar';
 import { GlobalSmartSearch } from './components/GlobalSmartSearch';
 import { NavigationManagerModal, NavigationManagerContext } from './components/NavigationManagerModal';
@@ -492,10 +493,12 @@ export default function App() {
         setActiveHub(res.activeNavId);
         if (
           typeof window !== 'undefined' &&
-          res.resolvedDestination === 'daftar' &&
-          (window.location.pathname !== '/daftar' || window.location.hash)
+          (res.resolvedDestination === 'daftar' || res.resolvedDestination === 'deadline-hub')
         ) {
-          window.history.replaceState({ navId: res.activeNavId }, '', '/daftar');
+          const targetPath = res.resolvedDestination === 'deadline-hub' ? '/deadline_hub' : '/daftar';
+          if (window.location.pathname !== targetPath || window.location.hash) {
+            window.history.replaceState({ navId: res.activeNavId }, '', targetPath);
+          }
         }
       } else {
         setActiveHub(res.resolvedDestination || 'directory');
@@ -851,6 +854,8 @@ export default function App() {
           ? '!bg-[radial-gradient(circle,rgba(245,158,11,0.18)_0%,rgba(249,115,22,0.06)_100%)]'
           : resolvedDestination === 'jadual-pensyarah'
           ? '!bg-[radial-gradient(circle,rgba(244,63,94,0.18)_0%,rgba(236,72,153,0.06)_100%)]'
+          : resolvedDestination === 'deadline-hub' || resolvedDestination === 'nav_deadline_hub'
+          ? '!bg-[radial-gradient(circle,rgba(14,165,233,0.18)_0%,rgba(79,70,229,0.06)_100%)]'
           : resolvedDestination === 'daftar'
           ? '!bg-[radial-gradient(circle,rgba(168,85,247,0.18)_0%,rgba(217,70,239,0.06)_100%)]'
           : ''
@@ -1391,6 +1396,13 @@ export default function App() {
             onSelectProfile={(staff) => {
               setSelectedStaff(staff);
             }}
+          />
+        ) : resolvedDestination === 'deadline-hub' || resolvedDestination === 'nav_deadline_hub' ? (
+          <DeadlineHub
+            staffList={staffList}
+            isAdminMode={isAdminMode}
+            currentAdmin={currentAdmin}
+            globalSearchQuery={debouncedSearchQuery}
           />
         ) : resolvedDestination === 'platform' || resolvedDestination === 'rujukan' ? (
           <div className="glass-panel rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-white/60 shadow-xs">
