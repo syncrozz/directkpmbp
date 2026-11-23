@@ -1485,54 +1485,58 @@ export default function App() {
 
       </main>
 
-      {/* Footer */}
-      <footer className="glass-panel border-t border-white/40 py-8 mt-16 text-center text-xs text-slate-500 backdrop-blur-md relative z-10">
-        <div className="max-w-7xl mx-auto px-6 space-y-6">
-          
-          {/* Statistik Direktori Section in Footer */}
-          <div className="bg-white/60 border border-slate-200/60 rounded-3xl p-5 shadow-2xs">
-            <div className="flex flex-col md:flex-row items-center justify-between gap-4 text-left">
-              <div>
-                <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
-                  Statistik Direktori KPMBP
-                </h3>
-                <p className="text-[11px] text-slate-500 font-medium mt-0.5">
-                  Ringkasan data bilangan kakitangan dan kepakaran Kolej Profesional MARA Bandar Penawar
+      {/* Footer — Dipaparkan di halaman utama (Directory) sahaja */}
+      {activeNavItem?.displayType !== 'empty_page' &&
+        !(activeNavItem && (activeNavItem.displayType === 'drive' || Boolean(activeNavItem.driveUrl))) &&
+        resolvedDestination === 'directory' && (
+          <footer className="glass-panel border-t border-white/40 py-8 mt-16 text-center text-xs text-slate-500 backdrop-blur-md relative z-10">
+            <div className="max-w-7xl mx-auto px-6 space-y-6">
+              
+              {/* Statistik Direktori Section in Footer */}
+              <div className="bg-white/60 border border-slate-200/60 rounded-3xl p-5 shadow-2xs">
+                <div className="flex flex-col md:flex-row items-center justify-between gap-4 text-left">
+                  <div>
+                    <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+                      Statistik Direktori KPMBP
+                    </h3>
+                    <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                      Ringkasan data bilangan kakitangan dan kepakaran Kolej Profesional MARA Bandar Penawar
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3 w-full md:w-auto">
+                    <div className="bg-white/90 border border-slate-100 px-4 py-2.5 rounded-2xl text-center shadow-2xs">
+                      <span className="text-xl font-extrabold text-slate-800 block leading-tight">{totalStaff}</span>
+                      <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider">Jumlah Staf</span>
+                    </div>
+                    <div className="bg-white/90 border border-slate-100 px-4 py-2.5 rounded-2xl text-center shadow-2xs">
+                      <span className="text-xl font-extrabold text-emerald-600 block leading-tight">{supportStaff}</span>
+                      <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider">Pentadbiran & Sokongan</span>
+                    </div>
+                    <div className="bg-white/90 border border-slate-100 px-4 py-2.5 rounded-2xl text-center shadow-2xs">
+                      <span className="text-xl font-extrabold text-indigo-600 block leading-tight">{academicStaff}</span>
+                      <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider">Pensyarah</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-4 text-center pt-2">
+                <p className="font-semibold text-slate-500 text-center leading-relaxed">
+                  © 2026 KPMBP SmartHub. by{' '}
+                  <a
+                    href="https://wasap.my/60145313756"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-extrabold text-indigo-600 hover:text-indigo-800 hover:underline transition-colors cursor-pointer"
+                  >
+                    Syncrozz
+                  </a>
                 </p>
               </div>
-              <div className="grid grid-cols-3 gap-3 w-full md:w-auto">
-                <div className="bg-white/90 border border-slate-100 px-4 py-2.5 rounded-2xl text-center shadow-2xs">
-                  <span className="text-xl font-extrabold text-slate-800 block leading-tight">{totalStaff}</span>
-                  <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider">Jumlah Staf</span>
-                </div>
-                <div className="bg-white/90 border border-slate-100 px-4 py-2.5 rounded-2xl text-center shadow-2xs">
-                  <span className="text-xl font-extrabold text-emerald-600 block leading-tight">{supportStaff}</span>
-                  <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider">Pentadbiran & Sokongan</span>
-                </div>
-                <div className="bg-white/90 border border-slate-100 px-4 py-2.5 rounded-2xl text-center shadow-2xs">
-                  <span className="text-xl font-extrabold text-indigo-600 block leading-tight">{academicStaff}</span>
-                  <span className="text-[9px] text-slate-500 font-bold uppercase tracking-wider">Pensyarah</span>
-                </div>
-              </div>
             </div>
-          </div>
-
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-4 text-center pt-2">
-            <p className="font-semibold text-slate-500 text-center leading-relaxed">
-              © 2026 KPMBP SmartHub. by{' '}
-              <a
-                href="https://wasap.my/60145313756"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-extrabold text-indigo-600 hover:text-indigo-800 hover:underline transition-colors cursor-pointer"
-              >
-                Syncrozz
-              </a>
-            </p>
-          </div>
-        </div>
-      </footer>
+          </footer>
+        )}
 
       {/* Modals */}
       <ProfileModal

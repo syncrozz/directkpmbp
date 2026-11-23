@@ -69,9 +69,18 @@ interface AiDeadlineCaptureModalProps {
   initialTab?: 'upload' | 'paste' | 'queue';
 }
 
+// Feature flag for Image/PDF source upload UI (retained intact for future reactivation)
+const ENABLE_IMAGE_PDF_UPLOAD: boolean = false;
 const ACCEPTED_FILE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
 const MAX_FILES = 5;
 const MAX_SINGLE_FILE_BYTES = 10 * 1024 * 1024;
+
+function resolveCaptureTab(tab: 'upload' | 'paste' | 'queue'): 'upload' | 'paste' | 'queue' {
+  if (!ENABLE_IMAGE_PDF_UPLOAD && tab === 'upload') {
+    return 'paste';
+  }
+  return tab;
+}
 
 export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
   isOpen,
@@ -80,9 +89,11 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
   pendingDrafts,
   staffList,
   adminEmail,
-  initialTab = 'upload',
+  initialTab = 'paste',
 }) => {
-  const [activeTab, setActiveTab] = useState<'upload' | 'paste' | 'queue'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'upload' | 'paste' | 'queue'>(() =>
+    resolveCaptureTab(initialTab)
+  );
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [filePreviews, setFilePreviews] = useState<Record<string, string>>({});
   const [uploadContextNote, setUploadContextNote] = useState('');
@@ -109,7 +120,7 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      setActiveTab(initialTab);
+      setActiveTab(resolveCaptureTab(initialTab));
       setErrorMsg(null);
       setNoticeMsg(null);
       setExtractedTextResult('');
@@ -197,7 +208,7 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
   };
 
   const handleFilesAdded = (incoming: FileList | File[]) => {
-    if (isExtracting) return;
+    if (!ENABLE_IMAGE_PDF_UPLOAD || isExtracting) return;
     setErrorMsg(null);
     setNoticeMsg(null);
     const list = Array.from(incoming || []);
@@ -238,7 +249,7 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
     setNoticeMsg(null);
     setCopiedExtractedText(false);
 
-    const isUploadMode = activeTab === 'upload';
+    const isUploadMode = ENABLE_IMAGE_PDF_UPLOAD && activeTab === 'upload';
     const hasFiles = isUploadMode && selectedFiles.length > 0;
     const trimmedText = (isUploadMode ? uploadContextNote : pastedText).trim();
 
@@ -505,7 +516,9 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
                 AI Deadline Capture & Semakan Admin
               </h2>
               <p className="text-xs text-slate-500 font-medium truncate">
-                Ekstrak tarikh akhir daripada tangkapan skrin, PDF atau mesej WhatsApp secara automatik
+                {ENABLE_IMAGE_PDF_UPLOAD
+                  ? 'Ekstrak tarikh akhir daripada tangkapan skrin, PDF atau mesej WhatsApp secara automatik'
+                  : 'Ekstrak tarikh akhir daripada mesej WhatsApp, e-mel, pekeliling atau pengumuman secara automatik'}
               </p>
             </div>
           </div>
@@ -547,22 +560,24 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl shrink-0 self-start lg:self-auto">
-            <button
-              type="button"
-              onClick={() => {
-                setActiveTab('upload');
-                setErrorMsg(null);
-                setNoticeMsg(null);
-              }}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
-                activeTab === 'upload'
-                  ? 'bg-white text-indigo-700 shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Upload className="w-3.5 h-3.5" />
-              <span>Muat Naik Imej / PDF</span>
-            </button>
+            {ENABLE_IMAGE_PDF_UPLOAD && (
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('upload');
+                  setErrorMsg(null);
+                  setNoticeMsg(null);
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+                  activeTab === 'upload'
+                    ? 'bg-white text-indigo-700 shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>Muat Naik Imej / PDF</span>
+              </button>
+            )}
 
             <button
               type="button"
@@ -641,7 +656,7 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
 
         {/* Scrollable Workspace Content */}
         <div className="flex-1 min-h-0 overflow-y-auto p-5 sm:p-7 space-y-5">
-          {activeTab === 'upload' && (
+          {ENABLE_IMAGE_PDF_UPLOAD && activeTab === 'upload' && (
             <div className="space-y-4">
               <div
                 onDragOver={(e) => {
@@ -854,7 +869,11 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <span className="text-xs font-extrabold text-indigo-950 flex items-center gap-1.5 min-w-0">
                   <FileText className="w-4 h-4 text-indigo-600 shrink-0" />
-                  <span className="truncate">Teks Penuh Diekstrak (OCR / Sumber)</span>
+                  <span className="truncate">
+                    {ENABLE_IMAGE_PDF_UPLOAD
+                      ? 'Teks Penuh Diekstrak (OCR / Sumber)'
+                      : 'Teks Penuh Diekstrak (Sumber)'}
+                  </span>
                 </span>
                 <div className="flex items-center gap-2 shrink-0 flex-wrap">
                   <button
@@ -989,7 +1008,9 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
                     Tiada draf menunggu semakan
                   </p>
                   <p className="text-xs text-slate-500">
-                    Muat naik tangkapan skrin / PDF atau tampal teks pengumuman untuk mula mengekstrak tarikh akhir.
+                    {ENABLE_IMAGE_PDF_UPLOAD
+                      ? 'Muat naik tangkapan skrin / PDF atau tampal teks pengumuman untuk mula mengekstrak tarikh akhir.'
+                      : 'Tampal teks pengumuman, mesej WhatsApp atau pekeliling untuk mula mengekstrak tarikh akhir.'}
                   </p>
                 </div>
               ) : (

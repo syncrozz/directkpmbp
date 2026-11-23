@@ -236,6 +236,89 @@ export function formatDueDateDisplay(dueDate?: string): string {
   return `${weekday}, ${datePart}`;
 }
 
+const KL_DATE_TIME_FORMATTER = new Intl.DateTimeFormat('ms-MY', {
+  timeZone: DEADLINE_TIMEZONE,
+  day: '2-digit',
+  month: 'short',
+  year: 'numeric',
+  hour: 'numeric',
+  minute: '2-digit',
+  hour12: true,
+});
+
+/**
+ * Parses an ISO/timestamp string safely into epoch milliseconds, or null if unavailable.
+ */
+export function parseTimestampMs(isoStr?: string | null): number | null {
+  if (!isoStr || typeof isoStr !== 'string') return null;
+  const trimmed = isoStr.trim();
+  if (!trimmed) return null;
+  const ms = Date.parse(trimmed);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/**
+ * Resolves the original publication timestamp without inventing missing values.
+ * Handles historical records where an AI update previously bumped publishedAt to updatedAt.
+ */
+export function getOriginalPublishedAt(record: {
+  publishedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}): string {
+  const pubMs = parseTimestampMs(record.publishedAt);
+  const createdMs = parseTimestampMs(record.createdAt);
+  const updatedMs = parseTimestampMs(record.updatedAt);
+
+  if (
+    pubMs !== null &&
+    createdMs !== null &&
+    updatedMs !== null &&
+    record.publishedAt === record.updatedAt &&
+    updatedMs - createdMs > 1000
+  ) {
+    return record.createdAt || '';
+  }
+
+  if (pubMs !== null) return record.publishedAt || '';
+  if (createdMs !== null) return record.createdAt || '';
+  return '';
+}
+
+/**
+ * Determines whether a published announcement has been meaningfully modified after publication.
+ */
+export function isDeadlineUpdated(record: {
+  publishedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}): boolean {
+  const updatedMs = parseTimestampMs(record.updatedAt);
+  const originalPubMs = parseTimestampMs(getOriginalPublishedAt(record));
+  if (updatedMs === null || originalPubMs === null) return false;
+  return updatedMs - originalPubMs > 1000;
+}
+
+/**
+ * Formats an ISO timestamp as a concise date in Asia/Kuala_Lumpur (e.g. "22 Nov 2026").
+ * Returns empty string if the field is unavailable (never fabricates a value).
+ */
+export function formatKLDateDisplay(isoStr?: string | null): string {
+  const ms = parseTimestampMs(isoStr);
+  if (ms === null) return '';
+  return KL_DISPLAY_DATE_FORMATTER.format(new Date(ms));
+}
+
+/**
+ * Formats an ISO timestamp as date + time in Asia/Kuala_Lumpur (e.g. "22 Nov 2026, 3:45 PM").
+ * Returns empty string if the field is unavailable (never fabricates a value).
+ */
+export function formatKLDateTimeDisplay(isoStr?: string | null): string {
+  const ms = parseTimestampMs(isoStr);
+  if (ms === null) return '';
+  return KL_DATE_TIME_FORMATTER.format(new Date(ms));
+}
+
 export interface DeadlineValidationResult {
   valid: boolean;
   errors: string[];
@@ -531,4 +614,188 @@ export function evaluateDraftReviewNeed(draft: Pick<
   if (draft.confidence && draft.confidence.overall < 0.75) return true;
   if (draft.duplicateMatch && draft.duplicateMatch.similarityLevel !== 'none') return true;
   return false;
+}
+
+export type DeadlineFilterTab =
+  | 'all'
+  | 'latest'
+  | 'due_today'
+  | 'upcoming'
+  | 'updated'
+  | 'archived'
+  | 'inactive';
+
+export type DeadlineDisplayStatus = DeadlineComputedStatus | 'ACTIVE';
+
+export interface EnrichedDeadlineItem {
+  record: DeadlineRecord;
+  computedStatus: DeadlineComputedStatus;
+  displayStatus: DeadlineDisplayStatus;
+  originalPublishedAt: string;
+  isUpdated: boolean;
+}
+
+export function resolveDeadlineDisplayStatus(
+  record: Pick<DeadlineRecord, 'dueDate' | 'dueTime' | 'status'>,
+  now: Date = new Date()
+): { computedStatus: DeadlineComputedStatus; displayStatus: DeadlineDisplayStatus } {
+  const computedStatus = computeDeadlineStatus(record, now);
+  if (record.status === 'ACTIVE' && !isValidIsoDate(record.dueDate)) {
+    return { computedStatus, displayStatus: 'ACTIVE' };
+  }
+  return { computedStatus, displayStatus: computedStatus };
+}
+
+export function filterAndSortDeadlines(params: {
+  deadlines: DeadlineRecord[];
+  activeFilter: DeadlineFilterTab;
+  selectedCategory: 'Semua' | DeadlineCategory;
+  searchQuery: string;
+  isAdminMode: boolean;
+  now?: Date;
+}): EnrichedDeadlineItem[] {
+  const now = params.now || new Date();
+  const klToday = getKualaLumpurTodayDateStr(now);
+  const effectiveSearch = params.searchQuery.trim().toLowerCase();
+
+  const enriched: EnrichedDeadlineItem[] = params.deadlines.map((record) => {
+    const { computedStatus, displayStatus } = resolveDeadlineDisplayStatus(record, now);
+    const originalPublishedAt = getOriginalPublishedAt(record);
+    const isUpdated = isDeadlineUpdated(record);
+    return {
+      record,
+      computedStatus,
+      displayStatus,
+      originalPublishedAt,
+      isUpdated,
+    };
+  });
+
+  const filtered = enriched.filter((item) => {
+    const { record, displayStatus, isUpdated } = item;
+
+    // Enforce visibility rules: ordinary staff only view published, non-inactive records
+    if (!params.isAdminMode) {
+      if (!record.isPublished || displayStatus === 'INACTIVE') {
+        return false;
+      }
+    }
+
+    if (params.activeFilter === 'all') {
+      if (displayStatus === 'ARCHIVED' || displayStatus === 'INACTIVE') return false;
+    } else if (params.activeFilter === 'latest') {
+      if (
+        record.status !== 'ACTIVE' ||
+        displayStatus === 'EXPIRED' ||
+        displayStatus === 'ARCHIVED' ||
+        displayStatus === 'INACTIVE'
+      ) {
+        return false;
+      }
+    } else if (params.activeFilter === 'due_today') {
+      if (
+        record.status !== 'ACTIVE' ||
+        !isValidIsoDate(record.dueDate) ||
+        record.dueDate.trim() !== klToday
+      ) {
+        return false;
+      }
+    } else if (params.activeFilter === 'upcoming') {
+      if (displayStatus !== 'UPCOMING') return false;
+    } else if (params.activeFilter === 'updated') {
+      if (displayStatus === 'ARCHIVED' || displayStatus === 'INACTIVE') return false;
+      if (!isUpdated) return false;
+    } else if (params.activeFilter === 'archived') {
+      if (displayStatus !== 'ARCHIVED') return false;
+    } else if (params.activeFilter === 'inactive') {
+      if (!params.isAdminMode || displayStatus !== 'INACTIVE') return false;
+    }
+
+    if (params.selectedCategory !== 'Semua' && record.category !== params.selectedCategory) {
+      return false;
+    }
+
+    if (effectiveSearch) {
+      const haystack = [
+        record.title,
+        record.description,
+        record.requiredAction,
+        record.instructions,
+        record.category,
+        record.actionLabel,
+        ...(record.targetAudience || []),
+        ...(record.targetDepartments || []),
+        ...(record.targetStaffIds || []),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      if (!haystack.includes(effectiveSearch)) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+
+  if (params.activeFilter === 'latest') {
+    return filtered.sort((a, b) => {
+      const pubA = parseTimestampMs(a.originalPublishedAt) ?? 0;
+      const pubB = parseTimestampMs(b.originalPublishedAt) ?? 0;
+      if (pubB !== pubA) return pubB - pubA;
+      return (a.record.dueDate || '9999-12-31').localeCompare(b.record.dueDate || '9999-12-31');
+    });
+  }
+
+  if (params.activeFilter === 'updated') {
+    return filtered.sort((a, b) => {
+      const updA = parseTimestampMs(a.record.updatedAt) ?? 0;
+      const updB = parseTimestampMs(b.record.updatedAt) ?? 0;
+      if (updB !== updA) return updB - updA;
+      return (a.record.dueDate || '9999-12-31').localeCompare(b.record.dueDate || '9999-12-31');
+    });
+  }
+
+  if (params.activeFilter === 'upcoming') {
+    return filtered.sort((a, b) => {
+      const dc = (a.record.dueDate || '9999-12-31').localeCompare(
+        b.record.dueDate || '9999-12-31'
+      );
+      if (dc !== 0) return dc;
+      return (a.record.dueTime || '23:59').localeCompare(b.record.dueTime || '23:59');
+    });
+  }
+
+  if (params.activeFilter === 'archived' || params.activeFilter === 'inactive') {
+    return filtered.sort((a, b) => {
+      const tsA = parseTimestampMs(a.record.archivedAt || a.record.updatedAt) ?? 0;
+      const tsB = parseTimestampMs(b.record.archivedAt || b.record.updatedAt) ?? 0;
+      if (tsB !== tsA) return tsB - tsA;
+      return (b.record.dueDate || '').localeCompare(a.record.dueDate || '');
+    });
+  }
+
+  // 'all' and 'due_today': DUE_TODAY first, then UPCOMING/ACTIVE chronologically, then EXPIRED descending
+  const priorityWeight: Record<DeadlineDisplayStatus, number> = {
+    DUE_TODAY: 1,
+    UPCOMING: 2,
+    ACTIVE: 2,
+    EXPIRED: 3,
+    INACTIVE: 4,
+    ARCHIVED: 5,
+  };
+
+  return filtered.sort((a, b) => {
+    const pw = priorityWeight[a.displayStatus] - priorityWeight[b.displayStatus];
+    if (pw !== 0) return pw;
+    if (a.displayStatus === 'EXPIRED') {
+      const dc = (b.record.dueDate || '').localeCompare(a.record.dueDate || '');
+      if (dc !== 0) return dc;
+      return (b.record.dueTime || '23:59').localeCompare(a.record.dueTime || '23:59');
+    }
+    const dc = (a.record.dueDate || '9999-12-31').localeCompare(b.record.dueDate || '9999-12-31');
+    if (dc !== 0) return dc;
+    return (a.record.dueTime || '23:59').localeCompare(b.record.dueTime || '23:59');
+  });
 }

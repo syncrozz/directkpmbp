@@ -675,8 +675,8 @@ export async function publishApprovedDrafts(params: {
         confidenceScore: draft.confidence?.overall ?? existing.confidenceScore ?? 1,
         updatedAt: nowIso,
         updatedBy: verifiedEmail,
-        publishedAt: nowIso,
-        publishedBy: verifiedEmail,
+        publishedAt: existing.publishedAt || existing.createdAt || nowIso,
+        publishedBy: existing.publishedBy || existing.createdBy || verifiedEmail,
       };
 
       batch.update(
