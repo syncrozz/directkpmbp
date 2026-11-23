@@ -46,6 +46,7 @@ import {
 import { sanitizeFirestorePayload } from './platformService';
 import {
   DEADLINE_TIMEZONE,
+  sanitizeTitleEmphasis,
   validateDeadlineCandidate,
 } from '../utils/deadlineStatus';
 import type {
@@ -122,6 +123,9 @@ export function subscribeToDeadlines(options: {
         list.push({
           ...data,
           id: docSnap.id,
+          titleEmphasis: Array.isArray(data.titleEmphasis)
+            ? sanitizeTitleEmphasis(data.title || '', data.titleEmphasis, 4)
+            : [],
           targetAudience: Array.isArray(data.targetAudience) ? data.targetAudience : [],
           targetDepartments: Array.isArray(data.targetDepartments) ? data.targetDepartments : [],
           targetStaffIds: Array.isArray(data.targetStaffIds) ? data.targetStaffIds : [],
@@ -170,6 +174,9 @@ export function subscribeToDeadlineDrafts(options: {
         list.push({
           ...data,
           id: docSnap.id,
+          titleEmphasis: Array.isArray(data.titleEmphasis)
+            ? sanitizeTitleEmphasis(data.title || '', data.titleEmphasis, 4)
+            : [],
           targetAudience: Array.isArray(data.targetAudience) ? data.targetAudience : [],
           targetDepartments: Array.isArray(data.targetDepartments) ? data.targetDepartments : [],
           targetStaffIds: Array.isArray(data.targetStaffIds) ? data.targetStaffIds : [],
@@ -427,12 +434,14 @@ export async function saveExtractedDraftsToFirestore(params: {
         ? 'ignore'
         : 'create';
 
+    const draftTitle = (cand.title || 'Tarikh Akhir Baharu').slice(0, 200);
     const draft: DeadlineDraft = {
       id: draftId,
       submissionBatchId: params.batchId,
       sourceType: params.sourceType,
       sourceEvidence: boundedEvidence,
-      title: (cand.title || 'Tarikh Akhir Baharu').slice(0, 200),
+      title: draftTitle,
+      titleEmphasis: sanitizeTitleEmphasis(draftTitle, cand.titleEmphasis, 4),
       description: (cand.description || '').slice(0, 2000),
       requiredAction: (cand.requiredAction || '').slice(0, 500),
       category: cand.category,
@@ -494,6 +503,7 @@ export async function updateDeadlineDraftInFirestore(
 
   const allowedKeys: Array<keyof DeadlineDraft> = [
     'title',
+    'titleEmphasis',
     'description',
     'requiredAction',
     'category',
@@ -647,8 +657,10 @@ export async function publishApprovedDrafts(params: {
         status: existing.status,
       };
 
+      const nextTitle = draft.title.trim().slice(0, 200);
       const updatedFields = {
-        title: draft.title.trim().slice(0, 200),
+        title: nextTitle,
+        titleEmphasis: sanitizeTitleEmphasis(nextTitle, draft.titleEmphasis, 4),
         description: (draft.description || '').trim().slice(0, 2000),
         requiredAction: (draft.requiredAction || '').trim().slice(0, 500),
         category: draft.category,
@@ -727,9 +739,11 @@ export async function publishApprovedDrafts(params: {
 
     // Create New Published Record
     const deadlineId = generateSafeDocId('dl');
+    const nextTitle = draft.title.trim().slice(0, 200);
     const newRecord: DeadlineRecord = {
       id: deadlineId,
-      title: draft.title.trim().slice(0, 200),
+      title: nextTitle,
+      titleEmphasis: sanitizeTitleEmphasis(nextTitle, draft.titleEmphasis, 4),
       description: (draft.description || '').trim().slice(0, 2000),
       requiredAction: (draft.requiredAction || '').trim().slice(0, 500),
       category: draft.category,
@@ -809,6 +823,7 @@ export async function publishApprovedDrafts(params: {
 export async function createManualDeadline(params: {
   record: {
     title: string;
+    titleEmphasis?: string[];
     description?: string;
     requiredAction?: string;
     category: DeadlineRecord['category'];
@@ -838,9 +853,11 @@ export async function createManualDeadline(params: {
   const deadlineId = generateSafeDocId('dl');
 
   const actionUrl = (params.record.actionUrl || '').trim().slice(0, 2000);
+  const nextTitle = params.record.title.trim().slice(0, 200);
   const newRecord: DeadlineRecord = {
     id: deadlineId,
-    title: params.record.title.trim().slice(0, 200),
+    title: nextTitle,
+    titleEmphasis: sanitizeTitleEmphasis(nextTitle, params.record.titleEmphasis, 4),
     description: (params.record.description || '').trim().slice(0, 2000),
     requiredAction: (params.record.requiredAction || '').trim().slice(0, 500),
     category: params.record.category,
@@ -931,8 +948,10 @@ export async function updatePublishedDeadline(params: {
   const uid = auth.currentUser.uid;
   const nowIso = new Date().toISOString();
 
+  const nextTitle = mergedCandidate.title.trim().slice(0, 200);
   const patch = sanitizeFirestorePayload({
-    title: mergedCandidate.title.trim().slice(0, 200),
+    title: nextTitle,
+    titleEmphasis: sanitizeTitleEmphasis(nextTitle, mergedCandidate.titleEmphasis, 4),
     description: (mergedCandidate.description || '').trim().slice(0, 2000),
     requiredAction: (mergedCandidate.requiredAction || '').trim().slice(0, 500),
     category: mergedCandidate.category,

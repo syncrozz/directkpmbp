@@ -294,6 +294,7 @@ export interface DeadlineDuplicateMatch {
 export interface DeadlineRecord {
   id: string;
   title: string;
+  titleEmphasis?: string[];
   description: string;
   requiredAction: string;
   category: DeadlineCategory;
@@ -328,6 +329,7 @@ export interface DeadlineDraft {
   sourceType: DeadlineSourceType;
   sourceEvidence: DeadlineSourceEvidence;
   title: string;
+  titleEmphasis?: string[];
   description: string;
   requiredAction: string;
   category: DeadlineCategory;

@@ -27,7 +27,6 @@ import {
   Paperclip,
   Pencil,
   Plus,
-  RefreshCw,
   RotateCcw,
   Search,
   ShieldAlert,
@@ -59,10 +58,10 @@ import {
   formatDueTimeDisplay,
   formatKLDateTimeDisplay,
   getKualaLumpurNowParts,
-  getOriginalPublishedAt,
-  isDeadlineUpdated,
   isValidIsoDate,
   resolveDeadlineDisplayStatus,
+  sanitizeTitleEmphasis,
+  splitTitleWithEmphasis,
   validateDeadlineCandidate,
 } from '../utils/deadlineStatus';
 import {
@@ -200,6 +199,8 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
   const [isCreatingManual, setIsCreatingManual] = useState(false);
   const [editReason, setEditReason] = useState('');
   const [modalStaffSearch, setModalStaffSearch] = useState('');
+  const [editEmphasisInput, setEditEmphasisInput] = useState('');
+  const [editEmphasisError, setEditEmphasisError] = useState('');
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<DeadlineRecord | null>(null);
   const [isAuditDrawerOpen, setIsAuditDrawerOpen] = useState(false);
@@ -433,9 +434,12 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
     setIsCreatingManual(true);
     setEditReason('');
     setModalStaffSearch('');
+    setEditEmphasisInput('');
+    setEditEmphasisError('');
     setEditingRecord({
       id: '',
       title: '',
+      titleEmphasis: [],
       description: '',
       requiredAction: '',
       category: 'Akademik',
@@ -577,6 +581,11 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
         await createManualDeadline({
           record: {
             title: editingRecord.title,
+            titleEmphasis: sanitizeTitleEmphasis(
+              editingRecord.title,
+              editingRecord.titleEmphasis,
+              4
+            ),
             description: editingRecord.description,
             requiredAction: editingRecord.requiredAction,
             category: editingRecord.category,
@@ -616,13 +625,22 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
     try {
       setIsSavingEdit(true);
       setActionFeedback(null);
+      const cleanedEmphasis = sanitizeTitleEmphasis(
+        editingRecord.title,
+        editingRecord.titleEmphasis,
+        4
+      );
       await updatePublishedDeadline({
         existing: original,
-        updates: editingRecord,
+        updates: { ...editingRecord, titleEmphasis: cleanedEmphasis },
         reason: editReason.trim() || undefined,
       });
       if (detailRecord?.id === editingRecord.id) {
-        setDetailRecord({ ...editingRecord, updatedAt: new Date().toISOString() });
+        setDetailRecord({
+          ...editingRecord,
+          titleEmphasis: cleanedEmphasis,
+          updatedAt: new Date().toISOString(),
+        });
       }
       setEditingRecord(null);
       setIsCreatingManual(false);
@@ -954,7 +972,7 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {filteredDeadlines.map(
-              ({ record, displayStatus, originalPublishedAt, isUpdated }) => {
+              ({ record, displayStatus }) => {
                 const meta = STATUS_META[displayStatus];
                 const countdown = formatDeadlineCountdown(
                   record.dueDate,
@@ -962,10 +980,6 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
                   record.status,
                   now
                 );
-                const publishedDateTimeLabel = formatKLDateTimeDisplay(originalPublishedAt);
-                const updatedDateTimeLabel = isUpdated
-                  ? formatKLDateTimeDisplay(record.updatedAt)
-                  : '';
                 const actionSnippet = record.requiredAction || record.instructions;
                 const departments = (record.targetDepartments || []).filter(Boolean);
                 const audience = (record.targetAudience || []).filter(Boolean);
@@ -976,8 +990,6 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
                 const hasCategory = Boolean(record.category?.trim());
                 const hasAnyMenuMetadata =
                   hasCategory ||
-                  Boolean(publishedDateTimeLabel) ||
-                  Boolean(updatedDateTimeLabel) ||
                   hasTargetMetadata ||
                   attachmentsCount > 0;
                 const isMenuOpen = openMenuId === record.id;
@@ -1042,34 +1054,6 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
                                           </div>
                                           <div className="font-semibold text-slate-800 break-words">
                                             {record.category}
-                                          </div>
-                                        </div>
-                                      </div>
-                                    )}
-
-                                    {publishedDateTimeLabel && (
-                                      <div className="flex items-start gap-2.5">
-                                        <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
-                                        <div className="min-w-0">
-                                          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                                            Tarikh Diterbitkan
-                                          </div>
-                                          <div className="font-medium text-slate-700 tabular-nums">
-                                            {publishedDateTimeLabel}
-                                          </div>
-                                        </div>
-                                      </div>
-                                    )}
-
-                                    {updatedDateTimeLabel && (
-                                      <div className="flex items-start gap-2.5">
-                                        <RefreshCw className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
-                                        <div className="min-w-0">
-                                          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                                            Tarikh Dikemas Kini
-                                          </div>
-                                          <div className="font-medium text-amber-800 tabular-nums">
-                                            {updatedDateTimeLabel}
                                           </div>
                                         </div>
                                       </div>
@@ -1153,9 +1137,32 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
 
                       {/* 2. Title & 3. Short Description */}
                       <div className="space-y-1.5 min-w-0">
-                        <h4 className="text-sm sm:text-[15px] font-bold text-slate-900 leading-snug line-clamp-2 break-words">
-                          {record.title}
-                        </h4>
+                        {(() => {
+                          const titleSegments = splitTitleWithEmphasis(
+                            record.title,
+                            record.titleEmphasis
+                          );
+                          const hasEmphasis = titleSegments.some((seg) => seg.emphasized);
+                          return (
+                            <h4
+                              className={`text-sm sm:text-[15px] ${
+                                hasEmphasis ? 'font-normal' : 'font-bold'
+                              } text-slate-900 leading-snug line-clamp-2 break-words`}
+                            >
+                              {hasEmphasis
+                                ? titleSegments.map((seg, idx) =>
+                                    seg.emphasized ? (
+                                      <strong key={idx} className="font-bold text-slate-950">
+                                        {seg.text}
+                                      </strong>
+                                    ) : (
+                                      <React.Fragment key={idx}>{seg.text}</React.Fragment>
+                                    )
+                                  )
+                                : record.title}
+                            </h4>
+                          );
+                        })()}
                         {record.description && (
                           <p className="text-xs text-slate-600 leading-relaxed line-clamp-2 break-words">
                             {record.description}
@@ -1233,6 +1240,8 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
                                 setEditingRecord({ ...record });
                                 setEditReason('');
                                 setModalStaffSearch('');
+                                setEditEmphasisInput('');
+                                setEditEmphasisError('');
                               }}
                               title="Sunting rekod"
                               className="px-2 py-1 rounded-lg hover:bg-slate-100 text-slate-600 hover:text-indigo-700 font-semibold flex items-center gap-1 cursor-pointer"
@@ -1312,12 +1321,34 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
         (() => {
           const detailStatus = resolveDeadlineDisplayStatus(detailRecord, now).displayStatus;
           const detailMeta = STATUS_META[detailStatus];
-          const detailPublishedAt = getOriginalPublishedAt(detailRecord);
-          const detailUpdated = isDeadlineUpdated(detailRecord);
-          const detailPublishedDisplay = formatKLDateTimeDisplay(detailPublishedAt);
-          const detailUpdatedDisplay = detailUpdated
-            ? formatKLDateTimeDisplay(detailRecord.updatedAt)
-            : '';
+          const trimmedDescription = (detailRecord.description || '').trim();
+          const trimmedRequiredAction = (detailRecord.requiredAction || '').trim();
+          const trimmedInstructions = (detailRecord.instructions || '').trim();
+          const showDescription =
+            Boolean(trimmedDescription) && trimmedDescription !== trimmedRequiredAction;
+          const showRequiredAction = Boolean(trimmedRequiredAction);
+          const showInstructions =
+            Boolean(trimmedInstructions) &&
+            trimmedInstructions !== trimmedRequiredAction &&
+            trimmedInstructions !== trimmedDescription;
+
+          const detailDepartments = (detailRecord.targetDepartments || [])
+            .map((v) => v.trim())
+            .filter(Boolean);
+          const detailAudience = (detailRecord.targetAudience || [])
+            .map((v) => v.trim())
+            .filter(
+              (v) => v && !detailDepartments.some((d) => d.toLowerCase() === v.toLowerCase())
+            );
+          const detailTargetStaff = (detailRecord.targetStaffIds || [])
+            .map((sid) => {
+              const match = staffList.find((s) => (s.StaffID || s.ID) === sid);
+              return match ? `${match.Nama} (${sid})` : sid;
+            })
+            .filter(Boolean);
+          const hasDepartmentOrAudience =
+            detailDepartments.length > 0 || detailAudience.length > 0;
+          const hasTargetStaff = detailTargetStaff.length > 0;
 
           return (
             <div
@@ -1334,27 +1365,44 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
                 <div className="px-4 sm:px-6 pt-[max(1rem,env(safe-area-inset-top))] pb-3.5 sm:py-4 border-b border-slate-100 bg-white flex items-start justify-between gap-3 shrink-0">
                   <div className="space-y-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs font-bold text-indigo-700">
-                        {detailRecord.category}
-                      </span>
+                      {detailRecord.category && (
+                        <span className="text-xs font-bold text-indigo-700">
+                          {detailRecord.category}
+                        </span>
+                      )}
                       <span
                         className={`px-2 py-0.5 rounded-md text-[11px] font-bold border ${detailMeta.badgeClass}`}
                       >
                         {detailMeta.label}
                       </span>
-                      {detailUpdated && (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700">
-                          <RefreshCw className="w-3 h-3" />
-                          <span>Dikemas Kini</span>
-                        </span>
-                      )}
                     </div>
-                    <h3
-                      id="deadline-detail-modal-title"
-                      className="text-base sm:text-lg font-extrabold text-slate-900 break-words"
-                    >
-                      {detailRecord.title}
-                    </h3>
+                    {(() => {
+                      const detailTitleSegments = splitTitleWithEmphasis(
+                        detailRecord.title,
+                        detailRecord.titleEmphasis
+                      );
+                      const hasDetailEmphasis = detailTitleSegments.some((seg) => seg.emphasized);
+                      return (
+                        <h3
+                          id="deadline-detail-modal-title"
+                          className={`text-base sm:text-lg ${
+                            hasDetailEmphasis ? 'font-normal' : 'font-extrabold'
+                          } text-slate-900 break-words`}
+                        >
+                          {hasDetailEmphasis
+                            ? detailTitleSegments.map((seg, idx) =>
+                                seg.emphasized ? (
+                                  <strong key={idx} className="font-extrabold text-slate-950">
+                                    {seg.text}
+                                  </strong>
+                                ) : (
+                                  <React.Fragment key={idx}>{seg.text}</React.Fragment>
+                                )
+                              )
+                            : detailRecord.title}
+                        </h3>
+                      );
+                    })()}
                   </div>
 
                   <button
@@ -1380,13 +1428,17 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
                       Tarikh & Masa Akhir
                     </span>
                     <span className="font-bold text-slate-900 tabular-nums">
-                      {formatDueDateDisplay(detailRecord.dueDate)} ·{' '}
-                      {formatDueTimeDisplay(detailRecord.dueTime)}
+                      {formatDueDateDisplay(detailRecord.dueDate)}
+                      {isValidIsoDate(detailRecord.dueDate)
+                        ? ` · ${formatDueTimeDisplay(detailRecord.dueTime)}`
+                        : ''}
                     </span>
                   </div>
 
                   <div>
-                    <span className="text-slate-500 font-semibold block">Baki Masa</span>
+                    <span className="text-slate-500 font-semibold block">
+                      {detailStatus === 'EXPIRED' ? 'Tempoh Tamat' : 'Baki Masa'}
+                    </span>
                     <span className={`font-bold font-mono tabular-nums ${detailMeta.textClass}`}>
                       {formatDeadlineCountdown(
                         detailRecord.dueDate,
@@ -1396,91 +1448,77 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
                       )}
                     </span>
                   </div>
-
-                  {detailPublishedDisplay && (
-                    <div>
-                      <span className="text-slate-500 font-semibold block">
-                        Tarikh Diterbitkan
-                      </span>
-                      <span className="font-semibold text-slate-800 tabular-nums">
-                        {detailPublishedDisplay}
-                      </span>
-                    </div>
-                  )}
-
-                  {detailUpdatedDisplay && (
-                    <div>
-                      <span className="text-amber-800 font-semibold block">
-                        Tarikh Dikemas Kini
-                      </span>
-                      <span className="font-semibold text-amber-900 tabular-nums">
-                        {detailUpdatedDisplay}
-                      </span>
-                    </div>
-                  )}
                 </div>
 
-                {detailRecord.description && (
+                {showDescription && (
                   <div>
                     <h4 className="text-xs font-bold text-slate-500 mb-1">Penerangan</h4>
                     <p className="text-xs sm:text-sm text-slate-700 leading-relaxed whitespace-pre-line break-words">
-                      {detailRecord.description}
+                      {trimmedDescription}
                     </p>
                   </div>
                 )}
 
-                {detailRecord.requiredAction && (
+                {showRequiredAction && (
                   <div className="p-3.5 rounded-2xl bg-indigo-50/60 border border-indigo-200/70">
                     <h4 className="text-xs font-bold text-indigo-800 mb-1">
                       Tindakan Diperlukan
                     </h4>
                     <p className="text-xs sm:text-sm font-semibold text-indigo-950 break-words">
-                      {detailRecord.requiredAction}
+                      {trimmedRequiredAction}
                     </p>
                   </div>
                 )}
 
-                {detailRecord.instructions && (
+                {showInstructions && (
                   <div>
                     <h4 className="text-xs font-bold text-slate-500 mb-1">
                       Arahan Langkah Demi Langkah
                     </h4>
                     <p className="text-xs sm:text-sm text-slate-700 leading-relaxed whitespace-pre-line break-words bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80">
-                      {detailRecord.instructions}
+                      {trimmedInstructions}
                     </p>
                   </div>
                 )}
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                  <div className="p-3 rounded-2xl border border-slate-200/80">
-                    <span className="font-bold text-slate-700 flex items-center gap-1.5 mb-1">
-                      <Building2 className="w-3.5 h-3.5 text-slate-400" />
-                      Jabatan / Unit Terlibat
-                    </span>
-                    <p className="text-slate-600">
-                      {(detailRecord.targetDepartments || []).length > 0
-                        ? detailRecord.targetDepartments.join(', ')
-                        : (detailRecord.targetAudience || []).join(', ') || 'Semua warga KPMBP'}
-                    </p>
-                  </div>
+                {(hasDepartmentOrAudience || hasTargetStaff) && (
+                  <div
+                    className={`grid grid-cols-1 ${
+                      hasDepartmentOrAudience && hasTargetStaff ? 'sm:grid-cols-2' : ''
+                    } gap-3 text-xs`}
+                  >
+                    {hasDepartmentOrAudience && (
+                      <div className="p-3 rounded-2xl border border-slate-200/80 space-y-1">
+                        <span className="font-bold text-slate-700 flex items-center gap-1.5">
+                          <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                          Jabatan / Sasaran Terlibat
+                        </span>
+                        {detailDepartments.length > 0 && (
+                          <p className="text-slate-700 font-medium break-words">
+                            {detailDepartments.join(', ')}
+                          </p>
+                        )}
+                        {detailAudience.length > 0 && (
+                          <p className="text-slate-600 break-words">
+                            {detailAudience.join(', ')}
+                          </p>
+                        )}
+                      </div>
+                    )}
 
-                  <div className="p-3 rounded-2xl border border-slate-200/80">
-                    <span className="font-bold text-slate-700 flex items-center gap-1.5 mb-1">
-                      <Users className="w-3.5 h-3.5 text-slate-400" />
-                      Staf Khusus Terlibat
-                    </span>
-                    <p className="text-slate-600">
-                      {(detailRecord.targetStaffIds || []).length > 0
-                        ? detailRecord.targetStaffIds
-                            .map((sid) => {
-                              const match = staffList.find((s) => (s.StaffID || s.ID) === sid);
-                              return match ? `${match.Nama} (${sid})` : sid;
-                            })
-                            .join(', ')
-                        : 'Mengikut audiens / jabatan sasaran'}
-                    </p>
+                    {hasTargetStaff && (
+                      <div className="p-3 rounded-2xl border border-slate-200/80 space-y-1">
+                        <span className="font-bold text-slate-700 flex items-center gap-1.5">
+                          <Users className="w-3.5 h-3.5 text-slate-400" />
+                          Staf Khusus Terlibat
+                        </span>
+                        <p className="text-slate-600 break-words">
+                          {detailTargetStaff.join(', ')}
+                        </p>
+                      </div>
+                    )}
                   </div>
-                </div>
+                )}
 
                 {(detailRecord.attachments || []).length > 0 && (
                   <div className="space-y-1.5">
@@ -1648,6 +1686,130 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
                   placeholder="Contoh: Penghantaran Markah Penilaian Berterusan"
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 font-semibold text-slate-900"
                 />
+              </div>
+
+              <div className="sm:col-span-2 p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-bold text-slate-700">
+                    Penonjolan Tajuk (Kata Kunci Bold — Pilihan)
+                  </span>
+                  {(editingRecord.titleEmphasis || []).length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingRecord({ ...editingRecord, titleEmphasis: [] });
+                        setEditEmphasisError('');
+                      }}
+                      className="text-[11px] font-bold text-slate-500 hover:text-rose-600 cursor-pointer"
+                    >
+                      Kosongkan
+                    </button>
+                  )}
+                </div>
+                {(editingRecord.titleEmphasis || []).length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {(editingRecord.titleEmphasis || []).map((phrase, idx) => {
+                      const matches =
+                        sanitizeTitleEmphasis(editingRecord.title, [phrase], 1).length === 1;
+                      return (
+                        <span
+                          key={`${phrase}_${idx}`}
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-[11px] font-bold ${
+                            matches
+                              ? 'bg-indigo-50 border-indigo-200 text-indigo-800'
+                              : 'bg-amber-50 border-amber-300 text-amber-800'
+                          }`}
+                        >
+                          <span>
+                            {phrase}
+                            {!matches && ' (Tidak sepadan tajuk)'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditingRecord({
+                                ...editingRecord,
+                                titleEmphasis: (editingRecord.titleEmphasis || []).filter(
+                                  (_, i) => i !== idx
+                                ),
+                              })
+                            }
+                            aria-label={`Buang ${phrase}`}
+                            className="hover:text-rose-600 cursor-pointer"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    value={editEmphasisInput}
+                    onChange={(e) => {
+                      setEditEmphasisInput(e.target.value);
+                      if (editEmphasisError) setEditEmphasisError('');
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const raw = editEmphasisInput.trim();
+                        if (!raw) return;
+                        const validated = sanitizeTitleEmphasis(editingRecord.title, [raw], 1);
+                        if (validated.length === 0) {
+                          setEditEmphasisError(
+                            'Frasa mesti wujud tepat dalam tajuk dan tidak meliputi keseluruhan tajuk.'
+                          );
+                          return;
+                        }
+                        setEditingRecord({
+                          ...editingRecord,
+                          titleEmphasis: sanitizeTitleEmphasis(
+                            editingRecord.title,
+                            [...(editingRecord.titleEmphasis || []), validated[0]],
+                            4
+                          ),
+                        });
+                        setEditEmphasisInput('');
+                        setEditEmphasisError('');
+                      }
+                    }}
+                    placeholder="Tambah frasa tepat daripada tajuk..."
+                    className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-[11px]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const raw = editEmphasisInput.trim();
+                      if (!raw) return;
+                      const validated = sanitizeTitleEmphasis(editingRecord.title, [raw], 1);
+                      if (validated.length === 0) {
+                        setEditEmphasisError(
+                          'Frasa mesti wujud tepat dalam tajuk dan tidak meliputi keseluruhan tajuk.'
+                        );
+                        return;
+                      }
+                      setEditingRecord({
+                        ...editingRecord,
+                        titleEmphasis: sanitizeTitleEmphasis(
+                          editingRecord.title,
+                          [...(editingRecord.titleEmphasis || []), validated[0]],
+                          4
+                        ),
+                      });
+                      setEditEmphasisInput('');
+                      setEditEmphasisError('');
+                    }}
+                    className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-indigo-50 text-indigo-700 font-bold text-[11px] cursor-pointer shrink-0"
+                  >
+                    + Tambah
+                  </button>
+                </div>
+                {editEmphasisError && (
+                  <p className="text-[11px] text-rose-600 font-semibold">{editEmphasisError}</p>
+                )}
               </div>
 
               <div>

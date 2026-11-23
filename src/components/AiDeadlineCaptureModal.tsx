@@ -10,6 +10,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   AlertTriangle,
   ArrowRight,
@@ -46,6 +47,8 @@ import {
   formatDeadlineCountdown,
   formatDueDateDisplay,
   formatDueTimeDisplay,
+  sanitizeTitleEmphasis,
+  splitTitleWithEmphasis,
   validateDeadlineCandidate,
 } from '../utils/deadlineStatus';
 import {
@@ -117,6 +120,10 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
   const [expandedEvidenceIds, setExpandedEvidenceIds] = useState<Set<string>>(new Set());
   const [previewingPathUrl, setPreviewingPathUrl] = useState<Record<string, string>>({});
   const [staffSearchTerm, setStaffSearchTerm] = useState<Record<string, string>>({});
+  const [emphasisInput, setEmphasisInput] = useState<Record<string, string>>({});
+  const [emphasisError, setEmphasisError] = useState<Record<string, string>>({});
+  const [editingEmphasisKey, setEditingEmphasisKey] = useState<{ draftId: string; index: number } | null>(null);
+  const [editingEmphasisValue, setEditingEmphasisValue] = useState('');
 
   useEffect(() => {
     if (isOpen) {
@@ -127,6 +134,15 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
       setCopiedExtractedText(false);
     }
   }, [isOpen, initialTab]);
+
+  useEffect(() => {
+    if (!isOpen || typeof document === 'undefined') return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [isOpen]);
 
   // Unique departments from authoritative staff directory
   const availableDepartments = useMemo(() => {
@@ -364,7 +380,10 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
     try {
       setSavingDraftId(draft.id);
       setErrorMsg(null);
-      await updateDeadlineDraftInFirestore(draft.id, draft);
+      const cleanedEmphasis = sanitizeTitleEmphasis(draft.title, draft.titleEmphasis, 4);
+      const nextDraft: DeadlineDraft = { ...draft, titleEmphasis: cleanedEmphasis };
+      updateLocalDraft(draft.id, { titleEmphasis: cleanedEmphasis });
+      await updateDeadlineDraftInFirestore(draft.id, nextDraft);
       setNoticeMsg(`Perubahan draf "${draft.title}" disimpan.`);
     } catch (err: any) {
       setErrorMsg(err?.message || 'Gagal menyimpan perubahan draf.');
@@ -401,8 +420,12 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
     try {
       setIsPublishing(true);
       setErrorMsg(null);
+      const cleanDraft: DeadlineDraft = {
+        ...draft,
+        titleEmphasis: sanitizeTitleEmphasis(draft.title, draft.titleEmphasis, 4),
+      };
       const res = await publishApprovedDrafts({
-        drafts: [draft],
+        drafts: [cleanDraft],
         existingDeadlines,
         adminEmail,
       });
@@ -448,8 +471,12 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
     try {
       setIsPublishing(true);
       setErrorMsg(null);
+      const cleanSelectedDrafts = selectedDraftsToPublish.map((d) => ({
+        ...d,
+        titleEmphasis: sanitizeTitleEmphasis(d.title, d.titleEmphasis, 4),
+      }));
       const res = await publishApprovedDrafts({
-        drafts: selectedDraftsToPublish,
+        drafts: cleanSelectedDrafts,
         existingDeadlines,
         adminEmail,
       });
@@ -489,17 +516,24 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
     }
   };
 
-  if (!isOpen) return null;
+  if (!isOpen || typeof document === 'undefined') return null;
 
   const currentStep = isExtracting ? 2 : activeTab === 'queue' ? 3 : 1;
 
-  return (
+  const canRetryAnalyze =
+    !isExtracting &&
+    ((activeTab === 'paste' && pastedText.trim().length > 0) ||
+      (ENABLE_IMAGE_PDF_UPLOAD &&
+        activeTab === 'upload' &&
+        (selectedFiles.length > 0 || uploadContextNote.trim().length > 0)));
+
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 bg-slate-950/65 backdrop-blur-sm flex items-center justify-center p-2.5 sm:p-5 overflow-y-auto"
+      className="fixed inset-0 z-[200] bg-slate-950/65 backdrop-blur-sm flex items-center justify-center p-2.5 sm:p-5 pt-[max(0.625rem,env(safe-area-inset-top))] pb-[max(0.625rem,env(safe-area-inset-bottom))] overflow-y-auto"
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-5xl bg-white rounded-3xl shadow-2xl border border-slate-200/80 max-h-[94vh] flex flex-col overflow-hidden text-left"
+        className="relative w-full max-w-5xl bg-white rounded-3xl shadow-2xl border border-slate-200/80 max-h-[94dvh] flex flex-col overflow-hidden text-left"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -623,16 +657,28 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
               <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold flex items-start justify-between gap-2.5">
                 <div className="flex items-start gap-2 min-w-0 flex-1">
                   <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                  <span className="break-words leading-relaxed">{errorMsg}</span>
+                  <span className="min-w-0 break-words leading-relaxed">{errorMsg}</span>
                 </div>
-                <button
-                  type="button"
-                  aria-label="Tutup ralat"
-                  onClick={() => setErrorMsg(null)}
-                  className="p-0.5 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-100/70 cursor-pointer shrink-0"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {canRetryAnalyze && (
+                    <button
+                      type="button"
+                      onClick={handleAnalyzeWithAi}
+                      className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1"
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      <span>Cuba Semula</span>
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    aria-label="Tutup ralat"
+                    onClick={() => setErrorMsg(null)}
+                    className="p-0.5 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-100/70 cursor-pointer shrink-0"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
             )}
             {noticeMsg && (
@@ -1099,8 +1145,22 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
                                   Keyakinan AI: {Math.round((draft.confidence?.overall ?? 0) * 100)}%
                                 </span>
                               </div>
-                              <h4 className="text-sm font-extrabold text-slate-900 truncate">
-                                {draft.title || 'Draf Tanpa Tajuk'}
+                              <h4
+                                className={`text-sm ${
+                                  splitTitleWithEmphasis(draft.title || '', draft.titleEmphasis).some((s) => s.emphasized)
+                                    ? 'font-normal'
+                                    : 'font-extrabold'
+                                } text-slate-900 truncate`}
+                              >
+                                {splitTitleWithEmphasis(draft.title || 'Draf Tanpa Tajuk', draft.titleEmphasis).map((seg, segIdx) =>
+                                  seg.emphasized ? (
+                                    <strong key={segIdx} className="font-extrabold text-slate-950">
+                                      {seg.text}
+                                    </strong>
+                                  ) : (
+                                    <React.Fragment key={segIdx}>{seg.text}</React.Fragment>
+                                  )
+                                )}
                               </h4>
                             </div>
                           </div>
@@ -1370,6 +1430,270 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
                                   </option>
                                 ))}
                               </select>
+                            </div>
+
+                            {/* AI Title Emphasis Review & Editor */}
+                            <div className="md:col-span-12 p-3 rounded-xl bg-slate-50/80 border border-slate-200/80 space-y-2.5">
+                              <div className="flex items-center justify-between gap-2 flex-wrap">
+                                <div className="flex items-center gap-1.5">
+                                  <Sparkles className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                                  <span className="font-bold text-slate-700">
+                                    Penonjolan Tajuk (Kata Kunci Bold)
+                                  </span>
+                                </div>
+                                {(draft.titleEmphasis || []).length > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      updateLocalDraft(draft.id, { titleEmphasis: [] });
+                                      setEditingEmphasisKey(null);
+                                      setEmphasisError((prev) => ({ ...prev, [draft.id]: '' }));
+                                    }}
+                                    className="text-[11px] font-bold text-slate-500 hover:text-rose-600 cursor-pointer"
+                                  >
+                                    Kosongkan Semua
+                                  </button>
+                                )}
+                              </div>
+
+                              {/* Live Public Title Preview */}
+                              <div className="px-3 py-2 rounded-lg bg-white border border-slate-200/80 text-xs sm:text-[13px] text-slate-900 leading-snug break-words">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mr-2">
+                                  Pratonton:
+                                </span>
+                                <span
+                                  className={
+                                    splitTitleWithEmphasis(draft.title || '', draft.titleEmphasis).some((s) => s.emphasized)
+                                      ? 'font-normal'
+                                      : 'font-bold'
+                                  }
+                                >
+                                  {splitTitleWithEmphasis(draft.title || 'Draf Tanpa Tajuk', draft.titleEmphasis).map((seg, segIdx) =>
+                                    seg.emphasized ? (
+                                      <strong key={segIdx} className="font-bold text-slate-950">
+                                        {seg.text}
+                                      </strong>
+                                    ) : (
+                                      <React.Fragment key={segIdx}>{seg.text}</React.Fragment>
+                                    )
+                                  )}
+                                </span>
+                              </div>
+
+                              {/* Approved / Suggested Emphasis Chips */}
+                              {(draft.titleEmphasis || []).length > 0 && (
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  {(draft.titleEmphasis || []).map((phrase, phraseIdx) => {
+                                    const isExactInTitle = Boolean(phrase && draft.title.includes(phrase));
+                                    const isValidHighlight =
+                                      isExactInTitle &&
+                                      sanitizeTitleEmphasis(draft.title, [phrase], 1).length === 1;
+                                    const isEditingThis =
+                                      editingEmphasisKey?.draftId === draft.id &&
+                                      editingEmphasisKey?.index === phraseIdx;
+
+                                    if (isEditingThis) {
+                                      return (
+                                        <div
+                                          key={`${phrase}_${phraseIdx}`}
+                                          className="inline-flex items-center gap-1 bg-white border border-indigo-300 rounded-lg px-2 py-1"
+                                        >
+                                          <input
+                                            type="text"
+                                            value={editingEmphasisValue}
+                                            onChange={(e) => setEditingEmphasisValue(e.target.value)}
+                                            onKeyDown={(e) => {
+                                              if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                const candidate = editingEmphasisValue.trim();
+                                                const validated = sanitizeTitleEmphasis(draft.title, [candidate], 1);
+                                                if (!candidate) {
+                                                  const next = (draft.titleEmphasis || []).filter((_, i) => i !== phraseIdx);
+                                                  updateLocalDraft(draft.id, { titleEmphasis: next });
+                                                  setEditingEmphasisKey(null);
+                                                  setEmphasisError((prev) => ({ ...prev, [draft.id]: '' }));
+                                                  return;
+                                                }
+                                                if (validated.length === 0) {
+                                                  setEmphasisError((prev) => ({
+                                                    ...prev,
+                                                    [draft.id]: 'Frasa mesti wujud tepat dalam tajuk dan tidak meliputi keseluruhan tajuk.',
+                                                  }));
+                                                  return;
+                                                }
+                                                const nextList = [...(draft.titleEmphasis || [])];
+                                                nextList[phraseIdx] = validated[0];
+                                                updateLocalDraft(draft.id, {
+                                                  titleEmphasis: sanitizeTitleEmphasis(draft.title, nextList, 4),
+                                                });
+                                                setEditingEmphasisKey(null);
+                                                setEmphasisError((prev) => ({ ...prev, [draft.id]: '' }));
+                                              } else if (e.key === 'Escape') {
+                                                setEditingEmphasisKey(null);
+                                                setEmphasisError((prev) => ({ ...prev, [draft.id]: '' }));
+                                              }
+                                            }}
+                                            className="w-40 sm:w-52 text-[11px] font-semibold text-slate-900 focus:outline-none"
+                                            aria-label="Sunting frasa penonjolan tajuk"
+                                            autoFocus
+                                          />
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              const candidate = editingEmphasisValue.trim();
+                                              const validated = sanitizeTitleEmphasis(draft.title, [candidate], 1);
+                                              if (!candidate) {
+                                                const next = (draft.titleEmphasis || []).filter((_, i) => i !== phraseIdx);
+                                                updateLocalDraft(draft.id, { titleEmphasis: next });
+                                                setEditingEmphasisKey(null);
+                                                setEmphasisError((prev) => ({ ...prev, [draft.id]: '' }));
+                                                return;
+                                              }
+                                              if (validated.length === 0) {
+                                                setEmphasisError((prev) => ({
+                                                  ...prev,
+                                                  [draft.id]: 'Frasa mesti wujud tepat dalam tajuk dan tidak meliputi keseluruhan tajuk.',
+                                                }));
+                                                return;
+                                              }
+                                              const nextList = [...(draft.titleEmphasis || [])];
+                                              nextList[phraseIdx] = validated[0];
+                                              updateLocalDraft(draft.id, {
+                                                titleEmphasis: sanitizeTitleEmphasis(draft.title, nextList, 4),
+                                              });
+                                              setEditingEmphasisKey(null);
+                                              setEmphasisError((prev) => ({ ...prev, [draft.id]: '' }));
+                                            }}
+                                            className="text-emerald-600 hover:text-emerald-800 cursor-pointer p-0.5"
+                                            aria-label="Simpan frasa"
+                                          >
+                                            <Check className="w-3.5 h-3.5" />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setEditingEmphasisKey(null);
+                                              setEmphasisError((prev) => ({ ...prev, [draft.id]: '' }));
+                                            }}
+                                            className="text-slate-400 hover:text-slate-600 cursor-pointer p-0.5"
+                                            aria-label="Batal sunting frasa"
+                                          >
+                                            <X className="w-3.5 h-3.5" />
+                                          </button>
+                                        </div>
+                                      );
+                                    }
+
+                                    return (
+                                      <span
+                                        key={`${phrase}_${phraseIdx}`}
+                                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-bold ${
+                                          isValidHighlight
+                                            ? 'bg-indigo-50 border-indigo-200 text-indigo-900'
+                                            : 'bg-amber-50 border-amber-300 text-amber-800'
+                                        }`}
+                                      >
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setEditingEmphasisKey({ draftId: draft.id, index: phraseIdx });
+                                            setEditingEmphasisValue(phrase);
+                                            setEmphasisError((prev) => ({ ...prev, [draft.id]: '' }));
+                                          }}
+                                          title="Klik untuk sunting frasa"
+                                          className="cursor-pointer hover:underline text-left"
+                                        >
+                                          {phrase}
+                                          {!isValidHighlight && ' (Tidak sepadan tajuk)'}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const next = (draft.titleEmphasis || []).filter((_, i) => i !== phraseIdx);
+                                            updateLocalDraft(draft.id, { titleEmphasis: next });
+                                            setEmphasisError((prev) => ({ ...prev, [draft.id]: '' }));
+                                          }}
+                                          aria-label={`Buang frasa ${phrase}`}
+                                          className="text-slate-400 hover:text-rose-600 cursor-pointer"
+                                        >
+                                          <X className="w-3 h-3" />
+                                        </button>
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              )}
+
+                              {/* Add New Exact Phrase */}
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="text"
+                                  value={emphasisInput[draft.id] || ''}
+                                  onChange={(e) => {
+                                    setEmphasisInput((prev) => ({ ...prev, [draft.id]: e.target.value }));
+                                    if (emphasisError[draft.id]) {
+                                      setEmphasisError((prev) => ({ ...prev, [draft.id]: '' }));
+                                    }
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      const raw = (emphasisInput[draft.id] || '').trim();
+                                      if (!raw) return;
+                                      const validated = sanitizeTitleEmphasis(draft.title, [raw], 1);
+                                      if (validated.length === 0) {
+                                        setEmphasisError((prev) => ({
+                                          ...prev,
+                                          [draft.id]: 'Frasa mesti wujud tepat dalam tajuk di atas dan tidak meliputi keseluruhan tajuk.',
+                                        }));
+                                        return;
+                                      }
+                                      const merged = sanitizeTitleEmphasis(
+                                        draft.title,
+                                        [...(draft.titleEmphasis || []), validated[0]],
+                                        4
+                                      );
+                                      updateLocalDraft(draft.id, { titleEmphasis: merged });
+                                      setEmphasisInput((prev) => ({ ...prev, [draft.id]: '' }));
+                                      setEmphasisError((prev) => ({ ...prev, [draft.id]: '' }));
+                                    }
+                                  }}
+                                  placeholder="Tambah frasa tepat daripada tajuk untuk diboldkan (cth: Data IKD)..."
+                                  className="flex-1 min-w-0 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-[11px] text-slate-800"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const raw = (emphasisInput[draft.id] || '').trim();
+                                    if (!raw) return;
+                                    const validated = sanitizeTitleEmphasis(draft.title, [raw], 1);
+                                    if (validated.length === 0) {
+                                      setEmphasisError((prev) => ({
+                                        ...prev,
+                                        [draft.id]: 'Frasa mesti wujud tepat dalam tajuk di atas dan tidak meliputi keseluruhan tajuk.',
+                                      }));
+                                      return;
+                                    }
+                                    const merged = sanitizeTitleEmphasis(
+                                      draft.title,
+                                      [...(draft.titleEmphasis || []), validated[0]],
+                                      4
+                                    );
+                                    updateLocalDraft(draft.id, { titleEmphasis: merged });
+                                    setEmphasisInput((prev) => ({ ...prev, [draft.id]: '' }));
+                                    setEmphasisError((prev) => ({ ...prev, [draft.id]: '' }));
+                                  }}
+                                  className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-indigo-50 text-indigo-700 text-[11px] font-bold inline-flex items-center gap-1 cursor-pointer shrink-0"
+                                >
+                                  <Plus className="w-3 h-3" />
+                                  <span>Tambah</span>
+                                </button>
+                              </div>
+                              {emphasisError[draft.id] && (
+                                <p className="text-[11px] text-rose-600 font-semibold">
+                                  {emphasisError[draft.id]}
+                                </p>
+                              )}
                             </div>
 
                             <div className="md:col-span-4">
@@ -1792,6 +2116,7 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

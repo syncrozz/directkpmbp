@@ -143,7 +143,7 @@ service cloud.firestore {
           'createdAt', 'createdBy', 'updatedAt', 'updatedBy'
         ])
         && data.keys().hasOnly([
-          'id', 'title', 'description', 'requiredAction', 'category',
+          'id', 'title', 'titleEmphasis', 'description', 'requiredAction', 'category',
           'targetAudience', 'targetDepartments', 'targetStaffIds',
           'dueDate', 'dueTime', 'timezone', 'actionUrl', 'actionLabel',
           'attachments', 'instructions', 'status', 'isPublished',
@@ -156,6 +156,7 @@ service cloud.firestore {
         && data.title is string
         && data.title.size() >= 1
         && data.title.size() <= 200
+        && (!('titleEmphasis' in data) || isValidStringList(data.titleEmphasis, 4, 120))
         && (!('description' in data) || (data.description is string && data.description.size() <= 2000))
         && (!('requiredAction' in data) || (data.requiredAction is string && data.requiredAction.size() <= 500))
         && isValidDeadlineCategory(data.category)
@@ -194,7 +195,7 @@ service cloud.firestore {
         ])
         && data.keys().hasOnly([
           'id', 'submissionBatchId', 'sourceType', 'sourceEvidence',
-          'title', 'description', 'requiredAction', 'category',
+          'title', 'titleEmphasis', 'description', 'requiredAction', 'category',
           'targetAudience', 'targetDepartments', 'targetStaffIds',
           'dueDate', 'dueTime', 'timezone', 'announcementDate',
           'actionUrl', 'actionLabel', 'attachments', 'instructions',
@@ -210,6 +211,7 @@ service cloud.firestore {
         && isValidDeadlineSourceType(data.sourceType)
         && (!('sourceEvidence' in data) || data.sourceEvidence is map)
         && data.title is string && data.title.size() <= 200
+        && (!('titleEmphasis' in data) || isValidStringList(data.titleEmphasis, 4, 120))
         && (!('description' in data) || (data.description is string && data.description.size() <= 2000))
         && (!('requiredAction' in data) || (data.requiredAction is string && data.requiredAction.size() <= 500))
         && isValidDeadlineCategory(data.category)
@@ -364,7 +366,7 @@ service cloud.firestore {
         && request.resource.data.createdAt == resource.data.createdAt
         && request.resource.data.createdBy == resource.data.createdBy
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'title', 'description', 'requiredAction', 'category',
+          'title', 'titleEmphasis', 'description', 'requiredAction', 'category',
           'targetAudience', 'targetDepartments', 'targetStaffIds',
           'dueDate', 'dueTime', 'timezone', 'actionUrl', 'actionLabel',
           'attachments', 'instructions', 'status', 'isPublished',
@@ -388,7 +390,7 @@ service cloud.firestore {
         && request.resource.data.createdAt == resource.data.createdAt
         && request.resource.data.createdBy == resource.data.createdBy
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'title', 'description', 'requiredAction', 'category',
+          'title', 'titleEmphasis', 'description', 'requiredAction', 'category',
           'targetAudience', 'targetDepartments', 'targetStaffIds',
           'dueDate', 'dueTime', 'timezone', 'announcementDate',
           'actionUrl', 'actionLabel', 'attachments', 'instructions',

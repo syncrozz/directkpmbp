@@ -26,9 +26,11 @@ import {
   getKualaLumpurNowParts,
   isValid24HourTime,
   isValidIsoDate,
+  sanitizeTitleEmphasis,
 } from '../utils/deadlineStatus.ts';
 
 const GEMINI_MODEL = 'gemini-4-hydrogen';
+const GEMINI_FALLBACK_MODEL = 'gemini-3.1-flash-lite';
 const MAX_FILES_PER_REQUEST = 5;
 const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB per file
 const MAX_TOTAL_BYTES = 20 * 1024 * 1024; // 20 MB total upload
@@ -65,6 +67,7 @@ export interface ExtractDeadlineRequestPayload {
 
 export interface ExtractedDeadlineCandidate {
   title: string;
+  titleEmphasis: string[];
   description: string;
   requiredAction: string;
   category: DeadlineCategory;
@@ -129,6 +132,124 @@ function getGeminiClient(): GoogleGenAI {
       },
     },
   });
+}
+
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function extractReadableUpstreamError(err: any): { status: number; message: string } {
+  const rawMessage = String(err?.message || err || '').trim();
+  let status = Number(err?.status || err?.code || 0);
+  let cleanMessage = rawMessage;
+
+  if (rawMessage.startsWith('{') && rawMessage.endsWith('}')) {
+    try {
+      const parsed = JSON.parse(rawMessage);
+      const inner = parsed?.error || parsed;
+      if (!status && inner?.code) status = Number(inner.code) || 0;
+      if (typeof inner?.message === 'string' && inner.message.trim()) {
+        cleanMessage = inner.message.trim();
+      }
+    } catch {
+      // Keep rawMessage fallback
+    }
+  } else {
+    const embeddedJsonMatch = rawMessage.match(/\{[\s\S]*"error"[\s\S]*\}/);
+    if (embeddedJsonMatch) {
+      try {
+        const parsed = JSON.parse(embeddedJsonMatch[0]);
+        const inner = parsed?.error || parsed;
+        if (!status && inner?.code) status = Number(inner.code) || 0;
+        if (typeof inner?.message === 'string' && inner.message.trim()) {
+          cleanMessage = inner.message.trim();
+        }
+      } catch {
+        // Ignore parse failure
+      }
+    }
+  }
+
+  return { status: status || 502, message: cleanMessage };
+}
+
+function isAuthOrConfigGeminiError(err: any): boolean {
+  const { status, message } = extractReadableUpstreamError(err);
+  const lower = message.toLowerCase();
+  return (
+    status === 401 ||
+    status === 403 ||
+    lower.includes('api key') ||
+    lower.includes('permission_denied') ||
+    lower.includes('unauthenticated')
+  );
+}
+
+function isTransientGeminiError(err: any): boolean {
+  if (isAuthOrConfigGeminiError(err)) return false;
+  const { status, message } = extractReadableUpstreamError(err);
+  const lower = message.toLowerCase();
+  if (status === 429 || status === 500 || status === 502 || status === 503 || status === 504) {
+    return true;
+  }
+  return (
+    lower.includes('unavailable') ||
+    lower.includes('high demand') ||
+    lower.includes('overloaded') ||
+    lower.includes('resource_exhausted') ||
+    lower.includes('temporarily') ||
+    lower.includes('timeout') ||
+    lower.includes('etimedout') ||
+    lower.includes('econnreset') ||
+    lower.includes('socket hang up') ||
+    lower.includes('fetch failed')
+  );
+}
+
+function toFriendlyDeadlineAiError(err: any): DeadlineAiError {
+  if (err instanceof DeadlineAiError) return err;
+  const { status, message } = extractReadableUpstreamError(err);
+  const lower = message.toLowerCase();
+
+  if (isAuthOrConfigGeminiError(err)) {
+    return new DeadlineAiError(
+      'GEMINI_AUTH_ERROR',
+      'Akses ke perkhidmatan AI Gemini gagal (kunci API tidak sah atau tiada kebenaran).',
+      503
+    );
+  }
+  if (status === 429 || lower.includes('resource_exhausted') || lower.includes('quota')) {
+    return new DeadlineAiError(
+      'GEMINI_RATE_LIMIT',
+      'Had permintaan AI Gemini telah dicapai buat sementara waktu. Sila cuba sebentar lagi.',
+      429
+    );
+  }
+  if (
+    status === 503 ||
+    lower.includes('unavailable') ||
+    lower.includes('high demand') ||
+    lower.includes('overloaded')
+  ) {
+    return new DeadlineAiError(
+      'GEMINI_UNAVAILABLE',
+      'Pelayan AI Gemini sedang mengalami trafik tinggi buat sementara waktu. Sila cuba sebentar lagi.',
+      503
+    );
+  }
+  if (status === 504 || lower.includes('timeout') || lower.includes('etimedout')) {
+    return new DeadlineAiError(
+      'GEMINI_TIMEOUT',
+      'Sambungan ke pelayan AI Gemini melebihi had masa. Sila cuba sebentar lagi.',
+      504
+    );
+  }
+
+  return new DeadlineAiError(
+    'GEMINI_REQUEST_FAILED',
+    `Perkhidmatan AI Gemini tidak dapat memproses permintaan buat masa ini. Sila cuba semula sebentar lagi.`,
+    502
+  );
 }
 
 function clampConfidence(val: unknown, fallback = 0.5): number {
@@ -220,6 +341,12 @@ const RESPONSE_SCHEMA = {
         type: Type.OBJECT,
         properties: {
           title: { type: Type.STRING },
+          titleEmphasis: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING },
+            description:
+              '1 hingga 2 frasa tepat daripada "title" yang mewakili tujuan utama pengumuman (nama dokumen, program, aktiviti penghantaran/penilaian atau subjek utama). Jangan reka frasa yang tiada dalam "title" dan jangan masukkan keseluruhan tajuk. Pulangkan [] jika tiada frasa sesuai.',
+          },
           description: { type: Type.STRING },
           requiredAction: { type: Type.STRING },
           category: {
@@ -302,6 +429,7 @@ const RESPONSE_SCHEMA = {
         },
         required: [
           'title',
+          'titleEmphasis',
           'description',
           'requiredAction',
           'category',
@@ -514,6 +642,13 @@ ${compactStaff.slice(0, 90).join('\n') || '(Tiada senarai staf dibekalkan)'}
    - Jika rekod baharu kelihatan seperti lanjutan masa, pindaan tarikh, atau hebahan susulan bagi rekod sedia ada (cth: program/pertandingan/tindakan/URL yang sama), tetapkan duplicateAnalysis.matchedExistingId kepada ID rekod tersebut, similarityLevel kepada "high" atau "possible", dan recommendation kepada "update_existing" (atau "ignore" jika tarikh, masa dan kandungannya hampir sama tepat).
    - Senarai rekod sedia ada:
 ${JSON.stringify(compactExisting)}
+7. Penonjolan Tajuk Utama ("titleEmphasis"):
+   - Kenal pasti 1 atau 2 frasa utama daripada medan "title" yang menggambarkan tujuan teras pengumuman (utamakan nama dokumen, nama program, aktiviti penghantaran, jenis penilaian atau pengecam subjek penting).
+   - Contoh: Jika title = "Penghantaran Skrip Jawapan Pelajar & Persediaan Data IKD Sesi 2 2026 ke Bilik UPP", titleEmphasis = ["Penghantaran Skrip Jawapan", "Data IKD"].
+   - Contoh lain: "SKiN 2026", "Penghantaran Scoresheet", "Kertas Kerja Cadangan (ASK)".
+   - Kekalkan tajuk asal secara tepat dalam "title". Setiap frasa dalam "titleEmphasis" MESTI sepadan tepat (exact substring) seperti yang terdapat dalam "title".
+   - Jangan jana frasa yang tidak wujud dalam "title", jangan tebalkan keseluruhan tajuk, dan elakkan perkataan generik (cth: "Makluman", "Perhatian", "Semua Pensyarah", "Sesi 2 2026", "ke Bilik").
+   - Jika tiada frasa bermakna dapat dikenal pasti, pulangkan tatasusunan kosong [].
 ${validated.pastedText ? `\nTEKS SUMBER YANG DITAMPAL:\n"""\n${validated.pastedText}\n"""` : ''}`;
 
     const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [];
@@ -527,38 +662,44 @@ ${validated.pastedText ? `\nTEKS SUMBER YANG DITAMPAL:\n"""\n${validated.pastedT
     }
     parts.push({ text: promptText });
 
+    const modelAttempts: Array<{ model: string; delayBeforeMs: number }> = [
+      { model: GEMINI_MODEL, delayBeforeMs: 0 },
+      { model: GEMINI_MODEL, delayBeforeMs: 900 },
+      { model: GEMINI_FALLBACK_MODEL, delayBeforeMs: 300 },
+    ];
+
     let response;
-    try {
-      response = await ai.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: [{ role: 'user', parts }],
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: RESPONSE_SCHEMA,
-        },
-      });
-    } catch (apiErr: any) {
-      const msg = String(apiErr?.message || apiErr || '');
-      const status = Number(apiErr?.status || apiErr?.code || 502);
-      if (msg.includes('API key') || msg.includes('PERMISSION_DENIED') || status === 401 || status === 403) {
-        throw new DeadlineAiError(
-          'GEMINI_AUTH_ERROR',
-          'Akses ke perkhidmatan AI Gemini gagal (kunci API tidak sah atau tiada kebenaran).',
-          503
-        );
+    let usedModel = GEMINI_MODEL;
+    let lastError: any = null;
+
+    for (let i = 0; i < modelAttempts.length; i++) {
+      const attempt = modelAttempts[i];
+      if (attempt.delayBeforeMs > 0) {
+        await sleepMs(attempt.delayBeforeMs);
       }
-      if (msg.includes('RESOURCE_EXHAUSTED') || msg.includes('429') || status === 429) {
-        throw new DeadlineAiError(
-          'GEMINI_RATE_LIMIT',
-          'Had permintaan AI Gemini telah dicapai buat sementara waktu. Sila cuba sebentar lagi.',
-          429
-        );
+      try {
+        response = await ai.models.generateContent({
+          model: attempt.model,
+          contents: [{ role: 'user', parts }],
+          config: {
+            responseMimeType: 'application/json',
+            responseSchema: RESPONSE_SCHEMA,
+          },
+        });
+        usedModel = attempt.model;
+        lastError = null;
+        break;
+      } catch (apiErr: any) {
+        lastError = apiErr;
+        const canRetry = i < modelAttempts.length - 1 && isTransientGeminiError(apiErr);
+        if (!canRetry) {
+          throw toFriendlyDeadlineAiError(apiErr);
+        }
       }
-      throw new DeadlineAiError(
-        'GEMINI_REQUEST_FAILED',
-        `Ralat pelayan AI Gemini semasa menganalisis sumber: ${msg.slice(0, 220)}`,
-        502
-      );
+    }
+
+    if (lastError && !response) {
+      throw toFriendlyDeadlineAiError(lastError);
     }
 
     const rawText = (response?.text || '').trim();
@@ -598,6 +739,7 @@ ${validated.pastedText ? `\nTEKS SUMBER YANG DITAMPAL:\n"""\n${validated.pastedT
 
     const extractedDeadlines: ExtractedDeadlineCandidate[] = rawItems.map((raw: any) => {
       const title = String(raw?.title || '').trim().slice(0, 200) || 'Tarikh Akhir Tanpa Tajuk';
+      const titleEmphasis = sanitizeTitleEmphasis(title, raw?.titleEmphasis, 2);
       const description = String(raw?.description || '').trim().slice(0, 2000);
       const requiredAction = String(raw?.requiredAction || '').trim().slice(0, 500);
       const category = normalizeCategory(raw?.category);
@@ -712,6 +854,7 @@ ${validated.pastedText ? `\nTEKS SUMBER YANG DITAMPAL:\n"""\n${validated.pastedT
 
       return {
         title,
+        titleEmphasis,
         description,
         requiredAction,
         category,
@@ -769,6 +912,7 @@ ${validated.pastedText ? `\nTEKS SUMBER YANG DITAMPAL:\n"""\n${validated.pastedT
       );
       extractedDeadlines.push({
         title: fallbackTitle,
+        titleEmphasis: [],
         description: extractedText.slice(0, 2000),
         requiredAction: '',
         category: 'Other',
@@ -805,7 +949,7 @@ ${validated.pastedText ? `\nTEKS SUMBER YANG DITAMPAL:\n"""\n${validated.pastedT
       sourceSummary: String(parsedJson?.sourceSummary || '').trim().slice(0, 500) ||
         `${extractedDeadlines.length} tarikh akhir dikesan daripada sumber.`,
       extractedText,
-      model: GEMINI_MODEL,
+      model: usedModel,
       extractedAt: new Date().toISOString(),
       extractedDeadlines,
     };

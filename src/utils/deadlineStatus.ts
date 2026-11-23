@@ -878,3 +878,126 @@ export function extractDeadlineShareTarget(
 
   return { isShortRoute: false, isLegacyQuery: false, deadlineId: null, isInvalid: false };
 }
+
+export interface TitleEmphasisSegment {
+  text: string;
+  emphasized: boolean;
+}
+
+function stripTrailingPunctAndSpace(str: string): string {
+  return str.trim().replace(/[\s.,;:!?]+$/g, '');
+}
+
+/**
+ * Sanitizes candidate titleEmphasis phrases against the exact announcement title.
+ * Rules:
+ * - Preserves only non-empty phrases that exist verbatim inside `title`.
+ * - Rejects phrases that cover the entire title so the whole title is never bolded.
+ * - Removes duplicates and subsumed substrings cleanly.
+ */
+export function sanitizeTitleEmphasis(
+  title: string,
+  phrases?: unknown,
+  maxItems: number = 4
+): string[] {
+  if (!title || !Array.isArray(phrases)) return [];
+  const normalizedTitleCore = stripTrailingPunctAndSpace(title);
+  if (!normalizedTitleCore) return [];
+
+  const exactCandidates: string[] = [];
+  const seenExact = new Set<string>();
+
+  for (const raw of phrases) {
+    const clean = String(raw ?? '').trim().slice(0, 120);
+    if (!clean) continue;
+    if (!title.includes(clean)) continue;
+    if (stripTrailingPunctAndSpace(clean) === normalizedTitleCore) continue;
+    if (seenExact.has(clean)) continue;
+    seenExact.add(clean);
+    exactCandidates.push(clean);
+  }
+
+  // Drop candidates that are strictly contained within another longer candidate
+  const filtered = exactCandidates.filter(
+    (cand) => !exactCandidates.some((other) => other !== cand && other.length > cand.length && other.includes(cand))
+  );
+
+  return filtered.slice(0, maxItems);
+}
+
+/**
+ * Splits `title` into ordered verbatim segments indicating which portions should be bolded.
+ * Always preserves 100% of original wording and punctuation, and refuses to bold the entire title.
+ */
+export function splitTitleWithEmphasis(
+  title: string,
+  phrases?: string[] | null
+): TitleEmphasisSegment[] {
+  if (!title) return [];
+  const validPhrases = sanitizeTitleEmphasis(title, phrases, 6);
+  if (validPhrases.length === 0) {
+    return [{ text: title, emphasized: false }];
+  }
+
+  // Prioritize longer phrases first so overlapping spans prefer the more specific match
+  const sortedPhrases = [...validPhrases].sort((a, b) => b.length - a.length);
+  const occupied = new Array<boolean>(title.length).fill(false);
+  const ranges: Array<{ start: number; end: number }> = [];
+
+  for (const phrase of sortedPhrases) {
+    let searchFrom = 0;
+    while (searchFrom <= title.length - phrase.length) {
+      const idx = title.indexOf(phrase, searchFrom);
+      if (idx === -1) break;
+      const end = idx + phrase.length;
+      let overlaps = false;
+      for (let i = idx; i < end; i++) {
+        if (occupied[i]) {
+          overlaps = true;
+          break;
+        }
+      }
+      if (!overlaps) {
+        for (let i = idx; i < end; i++) {
+          occupied[i] = true;
+        }
+        ranges.push({ start: idx, end });
+      }
+      searchFrom = idx + phrase.length;
+    }
+  }
+
+  if (ranges.length === 0) {
+    return [{ text: title, emphasized: false }];
+  }
+
+  // Never bold the entire title (at least one word/alphanumeric character must stay unemphasized)
+  let hasUnboldedContent = false;
+  for (let i = 0; i < title.length; i++) {
+    if (!occupied[i] && /[a-zA-Z0-9\u00C0-\u024F]/.test(title[i])) {
+      hasUnboldedContent = true;
+      break;
+    }
+  }
+  if (!hasUnboldedContent) {
+    return [{ text: title, emphasized: false }];
+  }
+
+  ranges.sort((a, b) => a.start - b.start);
+
+  const segments: TitleEmphasisSegment[] = [];
+  let cursor = 0;
+  for (const range of ranges) {
+    if (range.start > cursor) {
+      segments.push({ text: title.slice(cursor, range.start), emphasized: false });
+    }
+    segments.push({ text: title.slice(range.start, range.end), emphasized: true });
+    cursor = range.end;
+  }
+  if (cursor < title.length) {
+    segments.push({ text: title.slice(cursor), emphasized: false });
+  }
+
+  return segments;
+}
+
