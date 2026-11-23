@@ -12,7 +12,7 @@
 
 import crypto from 'crypto';
 import { GoogleGenAI, Type } from '@google/genai';
-import {
+import type {
   DeadlineCategory,
   DeadlineConfidence,
   DeadlineDuplicateMatch,

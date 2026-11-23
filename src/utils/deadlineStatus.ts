@@ -6,14 +6,14 @@
  * Authoritative Timezone: Asia/Kuala_Lumpur (UTC+8)
  */
 
-import {
+import type {
   DeadlineCategory,
   DeadlineComputedStatus,
   DeadlineDraft,
   DeadlineDuplicateMatch,
   DeadlineRecord,
   DeadlineStoredStatus,
-} from '../types';
+} from '../types.ts';
 
 export const DEADLINE_TIMEZONE = 'Asia/Kuala_Lumpur' as const;
 
