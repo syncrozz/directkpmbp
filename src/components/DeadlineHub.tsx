@@ -379,7 +379,7 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
               <span className="text-indigo-700 font-semibold">Paparan Warga KPMBP</span>
               <span aria-hidden="true">·</span>
               <span className="font-mono tabular-nums">
-                MYT {klNowParts.dateStr} {klNowParts.timeStr.slice(0, 5)}
+                {klNowParts.dateStr} {klNowParts.timeStr.slice(0, 5)}
               </span>
             </div>
             <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
@@ -918,7 +918,7 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 text-xs">
                   <div>
                     <span className="text-slate-500 font-semibold block">
-                      Tarikh & Masa Akhir (MYT)
+                      Tarikh & Masa Akhir
                     </span>
                     <span className="font-bold text-slate-900 tabular-nums">
                       {formatDueDateDisplay(detailRecord.dueDate)} ·{' '}
@@ -941,7 +941,7 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
                   {detailPublishedDisplay && (
                     <div>
                       <span className="text-slate-500 font-semibold block">
-                        Tarikh Diterbitkan (MYT)
+                        Tarikh Diterbitkan
                       </span>
                       <span className="font-semibold text-slate-800 tabular-nums">
                         {detailPublishedDisplay}
@@ -952,7 +952,7 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
                   {detailUpdatedDisplay && (
                     <div>
                       <span className="text-amber-800 font-semibold block">
-                        Tarikh Dikemas Kini (MYT)
+                        Tarikh Dikemas Kini
                       </span>
                       <span className="font-semibold text-amber-900 tabular-nums">
                         {detailUpdatedDisplay}

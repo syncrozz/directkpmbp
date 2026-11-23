@@ -1431,7 +1431,7 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
 
                             <div className="md:col-span-4 flex flex-col justify-center p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
                               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                                Pratonton Status (MYT)
+                                Pratonton Status
                               </span>
                               {computedPreviewStatus ? (
                                 <>
