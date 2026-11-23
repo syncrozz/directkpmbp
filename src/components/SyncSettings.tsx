@@ -1285,7 +1285,7 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
                         className="py-2 px-3 bg-indigo-50 hover:bg-indigo-100 active:scale-[0.98] border border-indigo-200 text-indigo-900 rounded-xl text-xs font-black shadow-2xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
                       >
                         <FileDown className="w-4 h-4 text-indigo-600 shrink-0" />
-                        <span>Eksport Data Semasa ({totalStaffCount || staffList.length})</span>
+                        <span>Eksport Data Semasa {totalStaffCount || staffList.length}</span>
                       </button>
 
                       <label className="py-2 px-3 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white rounded-xl font-black text-xs shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5">
@@ -1425,7 +1425,7 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
                         className="py-2 px-3 bg-amber-50 hover:bg-amber-100 active:scale-[0.98] border border-amber-300 text-amber-950 rounded-xl text-xs font-black shadow-2xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
                       >
                         <FileDown className="w-4 h-4 text-amber-600 shrink-0" />
-                        <span>Eksport Data Semasa ({totalCommitteeCount || committeeList.length})</span>
+                        <span>Eksport Data Semasa {totalCommitteeCount || committeeList.length}</span>
                       </button>
 
                       <label className="py-2 px-3 bg-amber-500 hover:bg-amber-600 active:scale-[0.98] text-white rounded-xl font-black text-xs shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5">
@@ -1780,7 +1780,7 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
                         {cleanupPreview.targetIds.length > 0 && (
                           <div className="p-3 rounded-xl bg-rose-50/70 border border-rose-200 space-y-1.5">
                             <div className="text-[11px] font-extrabold text-rose-950">
-                              ID Rekod Yang Akan Dipadam ({cleanupPreview.targetIds.length}):
+                              ID Rekod Yang Akan Dipadam {cleanupPreview.targetIds.length}:
                             </div>
                             <div className="flex flex-wrap gap-1.5">
                               {cleanupPreview.targetIds.map((id) => (
@@ -1825,7 +1825,7 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
                     {resetStaffPreview.removedIds.length > 0 && (
                       <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
                         <div className="text-[11px] font-extrabold text-slate-800">
-                          ID Staf Tambahan Yang Akan Dipadam ({resetStaffPreview.removedIds.length}):
+                          ID Staf Tambahan Yang Akan Dipadam {resetStaffPreview.removedIds.length}:
                         </div>
                         <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
                           {resetStaffPreview.removedIds.slice(0, 40).map((id) => (
@@ -1870,7 +1870,7 @@ export const SyncSettings: React.FC<SyncSettingsProps> = ({
                     {resetCommitteePreview.replacedIds.length > 0 && (
                       <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
                         <div className="text-[11px] font-extrabold text-slate-800">
-                          Contoh ID Jawatankuasa Terjejas ({resetCommitteePreview.replacedIds.length}):
+                          Contoh ID Jawatankuasa Terjejas {resetCommitteePreview.replacedIds.length}:
                         </div>
                         <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto">
                           {resetCommitteePreview.replacedIds.slice(0, 20).map((id) => (

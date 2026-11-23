@@ -330,7 +330,7 @@ export const CampusReferenceHub: React.FC<CampusReferenceHubProps> = ({
                 </div>
                 <h3 className="text-xs font-extrabold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
-                  Portal Kolej ({filteredPortals.length})
+                  Portal Kolej {filteredPortals.length}
                 </h3>
 
                 {/* Firestore vs Fallback Data Source Indicator */}

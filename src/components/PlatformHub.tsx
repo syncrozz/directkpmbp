@@ -341,7 +341,7 @@ export const PlatformHub: React.FC<PlatformHubProps> = ({
           </div>
           <h2 className="text-xs font-extrabold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-            Senarai Platform ({filteredPlatforms.length})
+            Senarai Platform {filteredPlatforms.length}
           </h2>
 
           {isAdminMode && syncStatus === 'permission_denied' && (

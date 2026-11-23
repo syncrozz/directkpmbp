@@ -309,7 +309,7 @@ export const LecturerTimetableHub: React.FC<LecturerTimetableHubProps> = ({
           <div className="glass-panel rounded-3xl p-4 md:p-5 border border-white/60 shadow-xs space-y-3">
             <div className="flex items-center justify-between px-1">
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                Senarai Pensyarah ({filteredStaff.length})
+                Senarai Pensyarah {filteredStaff.length}
               </span>
             </div>
 

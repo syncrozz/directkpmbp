@@ -611,7 +611,7 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
               }`}
             >
               <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>Semak Draf ({activePendingDrafts.length})</span>
+              <span>Semak Draf {activePendingDrafts.length}</span>
             </button>
           </div>
         </div>
@@ -926,7 +926,7 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
                 <div className="space-y-0.5">
                   <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="text-xs sm:text-sm font-extrabold text-slate-900">
-                      Draf Menunggu Kelulusan Admin ({displayedDrafts.length})
+                      Draf Menunggu Kelulusan Admin {displayedDrafts.length}
                     </h3>
                     {activeBatchId && (
                       <button
@@ -934,7 +934,7 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
                         onClick={() => setActiveBatchId(null)}
                         className="text-[11px] font-bold text-indigo-600 hover:underline cursor-pointer"
                       >
-                        Papar Semua Draf ({activePendingDrafts.length})
+                        Papar Semua Draf {activePendingDrafts.length}
                       </button>
                     )}
                   </div>
@@ -978,7 +978,7 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
                         <Check className="w-3.5 h-3.5" />
                       )}
                       <span>
-                        Lulus & Terbit Pilihan ({selectedDraftsToPublish.length})
+                        Lulus & Terbit Pilihan {selectedDraftsToPublish.length}
                       </span>
                     </button>
                   </div>
@@ -1592,7 +1592,7 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
                             {/* Target Individual Staff Picker */}
                             <div className="md:col-span-6 space-y-1.5">
                               <label className="block font-bold text-slate-700">
-                                Individu Staf Terlibat ({(draft.targetStaffIds || []).length})
+                                Individu Staf Terlibat {(draft.targetStaffIds || []).length}
                               </label>
                               <input
                                 type="text"
@@ -1668,7 +1668,7 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="font-bold text-slate-600 flex items-center gap-1">
                                   <Paperclip className="w-3.5 h-3.5" />
-                                  Lampiran Sokongan ({(draft.attachments || []).length}):
+                                  Lampiran Sokongan {(draft.attachments || []).length}:
                                 </span>
                                 {(draft.attachments || []).map((att, attIdx) => (
                                   <span

@@ -99,6 +99,68 @@ interface FormState {
   isActive: boolean;
 }
 
+export type NavHierarchyTabKey = 'parents' | 'children' | 'grandchildren' | 'deltas';
+
+export function getNavigationHierarchyDepth(
+  item: Pick<NavigationItem, 'id' | 'parentId'>,
+  allItems: Array<Pick<NavigationItem, 'id' | 'parentId'>>
+): number {
+  const byId = new Map(allItems.map((entry) => [entry.id, entry]));
+  let depth = 1;
+  const visited = new Set<string>([item.id]);
+  let currentParentId = item.parentId;
+
+  while (currentParentId && !visited.has(currentParentId)) {
+    const parent = byId.get(currentParentId);
+    if (!parent) break;
+    visited.add(parent.id);
+    depth += 1;
+    currentParentId = parent.parentId;
+  }
+
+  return depth;
+}
+
+export function formatHierarchyLevelIndicator(depth: number): string | null {
+  if (depth <= 1) return null;
+  return `LEVEL ${depth}`;
+}
+
+export function resolveTierHierarchyLevels(
+  items: NavigationItem[]
+): Record<NavHierarchyTabKey, number> {
+  const tierSpecs: Array<{
+    key: NavHierarchyTabKey;
+    parentKey: NavHierarchyTabKey | null;
+    itemType: NavigationType;
+  }> = [
+    { key: 'parents', parentKey: null, itemType: 'parent' },
+    { key: 'children', parentKey: 'parents', itemType: 'child' },
+    { key: 'grandchildren', parentKey: 'children', itemType: 'grandchild' },
+    { key: 'deltas', parentKey: 'grandchildren', itemType: 'delta' },
+  ];
+
+  const byId = new Map(items.map((entry) => [entry.id, entry]));
+  const depths = {} as Record<NavHierarchyTabKey, number>;
+
+  for (const spec of tierSpecs) {
+    const parentTierDepth = spec.parentKey ? depths[spec.parentKey] : 0;
+    const expectedConnectedDepth = parentTierDepth + 1;
+    const tierItems = items.filter((entry) => entry.type === spec.itemType);
+
+    const connectedDepths = tierItems
+      .filter((entry) => !entry.parentId || byId.has(entry.parentId))
+      .map((entry) => getNavigationHierarchyDepth(entry, items));
+
+    depths[spec.key] =
+      connectedDepths.length > 0
+        ? Math.max(...connectedDepths)
+        : expectedConnectedDepth;
+  }
+
+  return depths;
+}
+
 export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
   isOpen,
   onClose,
@@ -221,6 +283,8 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
       (gc) => gc.displayType === 'empty_page' || (deltasByGrandchild.get(gc.id)?.length || 0) > 0
     );
   }, [grandchildren, deltasByGrandchild]);
+
+  const tierHierarchyLevels = useMemo(() => resolveTierHierarchyLevels(items), [items]);
 
   const contextualBravoItem = useMemo(() => {
     if (initialContext?.mode !== 'contextual-charlie' || !initialContext.bravoParentId) return null;
@@ -1125,111 +1189,119 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                 aria-label="Tahap Hierarki Navigasi"
                 className="flex flex-col gap-1.5 min-w-0 flex-1"
               >
-                {/* Level 1: Alfa — Primary Root Alignment */}
-                <div className="flex items-center min-w-0">
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={activeTab === 'parents'}
-                    data-nav-level="alfa"
-                    onClick={() => setActiveTab('parents')}
-                    className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 max-w-full ${
-                      activeTab === 'parents'
-                        ? 'bg-indigo-600 text-white shadow-xs'
-                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                    }`}
-                  >
-                    <Layers className="w-3.5 h-3.5 shrink-0" />
-                    <span className="truncate">Navigasi Utama ({parents.length})</span>
-                  </button>
-                </div>
+                {(() => {
+                  const hierarchyTiers: Array<{
+                    key: NavHierarchyTabKey;
+                    dataNavLevel: 'alfa' | 'bravo' | 'charlie' | 'delta';
+                    label: string;
+                    indentClass: string;
+                    hasConnector: boolean;
+                    activeButtonClass: string;
+                    activeArrowClass: string;
+                    activeLevelClass: string;
+                    Icon: React.ComponentType<{ className?: string }>;
+                  }> = [
+                    {
+                      key: 'parents',
+                      dataNavLevel: 'alfa',
+                      label: 'Navigasi Utama',
+                      indentClass: '',
+                      hasConnector: false,
+                      activeButtonClass: 'bg-indigo-600 text-white shadow-xs',
+                      activeArrowClass: 'text-indigo-500',
+                      activeLevelClass: 'text-indigo-100',
+                      Icon: Layers,
+                    },
+                    {
+                      key: 'children',
+                      dataNavLevel: 'bravo',
+                      label: 'Navigasi Bravo',
+                      indentClass: 'pl-4 sm:pl-7',
+                      hasConnector: true,
+                      activeButtonClass: 'bg-indigo-600 text-white shadow-xs',
+                      activeArrowClass: 'text-indigo-500',
+                      activeLevelClass: 'text-indigo-100',
+                      Icon: FolderTree,
+                    },
+                    {
+                      key: 'grandchildren',
+                      dataNavLevel: 'charlie',
+                      label: 'Navigasi Charlie',
+                      indentClass: 'pl-8 sm:pl-14',
+                      hasConnector: true,
+                      activeButtonClass: 'bg-violet-600 text-white shadow-xs',
+                      activeArrowClass: 'text-violet-500',
+                      activeLevelClass: 'text-violet-100',
+                      Icon: FileText,
+                    },
+                    {
+                      key: 'deltas',
+                      dataNavLevel: 'delta',
+                      label: 'Navigasi Delta',
+                      indentClass: 'pl-12 sm:pl-20',
+                      hasConnector: true,
+                      activeButtonClass: 'bg-teal-600 text-white shadow-xs',
+                      activeArrowClass: 'text-teal-500',
+                      activeLevelClass: 'text-teal-50',
+                      Icon: FileText,
+                    },
+                  ];
 
-                {/* Level 2: Bravo — Indented Right Relative to Alfa */}
-                <div className="flex items-center pl-4 sm:pl-7 min-w-0">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <span
-                      aria-hidden="true"
-                      className={`inline-flex items-center justify-center shrink-0 transition-colors ${
-                        activeTab === 'children' ? 'text-indigo-500' : 'text-slate-300'
-                      }`}
-                    >
-                      <CornerDownRight className="w-3.5 h-3.5" />
-                    </span>
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={activeTab === 'children'}
-                      data-nav-level="bravo"
-                      onClick={() => setActiveTab('children')}
-                      className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 max-w-full ${
-                        activeTab === 'children'
-                          ? 'bg-indigo-600 text-white shadow-xs'
-                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                      }`}
-                    >
-                      <FolderTree className="w-3.5 h-3.5 shrink-0" />
-                      <span className="truncate">Navigasi Bravo ({children.length})</span>
-                    </button>
-                  </div>
-                </div>
+                  return hierarchyTiers.map((tier) => {
+                    const isActive = activeTab === tier.key;
+                    const depth = tierHierarchyLevels[tier.key];
+                    const levelIndicator = formatHierarchyLevelIndicator(depth);
+                    const TierIcon = tier.Icon;
 
-                {/* Level 3: Charlie — Indented Further Right Relative to Bravo */}
-                <div className="flex items-center pl-8 sm:pl-14 min-w-0">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <span
-                      aria-hidden="true"
-                      className={`inline-flex items-center justify-center shrink-0 transition-colors ${
-                        activeTab === 'grandchildren' ? 'text-violet-500' : 'text-slate-300'
-                      }`}
-                    >
-                      <CornerDownRight className="w-3.5 h-3.5" />
-                    </span>
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={activeTab === 'grandchildren'}
-                      data-nav-level="charlie"
-                      onClick={() => setActiveTab('grandchildren')}
-                      className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 max-w-full ${
-                        activeTab === 'grandchildren'
-                          ? 'bg-violet-600 text-white shadow-xs'
-                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                      }`}
-                    >
-                      <FileText className="w-3.5 h-3.5 shrink-0" />
-                      <span className="truncate">Navigasi Charlie ({grandchildren.length})</span>
-                    </button>
-                  </div>
-                </div>
+                    const tabButton = (
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={isActive}
+                        data-nav-level={tier.dataNavLevel}
+                        onClick={() => setActiveTab(tier.key)}
+                        className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-2 min-w-0 max-w-full ${
+                          isActive
+                            ? tier.activeButtonClass
+                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                        }`}
+                      >
+                        <TierIcon className="w-3.5 h-3.5 shrink-0" />
+                        <span className="truncate">{tier.label}</span>
+                        {levelIndicator && (
+                          <span
+                            data-hierarchy-level={depth}
+                            className={`shrink-0 whitespace-nowrap text-[10px] font-semibold tracking-wide uppercase tabular-nums ${
+                              isActive ? tier.activeLevelClass : 'text-slate-500'
+                            }`}
+                          >
+                            {levelIndicator}
+                          </span>
+                        )}
+                      </button>
+                    );
 
-                {/* Level 4: Delta — Indented Further Right Relative to Charlie */}
-                <div className="flex items-center pl-12 sm:pl-20 min-w-0">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <span
-                      aria-hidden="true"
-                      className={`inline-flex items-center justify-center shrink-0 transition-colors ${
-                        activeTab === 'deltas' ? 'text-teal-500' : 'text-slate-300'
-                      }`}
-                    >
-                      <CornerDownRight className="w-3.5 h-3.5" />
-                    </span>
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={activeTab === 'deltas'}
-                      data-nav-level="delta"
-                      onClick={() => setActiveTab('deltas')}
-                      className={`px-3.5 sm:px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 max-w-full ${
-                        activeTab === 'deltas'
-                          ? 'bg-teal-600 text-white shadow-xs'
-                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                      }`}
-                    >
-                      <FileText className="w-3.5 h-3.5 shrink-0" />
-                      <span className="truncate">Navigasi Delta ({deltas.length})</span>
-                    </button>
-                  </div>
-                </div>
+                    return (
+                      <div key={tier.key} className={`flex items-center min-w-0 ${tier.indentClass}`}>
+                        {tier.hasConnector ? (
+                          <div className="flex items-center gap-1.5 min-w-0 max-w-full">
+                            <span
+                              aria-hidden="true"
+                              className={`inline-flex items-center justify-center shrink-0 transition-colors ${
+                                isActive ? tier.activeArrowClass : 'text-slate-300'
+                              }`}
+                            >
+                              <CornerDownRight className="w-3.5 h-3.5" />
+                            </span>
+                            {tabButton}
+                          </div>
+                        ) : (
+                          tabButton
+                        )}
+                      </div>
+                    );
+                  });
+                })()}
               </div>
 
               <button
@@ -1277,7 +1349,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                           : 'bg-slate-50/80 border-slate-200/50 opacity-70'
                       }`}
                     >
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
                         <div className="flex items-center gap-1 shrink-0">
                           <button
                             type="button"
@@ -1303,9 +1375,9 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                           {renderNavIcon(p.icon, 'w-4 h-4')}
                         </div>
 
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h4 className="font-sans font-extrabold text-slate-900 text-sm">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap min-w-0">
+                            <h4 className="font-sans font-extrabold text-slate-900 text-sm truncate max-w-full">
                               {p.name}
                             </h4>
                             <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200">
@@ -1432,7 +1504,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                                 c.isActive ? 'border-slate-200 shadow-2xs' : 'border-slate-200/50 opacity-60'
                               }`}
                             >
-                              <div className="flex items-center gap-2.5">
+                              <div className="flex items-center gap-2.5 min-w-0">
                                 <div className="flex items-center gap-1 shrink-0">
                                   <button
                                     type="button"
@@ -1458,9 +1530,9 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                                   {renderNavIcon(c.icon, 'w-3.5 h-3.5')}
                                 </div>
 
-                                <div>
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <h5 className="font-sans font-extrabold text-slate-900 text-xs">
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap min-w-0">
+                                    <h5 className="font-sans font-extrabold text-slate-900 text-xs truncate max-w-full">
                                       {c.name}
                                     </h5>
                                     <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-slate-100 text-slate-600">
@@ -1657,7 +1729,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                               gc.isActive ? 'border-slate-200 shadow-2xs' : 'border-slate-200/50 opacity-60'
                             }`}
                           >
-                            <div className="flex items-center gap-2.5">
+                            <div className="flex items-center gap-2.5 min-w-0">
                               <div className="flex items-center gap-1 shrink-0">
                                 <button
                                   type="button"
@@ -1683,9 +1755,9 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                                 {renderNavIcon(gc.icon, 'w-3.5 h-3.5')}
                               </div>
 
-                              <div>
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <h5 className="font-sans font-extrabold text-slate-900 text-xs">
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap min-w-0">
+                                  <h5 className="font-sans font-extrabold text-slate-900 text-xs truncate max-w-full">
                                     {gc.name}
                                   </h5>
                                   <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-slate-100 text-slate-600">
@@ -1890,7 +1962,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                               d.isActive ? 'border-slate-200 shadow-2xs' : 'border-slate-200/50 opacity-60'
                             }`}
                           >
-                            <div className="flex items-center gap-2.5">
+                            <div className="flex items-center gap-2.5 min-w-0">
                               <div className="flex items-center gap-1 shrink-0">
                                 <button
                                   type="button"
@@ -1916,9 +1988,9 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                                 {renderNavIcon(d.icon, 'w-3.5 h-3.5')}
                               </div>
 
-                              <div>
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <h5 className="font-sans font-extrabold text-slate-900 text-xs">
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap min-w-0">
+                                  <h5 className="font-sans font-extrabold text-slate-900 text-xs truncate max-w-full">
                                     {d.name}
                                   </h5>
                                   <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-slate-100 text-slate-600">

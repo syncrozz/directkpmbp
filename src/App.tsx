@@ -1340,7 +1340,7 @@ export default function App() {
                 <div>
                   <h2 className="text-[11px] font-extrabold text-slate-400 uppercase tracking-widest flex items-center gap-2">
                     <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
-                    Senarai Kakitangan & Pensyarah ({filteredStaff.length})
+                    Senarai Kakitangan & Pensyarah {filteredStaff.length}
                   </h2>
                 </div>
               </div>

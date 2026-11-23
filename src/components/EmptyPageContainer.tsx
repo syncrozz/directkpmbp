@@ -738,7 +738,7 @@ export const EmptyPageContainer: React.FC<EmptyPageContainerProps> = ({
               {activeGroupCount > 1 && (
                 <h3 className="text-xs font-extrabold text-slate-600 uppercase tracking-wider flex items-center gap-2 px-1">
                   <FolderTree className="w-3.5 h-3.5 text-amber-600" />
-                  <span>Bekas Kandungan ({containerEntries.length})</span>
+                  <span>Bekas Kandungan {containerEntries.length}</span>
                 </h3>
               )}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4 items-stretch">
@@ -755,7 +755,7 @@ export const EmptyPageContainer: React.FC<EmptyPageContainerProps> = ({
               {activeGroupCount > 1 && (
                 <h3 className="text-xs font-extrabold text-slate-600 uppercase tracking-wider flex items-center gap-2 px-1">
                   <FileText className="w-3.5 h-3.5 text-rose-600" />
-                  <span>Dokumen PDF ({pdfEntries.length})</span>
+                  <span>Dokumen PDF {pdfEntries.length}</span>
                 </h3>
               )}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch">
@@ -770,7 +770,7 @@ export const EmptyPageContainer: React.FC<EmptyPageContainerProps> = ({
               {activeGroupCount > 1 && (
                 <h3 className="text-xs font-extrabold text-slate-600 uppercase tracking-wider flex items-center gap-2 px-1">
                   <Layers className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>Pautan Luar &amp; Modul ({linkAndModuleEntries.length})</span>
+                  <span>Pautan Luar &amp; Modul {linkAndModuleEntries.length}</span>
                 </h3>
               )}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4 items-stretch">
