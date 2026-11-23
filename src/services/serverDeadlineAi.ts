@@ -736,11 +736,70 @@ ${validated.pastedText ? `\nTEKS SUMBER YANG DITAMPAL:\n"""\n${validated.pastedT
       };
     });
 
-    const extractedText = String(
-      parsedJson?.extractedText || validated.pastedText || ''
+    const extractedText = (
+      validated.sourceType === 'PASTED_TEXT' && validated.files.length === 0 && validated.pastedText
+        ? validated.pastedText
+        : String(parsedJson?.extractedText || validated.pastedText || '')
     )
       .trim()
       .slice(0, 30000);
+
+    // Ensure announcements without a specific due date still produce a reviewable draft (without inventing dates/times)
+    if (extractedDeadlines.length === 0 && extractedText.length >= 10) {
+      const firstLine = extractedText
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .find((line) => line.length > 0) || '';
+      const fallbackTitle = (
+        String(parsedJson?.sourceSummary || '').trim() ||
+        firstLine ||
+        'Makluman Tanpa Tarikh Akhir Khusus'
+      ).slice(0, 200);
+      const fallbackMatch = findBestDuplicateDeadlineMatch(
+        {
+          title: fallbackTitle,
+          description: extractedText.slice(0, 500),
+          requiredAction: '',
+          actionUrl: '',
+          dueDate: '',
+          dueTime: '',
+          targetAudience: [],
+        },
+        validated.existingDeadlines
+      );
+      extractedDeadlines.push({
+        title: fallbackTitle,
+        description: extractedText.slice(0, 2000),
+        requiredAction: '',
+        category: 'Other',
+        targetAudience: [],
+        targetDepartments: [],
+        targetStaffIds: [],
+        dueDate: '',
+        dueTime: '',
+        timezone: 'Asia/Kuala_Lumpur',
+        announcementDate: '',
+        actionUrl: '',
+        actionLabel: '',
+        attachments: [],
+        instructions: '',
+        sourceExcerpt: extractedText.slice(0, 2000),
+        confidence: {
+          overall: 0.4,
+          date: 0,
+          time: 1,
+          action: 0.3,
+          audience: 0.4,
+          url: 1,
+        },
+        missingFields: ['dueDate', 'requiredAction'],
+        ambiguousFields: [],
+        ambiguityReason:
+          'Tiada tarikh akhir khusus dikesan dalam pengumuman sumber. Sila semak dan lengkapkan tarikh akhir secara manual sebelum diterbitkan.',
+        requiresReview: true,
+        duplicateMatch: fallbackMatch,
+      });
+    }
 
     const result: ExtractDeadlineResponseData = {
       sourceSummary: String(parsedJson?.sourceSummary || '').trim().slice(0, 500) ||

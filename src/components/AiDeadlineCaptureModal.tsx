@@ -85,6 +85,7 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
   const [activeTab, setActiveTab] = useState<'upload' | 'paste' | 'queue'>(initialTab);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [filePreviews, setFilePreviews] = useState<Record<string, string>>({});
+  const [uploadContextNote, setUploadContextNote] = useState('');
   const [pastedText, setPastedText] = useState('');
   const [isDragging, setIsDragging] = useState(false);
 
@@ -154,23 +155,27 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
     return base.map((d) => draftEdits[d.id] || d);
   }, [activePendingDrafts, activeBatchId, draftEdits]);
 
-  // Sync newly arrived pending drafts into local edit map and select valid ones
+  // Sync newly arrived pending drafts into local edit map and prune removed drafts
   useEffect(() => {
+    const activeIdSet = new Set(activePendingDrafts.map((d) => d.id));
     setDraftEdits((prev) => {
-      const next = { ...prev };
+      const next: Record<string, DeadlineDraft> = {};
       for (const d of activePendingDrafts) {
-        if (!next[d.id]) {
-          next[d.id] = d;
+        next[d.id] = prev[d.id] || d;
+      }
+      return next;
+    });
+    setSelectedDraftIds((prev) => {
+      const next = new Set(Array.from(prev).filter((id) => activeIdSet.has(id)));
+      if (activeBatchId) {
+        for (const d of activePendingDrafts) {
+          if (d.submissionBatchId === activeBatchId) {
+            next.add(d.id);
+          }
         }
       }
       return next;
     });
-    if (activeBatchId) {
-      const batchIds = activePendingDrafts
-        .filter((d) => d.submissionBatchId === activeBatchId)
-        .map((d) => d.id);
-      setSelectedDraftIds(new Set(batchIds));
-    }
   }, [activePendingDrafts, activeBatchId]);
 
   const updateLocalDraft = (draftId: string, patch: Partial<DeadlineDraft>) => {
@@ -192,7 +197,9 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
   };
 
   const handleFilesAdded = (incoming: FileList | File[]) => {
+    if (isExtracting) return;
     setErrorMsg(null);
+    setNoticeMsg(null);
     const list = Array.from(incoming || []);
     const valid: File[] = [];
     for (const f of list) {
@@ -211,8 +218,15 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
     }
 
     setSelectedFiles((prev) => {
-      const merged = [...prev, ...valid].slice(0, MAX_FILES);
-      if (prev.length + valid.length > MAX_FILES) {
+      const existingKeys = new Set(prev.map((f) => `${f.name}_${f.size}_${f.lastModified}`));
+      const uniqueIncoming = valid.filter((f) => {
+        const key = `${f.name}_${f.size}_${f.lastModified}`;
+        if (existingKeys.has(key)) return false;
+        existingKeys.add(key);
+        return true;
+      });
+      const merged = [...prev, ...uniqueIncoming].slice(0, MAX_FILES);
+      if (prev.length + uniqueIncoming.length > MAX_FILES) {
         setErrorMsg(`Maksimum ${MAX_FILES} fail dibenarkan bagi setiap analisis.`);
       }
       return merged;
@@ -226,10 +240,10 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
 
     const isUploadMode = activeTab === 'upload';
     const hasFiles = isUploadMode && selectedFiles.length > 0;
-    const trimmedText = pastedText.trim();
+    const trimmedText = (isUploadMode ? uploadContextNote : pastedText).trim();
 
     if (isUploadMode && !hasFiles && !trimmedText) {
-      setErrorMsg('Sila muat naik sekurang-kurangnya satu tangkapan skrin (JPG/PNG), dokumen PDF atau tampal teks untuk diekstrak.');
+      setErrorMsg('Sila muat naik sekurang-kurangnya satu tangkapan skrin (JPG/PNG), dokumen PDF atau nota teks untuk diekstrak.');
       return;
     }
     if (!isUploadMode && !trimmedText) {
@@ -274,15 +288,9 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
       }
 
       if (!aiResult.extractedDeadlines || aiResult.extractedDeadlines.length === 0) {
-        if (fullExtractedText) {
-          setNoticeMsg(
-            'Teks berjaya diekstrak daripada sumber, namun tiada tarikh akhir khusus dikesan.'
-          );
-        } else {
-          setErrorMsg(
-            'Tiada teks atau tarikh akhir dapat dikesan daripada sumber tersebut. Pastikan gambar/PDF atau teks kelihatan jelas.'
-          );
-        }
+        setErrorMsg(
+          'Tiada teks atau tarikh akhir dapat dikesan daripada sumber tersebut. Pastikan gambar/PDF atau teks kelihatan jelas.'
+        );
         return;
       }
 
@@ -306,18 +314,23 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
         adminEmail,
       });
 
+      const unscheduledCount = savedDrafts.filter((d) => !d.dueDate).length;
       setActiveBatchId(batchId);
       setSelectedDraftIds(new Set(savedDrafts.map((d) => d.id)));
       setActiveTab('queue');
       setNoticeMsg(
-        `${savedDrafts.length} rekod berjaya diekstrak ke Draf Semakan.${
-          storageUpload.warning ? ` (${storageUpload.warning})` : ''
-        }`
+        `${savedDrafts.length} draf berjaya disimpan ke Semak Draf.${
+          unscheduledCount > 0 ? ` (${unscheduledCount} draf tiada tarikh akhir khusus dan perlu dilengkapkan oleh Admin.)` : ''
+        }${storageUpload.warning ? ` (${storageUpload.warning})` : ''}`
       );
 
       // Reset source inputs cleanly after successful extraction
-      setSelectedFiles([]);
-      setPastedText('');
+      if (isUploadMode) {
+        setSelectedFiles([]);
+        setUploadContextNote('');
+      } else {
+        setPastedText('');
+      }
     } catch (err: any) {
       setErrorMsg(err?.message || 'Gagal menganalisis sumber menggunakan AI.');
     } finally {
@@ -539,6 +552,7 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
               onClick={() => {
                 setActiveTab('upload');
                 setErrorMsg(null);
+                setNoticeMsg(null);
               }}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
                 activeTab === 'upload'
@@ -555,6 +569,7 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
               onClick={() => {
                 setActiveTab('paste');
                 setErrorMsg(null);
+                setNoticeMsg(null);
               }}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
                 activeTab === 'paste'
@@ -572,6 +587,7 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
                 setActiveBatchId(null);
                 setActiveTab('queue');
                 setErrorMsg(null);
+                setNoticeMsg(null);
               }}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
                 activeTab === 'queue'
@@ -589,30 +605,32 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
         {(errorMsg || noticeMsg) && (
           <div className="px-5 sm:px-7 pt-3 shrink-0 space-y-2">
             {errorMsg && (
-              <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold flex items-start justify-between gap-2">
-                <div className="flex items-start gap-2">
+              <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold flex items-start justify-between gap-2.5">
+                <div className="flex items-start gap-2 min-w-0 flex-1">
                   <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                  <span>{errorMsg}</span>
+                  <span className="break-words leading-relaxed">{errorMsg}</span>
                 </div>
                 <button
                   type="button"
+                  aria-label="Tutup ralat"
                   onClick={() => setErrorMsg(null)}
-                  className="text-rose-500 hover:text-rose-700 cursor-pointer shrink-0"
+                  className="p-0.5 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-100/70 cursor-pointer shrink-0"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
               </div>
             )}
             {noticeMsg && (
-              <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-start justify-between gap-2">
-                <div className="flex items-start gap-2">
+              <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-start justify-between gap-2.5">
+                <div className="flex items-start gap-2 min-w-0 flex-1">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                  <span>{noticeMsg}</span>
+                  <span className="break-words leading-relaxed">{noticeMsg}</span>
                 </div>
                 <button
                   type="button"
+                  aria-label="Tutup notis"
                   onClick={() => setNoticeMsg(null)}
-                  className="text-emerald-600 hover:text-emerald-800 cursor-pointer shrink-0"
+                  className="p-0.5 rounded-lg text-emerald-600 hover:text-emerald-800 hover:bg-emerald-100/70 cursor-pointer shrink-0"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -622,7 +640,7 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
         )}
 
         {/* Scrollable Workspace Content */}
-        <div className="flex-1 overflow-y-auto p-5 sm:p-7 space-y-5">
+        <div className="flex-1 min-h-0 overflow-y-auto p-5 sm:p-7 space-y-5">
           {activeTab === 'upload' && (
             <div className="space-y-4">
               <div
@@ -653,12 +671,17 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
                 <p className="text-xs text-slate-500 mt-1">
                   Menyokong JPG, JPEG, PNG, WEBP dan PDF (maksimum {MAX_FILES} fail, 10MB setiap fail)
                 </p>
-                <label className="mt-4 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold cursor-pointer transition-colors shadow-xs">
+                <label
+                  className={`mt-4 inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-extrabold transition-colors shadow-xs ${
+                    isExtracting ? 'opacity-50 cursor-not-allowed' : 'hover:bg-indigo-700 cursor-pointer'
+                  }`}
+                >
                   <Upload className="w-3.5 h-3.5" />
                   <span>Pilih Fail Daripada Peranti</span>
                   <input
                     type="file"
                     multiple
+                    disabled={isExtracting}
                     accept=".jpg,.jpeg,.png,.webp,.pdf,image/jpeg,image/png,image/webp,application/pdf"
                     onChange={(e) => {
                       if (e.target.files) {
@@ -679,8 +702,9 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
                     </span>
                     <button
                       type="button"
+                      disabled={isExtracting}
                       onClick={() => setSelectedFiles([])}
-                      className="text-xs font-bold text-rose-600 hover:text-rose-700 cursor-pointer"
+                      className="text-xs font-bold text-rose-600 hover:text-rose-700 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                     >
                       Kosongkan Semua
                     </button>
@@ -692,8 +716,8 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
                       const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
                       return (
                         <div
-                          key={`${file.name}_${idx}`}
-                          className="p-2.5 rounded-2xl border border-slate-200 bg-white flex items-center gap-3 shadow-2xs"
+                          key={`${file.name}_${file.size}_${file.lastModified}_${idx}`}
+                          className="p-2.5 rounded-2xl border border-slate-200 bg-white flex items-center gap-3 shadow-2xs min-w-0"
                         >
                           <div className="w-12 h-12 rounded-xl bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center shrink-0">
                             {previewUrl ? (
@@ -716,10 +740,11 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
                           </div>
                           <button
                             type="button"
+                            disabled={isExtracting}
                             onClick={() =>
                               setSelectedFiles((prev) => prev.filter((_, i) => i !== idx))
                             }
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shrink-0"
                             title="Buang fail"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -736,20 +761,21 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
                   Nota / Konteks Tambahan (Pilihan)
                 </label>
                 <textarea
-                  value={pastedText}
-                  onChange={(e) => setPastedText(e.target.value)}
+                  value={uploadContextNote}
+                  onChange={(e) => setUploadContextNote(e.target.value)}
                   rows={3}
+                  disabled={isExtracting}
                   placeholder="Contoh: Mesej ini dihantar dalam grup Pensyarah Akademik mengenai pelanjutan tarikh..."
-                  className="w-full px-3.5 py-2.5 rounded-2xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:border-indigo-500 focus:outline-none text-xs text-slate-800"
+                  className="w-full px-3.5 py-2.5 rounded-2xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15 focus:outline-none text-xs text-slate-800 disabled:opacity-60"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-2">
+              <div className="flex items-center justify-end gap-3 pt-1">
                 <button
                   type="button"
-                  disabled={isExtracting || (selectedFiles.length === 0 && !pastedText.trim())}
+                  disabled={isExtracting || (selectedFiles.length === 0 && !uploadContextNote.trim())}
                   onClick={handleAnalyzeWithAi}
-                  className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-extrabold flex items-center gap-2 cursor-pointer transition-all shadow-sm"
+                  className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-extrabold flex items-center gap-2 cursor-pointer transition-all shadow-sm"
                 >
                   {isExtracting ? (
                     <>
@@ -779,21 +805,33 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
                 <textarea
                   value={pastedText}
                   onChange={(e) => setPastedText(e.target.value)}
-                  rows={10}
+                  rows={8}
+                  disabled={isExtracting}
                   placeholder={`Contoh:\nAssalamualaikum & Salam Sejahtera,\nMakluman kepada semua pensyarah dan staf KPMBP.\n1. Tarikh akhir penghantaran markah penilaian berterusan (PB) adalah pada 28 November 2026 sebelum jam 5:00 petang melalui portal https://portal.example.edu.my.\n2. Pencalonan Anugerah Inovasi perlu dihantar selewat-lewatnya 4 Disember 2026 jam 12:00 tengah hari.`}
-                  className="w-full px-4 py-3 rounded-2xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15 focus:outline-none text-xs sm:text-sm text-slate-800 leading-relaxed"
+                  className="w-full min-h-[160px] px-4 py-3 rounded-2xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/15 focus:outline-none text-xs sm:text-sm text-slate-800 leading-relaxed disabled:opacity-60"
                 />
               </div>
 
-              <div className="flex items-center justify-between gap-3 pt-1">
-                <span className="text-[11px] font-mono text-slate-400 tabular-nums">
-                  {pastedText.trim().length} aksara
-                </span>
+              <div className="flex items-center justify-between gap-3 pt-1 flex-wrap">
+                <div className="flex items-center gap-3">
+                  <span className="text-[11px] font-mono text-slate-400 tabular-nums">
+                    {pastedText.trim().length} aksara
+                  </span>
+                  {pastedText.length > 0 && !isExtracting && (
+                    <button
+                      type="button"
+                      onClick={() => setPastedText('')}
+                      className="text-[11px] font-bold text-slate-500 hover:text-rose-600 cursor-pointer"
+                    >
+                      Kosongkan
+                    </button>
+                  )}
+                </div>
                 <button
                   type="button"
                   disabled={isExtracting || !pastedText.trim()}
                   onClick={handleAnalyzeWithAi}
-                  className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-extrabold flex items-center gap-2 cursor-pointer transition-all shadow-sm"
+                  className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-extrabold flex items-center gap-2 cursor-pointer transition-all shadow-sm"
                 >
                   {isExtracting ? (
                     <>
@@ -811,14 +849,14 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
             </div>
           )}
 
-          {extractedTextResult && (
+          {activeTab === 'queue' && extractedTextResult && (
             <div className="p-4 rounded-2xl border border-indigo-200 bg-indigo-50/40 space-y-2.5">
               <div className="flex items-center justify-between gap-2 flex-wrap">
-                <span className="text-xs font-extrabold text-indigo-950 flex items-center gap-1.5">
-                  <FileText className="w-4 h-4 text-indigo-600" />
-                  <span>Teks Penuh Diekstrak (OCR / Sumber)</span>
+                <span className="text-xs font-extrabold text-indigo-950 flex items-center gap-1.5 min-w-0">
+                  <FileText className="w-4 h-4 text-indigo-600 shrink-0" />
+                  <span className="truncate">Teks Penuh Diekstrak (OCR / Sumber)</span>
                 </span>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0 flex-wrap">
                   <button
                     type="button"
                     onClick={handleCopyExtractedText}
@@ -836,21 +874,27 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
                       </>
                     )}
                   </button>
-                  {activeTab !== 'paste' && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPastedText(extractedTextResult);
-                        setActiveTab('paste');
-                      }}
-                      className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold cursor-pointer"
-                    >
-                      Sunting di Tampal Teks
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPastedText(extractedTextResult);
+                      setActiveTab('paste');
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold cursor-pointer"
+                  >
+                    Sunting di Tampal Teks
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Tutup pratonton teks diekstrak"
+                    onClick={() => setExtractedTextResult('')}
+                    className="p-1.5 rounded-xl bg-white hover:bg-indigo-100/70 border border-indigo-200 text-indigo-600 hover:text-indigo-900 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
-              <pre className="text-xs text-slate-800 whitespace-pre-wrap bg-white p-3.5 rounded-xl border border-indigo-100 max-h-52 overflow-y-auto font-sans leading-relaxed">
+              <pre className="text-xs text-slate-800 whitespace-pre-wrap break-words bg-white p-3.5 rounded-xl border border-indigo-100 max-h-52 overflow-y-auto font-sans leading-relaxed">
                 {extractedTextResult}
               </pre>
             </div>
@@ -907,7 +951,7 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
                           ? `${bulkValidationIssues.length} draf dipilih mempunyai ralat pengesahan.`
                           : 'Terbitkan semua draf yang dipilih'
                       }
-                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-extrabold flex items-center gap-1.5 cursor-pointer shadow-xs"
+                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-extrabold flex items-center gap-1.5 cursor-pointer shadow-xs"
                     >
                       {isPublishing ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -1059,7 +1103,7 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
                               type="button"
                               disabled={!validation.valid || isPublishing}
                               onClick={() => handlePublishSingleDraft(draft)}
-                              className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-extrabold cursor-pointer flex items-center gap-1.5"
+                              className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-extrabold cursor-pointer flex items-center gap-1.5"
                             >
                               <Check className="w-3.5 h-3.5" />
                               <span>

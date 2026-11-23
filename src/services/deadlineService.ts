@@ -539,9 +539,8 @@ export async function updateDeadlineDraftInFirestore(
       sanitizeFirestorePayload(patch)
     );
   } catch (err) {
-    throw new Error(
-      logFirestoreBoundaryError(err, OperationType.UPDATE, `${DEADLINE_DRAFTS_COL}/${draftId}`)
-    );
+    logFirestoreBoundaryError(err, OperationType.UPDATE, `${DEADLINE_DRAFTS_COL}/${draftId}`);
+    throw new Error(parseFriendlyFirestoreError(err));
   }
 }
 
@@ -555,9 +554,8 @@ export async function deleteDeadlineDraftFromFirestore(draftId: string): Promise
   try {
     await deleteDoc(doc(db, DEADLINE_DRAFTS_COL, draftId));
   } catch (err) {
-    throw new Error(
-      logFirestoreBoundaryError(err, OperationType.DELETE, `${DEADLINE_DRAFTS_COL}/${draftId}`)
-    );
+    logFirestoreBoundaryError(err, OperationType.DELETE, `${DEADLINE_DRAFTS_COL}/${draftId}`);
+    throw new Error(parseFriendlyFirestoreError(err));
   }
 }
 
@@ -800,7 +798,8 @@ export async function publishApprovedDrafts(params: {
     await batch.commit();
     return { createdCount, updatedCount, ignoredCount };
   } catch (err) {
-    throw new Error(logFirestoreBoundaryError(err, OperationType.WRITE, DEADLINES_COL));
+    logFirestoreBoundaryError(err, OperationType.WRITE, DEADLINES_COL);
+    throw new Error(parseFriendlyFirestoreError(err));
   }
 }
 
@@ -882,9 +881,8 @@ export async function updatePublishedDeadline(params: {
   try {
     await batch.commit();
   } catch (err) {
-    throw new Error(
-      logFirestoreBoundaryError(err, OperationType.UPDATE, `${DEADLINES_COL}/${params.existing.id}`)
-    );
+    logFirestoreBoundaryError(err, OperationType.UPDATE, `${DEADLINES_COL}/${params.existing.id}`);
+    throw new Error(parseFriendlyFirestoreError(err));
   }
 }
 
@@ -945,9 +943,8 @@ export async function changeDeadlineStoredStatus(params: {
   try {
     await batch.commit();
   } catch (err) {
-    throw new Error(
-      logFirestoreBoundaryError(err, OperationType.UPDATE, `${DEADLINES_COL}/${params.deadline.id}`)
-    );
+    logFirestoreBoundaryError(err, OperationType.UPDATE, `${DEADLINES_COL}/${params.deadline.id}`);
+    throw new Error(parseFriendlyFirestoreError(err));
   }
 }
 
@@ -988,8 +985,7 @@ export async function deletePublishedDeadline(deadline: DeadlineRecord): Promise
   try {
     await batch.commit();
   } catch (err) {
-    throw new Error(
-      logFirestoreBoundaryError(err, OperationType.DELETE, `${DEADLINES_COL}/${deadline.id}`)
-    );
+    logFirestoreBoundaryError(err, OperationType.DELETE, `${DEADLINES_COL}/${deadline.id}`);
+    throw new Error(parseFriendlyFirestoreError(err));
   }
 }
