@@ -90,6 +90,7 @@ export interface ExtractedDeadlineCandidate {
 
 export interface ExtractDeadlineResponseData {
   sourceSummary: string;
+  extractedText: string;
   model: string;
   extractedAt: string;
   extractedDeadlines: ExtractedDeadlineCandidate[];
@@ -208,6 +209,10 @@ const RESPONSE_SCHEMA = {
       type: Type.STRING,
       description: 'Ringkasan padat 1-2 ayat mengenai sumber pengumuman/dokumen.',
     },
+    extractedText: {
+      type: Type.STRING,
+      description: 'Teks penuh yang diekstrak/transkripsi secara tepat daripada semua imej, PDF, dan/atau teks sumber.',
+    },
     extractedDeadlines: {
       type: Type.ARRAY,
       description: 'Senarai semua tarikh akhir berbeza yang dikesan dalam sumber.',
@@ -319,7 +324,7 @@ const RESPONSE_SCHEMA = {
       },
     },
   },
-  required: ['sourceSummary', 'extractedDeadlines'],
+  required: ['sourceSummary', 'extractedText', 'extractedDeadlines'],
 };
 
 export function validateExtractPayload(payload: ExtractDeadlineRequestPayload): {
@@ -350,7 +355,17 @@ export function validateExtractPayload(payload: ExtractDeadlineRequestPayload): 
 
   for (const file of rawFiles) {
     const fileName = String(file?.fileName || 'upload').trim().slice(0, 160);
-    const mimeType = String(file?.mimeType || '').trim().toLowerCase();
+    let mimeType = String(file?.mimeType || '').trim().toLowerCase();
+    if (mimeType === 'image/jpg') {
+      mimeType = 'image/jpeg';
+    }
+    if (!mimeType || mimeType === 'application/octet-stream') {
+      const lowerName = fileName.toLowerCase();
+      if (lowerName.endsWith('.pdf')) mimeType = 'application/pdf';
+      else if (lowerName.endsWith('.png')) mimeType = 'image/png';
+      else if (lowerName.endsWith('.webp')) mimeType = 'image/webp';
+      else if (/\.jpe?g$/i.test(lowerName)) mimeType = 'image/jpeg';
+    }
     if (!ALLOWED_MIME_TYPES.has(mimeType)) {
       throw new DeadlineAiError(
         'UNSUPPORTED_FILE_TYPE',
@@ -478,8 +493,9 @@ KONTEKS MASA SEMASA:
 
 ARAHAN PENGEKSTRAKAN KETAT:
 1. Analisis SEMUA fail imej, PDF, dan/atau teks pengumuman yang diberikan.
-2. Jika terdapat BERBILANG tarikh akhir / tindakan yang berbeza dalam satu dokumen atau mesej (contohnya tarikh pencalonan berbeza dengan tarikh penghantaran laporan), pisahkan setiap satunya sebagai item berasingan dalam "extractedDeadlines".
-3. JANGAN REKA ATAU TEKA maklumat yang tiada:
+2. Transkripsi / ekstrak teks penuh daripada imej, PDF atau sumber dengan tepat ke dalam medan "extractedText".
+3. Jika terdapat BERBILANG tarikh akhir / tindakan yang berbeza dalam satu dokumen atau mesej (contohnya tarikh pencalonan berbeza dengan tarikh penghantaran laporan), pisahkan setiap satunya sebagai item berasingan dalam "extractedDeadlines". Jika pengumuman atau tugasan tidak menyatakan tarikh khusus lagi, masih ekstrak sebagai item dalam "extractedDeadlines" dengan dueDate = "" dan masukkan "dueDate" dalam "missingFields".
+4. JANGAN REKA ATAU TEKA maklumat yang tiada:
    - Jika tarikh akhir tiada dalam sumber, letakkan dueDate = "" dan masukkan "dueDate" dalam "missingFields".
    - Jika masa akhir tidak dinyatakan, letakkan dueTime = "" (jangan letak 23:59 atau 17:00 secara andaian).
    - Jika tiada pautan/URL dalam sumber, letakkan actionUrl = "". Jangan reka URL.
@@ -720,9 +736,16 @@ ${validated.pastedText ? `\nTEKS SUMBER YANG DITAMPAL:\n"""\n${validated.pastedT
       };
     });
 
+    const extractedText = String(
+      parsedJson?.extractedText || validated.pastedText || ''
+    )
+      .trim()
+      .slice(0, 30000);
+
     const result: ExtractDeadlineResponseData = {
       sourceSummary: String(parsedJson?.sourceSummary || '').trim().slice(0, 500) ||
         `${extractedDeadlines.length} tarikh akhir dikesan daripada sumber.`,
+      extractedText,
       model: GEMINI_MODEL,
       extractedAt: new Date().toISOString(),
       extractedDeadlines,

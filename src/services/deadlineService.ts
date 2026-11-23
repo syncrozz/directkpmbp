@@ -333,13 +333,24 @@ export async function requestAiDeadlineExtraction(params: {
     throw new Error('Sila log masuk sebagai Master Admin sebelum menggunakan AI Deadline Capture.');
   }
 
-  const idToken = await auth.currentUser.getIdToken(true);
+  const idToken = await auth.currentUser.getIdToken();
   const encodedFiles = await Promise.all(
-    (params.files || []).map(async (file) => ({
-      fileName: file.name,
-      mimeType: file.type || (file.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/png'),
-      base64Data: await fileToBase64(file),
-    }))
+    (params.files || []).map(async (file) => {
+      let mime = (file.type || '').trim().toLowerCase();
+      if (mime === 'image/jpg') mime = 'image/jpeg';
+      if (!mime || mime === 'application/octet-stream') {
+        const lowerName = file.name.toLowerCase();
+        if (lowerName.endsWith('.pdf')) mime = 'application/pdf';
+        else if (lowerName.endsWith('.webp')) mime = 'image/webp';
+        else if (/\.jpe?g$/i.test(lowerName)) mime = 'image/jpeg';
+        else mime = 'image/png';
+      }
+      return {
+        fileName: file.name,
+        mimeType: mime,
+        base64Data: await fileToBase64(file),
+      };
+    })
   );
 
   const staffHints = params.staffList.slice(0, 150).map((s) => ({
@@ -465,7 +476,8 @@ export async function saveExtractedDraftsToFirestore(params: {
     await batch.commit();
     return createdDrafts;
   } catch (err) {
-    throw new Error(logFirestoreBoundaryError(err, OperationType.WRITE, DEADLINE_DRAFTS_COL));
+    logFirestoreBoundaryError(err, OperationType.WRITE, DEADLINE_DRAFTS_COL);
+    throw new Error(parseFriendlyFirestoreError(err));
   }
 }
 

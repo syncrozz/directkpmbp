@@ -429,7 +429,7 @@ async function startServer() {
   // AI Deadline Capture endpoint (Master Admin only, server-side @google/genai extraction)
   app.post(
     '/api/deadlines/extract',
-    express.json({ limit: '25mb' }),
+    express.json({ limit: '35mb' }),
     async (req, res) => {
       const authResult = await verifyMasterAdminRequest(req);
       if (!authResult.authorized) {

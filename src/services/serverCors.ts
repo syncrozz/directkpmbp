@@ -115,11 +115,27 @@ function isSameHostOrigin(
   }
 }
 
+function isTrustedHostingPreviewOrigin(origin: string): boolean {
+  try {
+    const parsed = new URL(origin);
+    if (parsed.protocol !== 'https:') return false;
+    const host = parsed.hostname.toLowerCase();
+    return (
+      host.endsWith('.scf.usercontent.goog') ||
+      host.endsWith('.usercontent.goog') ||
+      host.endsWith('.aistudio.google.com')
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function isOriginApproved(
   origin: string,
   allowedOrigins: Set<string>,
   options: {
     allowSameHost?: boolean;
+    isSameOriginFetch?: boolean;
     hostHeader?: string | string[];
     forwardedHostHeader?: string | string[];
   } = {}
@@ -129,6 +145,9 @@ export function isOriginApproved(
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
       return false;
     }
+    if (options.isSameOriginFetch) {
+      return true;
+    }
     if (allowedOrigins.has(parsed.origin)) {
       return true;
     }
@@ -136,6 +155,9 @@ export function isOriginApproved(
       options.allowSameHost &&
       isSameHostOrigin(parsed.origin, options.hostHeader, options.forwardedHostHeader)
     ) {
+      return true;
+    }
+    if (isTrustedHostingPreviewOrigin(parsed.origin)) {
       return true;
     }
     return false;
@@ -173,8 +195,8 @@ export function createCorsMiddleware(explicitAllowedOriginsEnv?: string) {
     }
 
     const originValue = Array.isArray(rawOrigin) ? rawOrigin[0] : rawOrigin;
-    const isCrossSiteFetch =
-      extractFirstHeaderValue(req.headers['sec-fetch-site']) === 'cross-site';
+    const secFetchSite = extractFirstHeaderValue(req.headers['sec-fetch-site']);
+    const isSameOriginFetch = secFetchSite === 'same-origin';
 
     // Automatically include runtime platform URLs if provided by the hosting environment
     for (const runtimeCandidate of [
@@ -192,8 +214,9 @@ export function createCorsMiddleware(explicitAllowedOriginsEnv?: string) {
 
     const approved = isOriginApproved(originValue, origins, {
       allowSameHost: true,
+      isSameOriginFetch,
       hostHeader: req.headers.host,
-      forwardedHostHeader: isCrossSiteFetch ? undefined : req.headers['x-forwarded-host'],
+      forwardedHostHeader: req.headers['x-forwarded-host'],
     });
 
     if (!approved) {

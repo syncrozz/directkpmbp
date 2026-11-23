@@ -16,6 +16,7 @@ import {
   Check,
   CheckCircle2,
   Clock,
+  Copy,
   FileText,
   FileUp,
   History,
@@ -95,6 +96,8 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [noticeMsg, setNoticeMsg] = useState<string | null>(null);
   const [activeBatchId, setActiveBatchId] = useState<string | null>(null);
+  const [extractedTextResult, setExtractedTextResult] = useState<string>('');
+  const [copiedExtractedText, setCopiedExtractedText] = useState(false);
 
   // Local editable state synced with Firestore pendingDrafts
   const [draftEdits, setDraftEdits] = useState<Record<string, DeadlineDraft>>({});
@@ -108,6 +111,8 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
       setActiveTab(initialTab);
       setErrorMsg(null);
       setNoticeMsg(null);
+      setExtractedTextResult('');
+      setCopiedExtractedText(false);
     }
   }, [isOpen, initialTab]);
 
@@ -217,18 +222,22 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
   const handleAnalyzeWithAi = async () => {
     setErrorMsg(null);
     setNoticeMsg(null);
+    setCopiedExtractedText(false);
 
     const isUploadMode = activeTab === 'upload';
-    if (isUploadMode && selectedFiles.length === 0) {
-      setErrorMsg('Sila muat naik sekurang-kurangnya satu tangkapan skrin (JPG/PNG) atau dokumen PDF.');
+    const hasFiles = isUploadMode && selectedFiles.length > 0;
+    const trimmedText = pastedText.trim();
+
+    if (isUploadMode && !hasFiles && !trimmedText) {
+      setErrorMsg('Sila muat naik sekurang-kurangnya satu tangkapan skrin (JPG/PNG), dokumen PDF atau tampal teks untuk diekstrak.');
       return;
     }
-    if (!isUploadMode && !pastedText.trim()) {
+    if (!isUploadMode && !trimmedText) {
       setErrorMsg('Sila tampal teks pengumuman, mesej WhatsApp atau notis terlebih dahulu.');
       return;
     }
 
-    const inferredSourceType: DeadlineSourceType = isUploadMode
+    const inferredSourceType: DeadlineSourceType = hasFiles
       ? selectedFiles.some((f) => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'))
         ? 'PDF'
         : 'SCREENSHOT'
@@ -243,20 +252,37 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
       const [aiResult, storageUpload] = await Promise.all([
         requestAiDeadlineExtraction({
           sourceType: inferredSourceType,
-          pastedText: isUploadMode ? pastedText.trim() : pastedText.trim(),
-          files: isUploadMode ? selectedFiles : [],
+          pastedText: trimmedText,
+          files: hasFiles ? selectedFiles : [],
           existingDeadlines,
           staffList,
         }),
-        isUploadMode && selectedFiles.length > 0
+        hasFiles
           ? uploadDeadlineSourceFiles(selectedFiles, batchId)
           : Promise.resolve({ storagePaths: [], warning: undefined }),
       ]);
 
+      const fullExtractedText = (
+        aiResult.extractedText ||
+        trimmedText ||
+        aiResult.sourceSummary ||
+        ''
+      ).trim();
+
+      if (fullExtractedText) {
+        setExtractedTextResult(fullExtractedText);
+      }
+
       if (!aiResult.extractedDeadlines || aiResult.extractedDeadlines.length === 0) {
-        setErrorMsg(
-          'Tiada tarikh akhir atau tindakan dapat dikesan daripada sumber tersebut. Pastikan maklumat tarikh atau arahan kelihatan jelas.'
-        );
+        if (fullExtractedText) {
+          setNoticeMsg(
+            'Teks berjaya diekstrak daripada sumber, namun tiada tarikh akhir khusus dikesan.'
+          );
+        } else {
+          setErrorMsg(
+            'Tiada teks atau tarikh akhir dapat dikesan daripada sumber tersebut. Pastikan gambar/PDF atau teks kelihatan jelas.'
+          );
+        }
         return;
       }
 
@@ -266,11 +292,13 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
         sourceType: inferredSourceType,
         sourceEvidence: {
           type: inferredSourceType,
-          fileNames: isUploadMode ? selectedFiles.map((f) => f.name) : undefined,
-          mimeTypes: isUploadMode ? selectedFiles.map((f) => f.type || 'application/octet-stream') : undefined,
+          fileNames: hasFiles ? selectedFiles.map((f) => f.name) : undefined,
+          mimeTypes: hasFiles ? selectedFiles.map((f) => f.type || 'application/octet-stream') : undefined,
           storagePaths: storageUpload.storagePaths,
           textExcerpt: aiResult.sourceSummary,
-          pastedText: pastedText.trim() ? pastedText.trim().slice(0, 6000) : undefined,
+          pastedText: (trimmedText || fullExtractedText)
+            ? (trimmedText || fullExtractedText).slice(0, 6000)
+            : undefined,
           uploadedAt: new Date().toISOString(),
           uploadedBy: adminEmail,
         },
@@ -282,7 +310,7 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
       setSelectedDraftIds(new Set(savedDrafts.map((d) => d.id)));
       setActiveTab('queue');
       setNoticeMsg(
-        `${savedDrafts.length} rekod tarikh akhir berjaya diekstrak ke Draf Semakan.${
+        `${savedDrafts.length} rekod berjaya diekstrak ke Draf Semakan.${
           storageUpload.warning ? ` (${storageUpload.warning})` : ''
         }`
       );
@@ -294,6 +322,17 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
       setErrorMsg(err?.message || 'Gagal menganalisis sumber menggunakan AI.');
     } finally {
       setIsExtracting(false);
+    }
+  };
+
+  const handleCopyExtractedText = async () => {
+    if (!extractedTextResult) return;
+    try {
+      await navigator.clipboard.writeText(extractedTextResult);
+      setCopiedExtractedText(true);
+      setTimeout(() => setCopiedExtractedText(false), 2000);
+    } catch {
+      setErrorMsg('Gagal menyalin teks ke papan keratan.');
     }
   };
 
@@ -708,19 +747,19 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
               <div className="flex items-center justify-end gap-3 pt-2">
                 <button
                   type="button"
-                  disabled={isExtracting || selectedFiles.length === 0}
+                  disabled={isExtracting || (selectedFiles.length === 0 && !pastedText.trim())}
                   onClick={handleAnalyzeWithAi}
                   className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-extrabold flex items-center gap-2 cursor-pointer transition-all shadow-sm"
                 >
                   {isExtracting ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Menganalisis Sumber Dengan AI...</span>
+                      <span>Mengekstrak & Menganalisis AI...</span>
                     </>
                   ) : (
                     <>
                       <Sparkles className="w-4 h-4" />
-                      <span>Analisis Dengan AI</span>
+                      <span>Ekstrak & Analisis AI</span>
                     </>
                   )}
                 </button>
@@ -735,7 +774,7 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
                   Tampal Mesej WhatsApp, E-mel, Pekeliling atau Pengumuman Rasmi
                 </label>
                 <p className="text-[11px] text-slate-500 mb-2">
-                  AI akan mengekstrak tajuk, tarikh & masa akhir (Asia/Kuala_Lumpur), tindakan diperlukan, sasaran jabatan/staf, pautan penghantaran, serta memisahkan berbilang tarikh akhir secara automatik.
+                  AI akan mengekstrak teks, tajuk, tarikh & masa akhir (Asia/Kuala_Lumpur), tindakan diperlukan, sasaran jabatan/staf, pautan penghantaran, serta memisahkan berbilang tarikh akhir secara automatik.
                 </p>
                 <textarea
                   value={pastedText}
@@ -759,16 +798,61 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
                   {isExtracting ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Menganalisis Teks Dengan AI...</span>
+                      <span>Mengekstrak Teks Dengan AI...</span>
                     </>
                   ) : (
                     <>
                       <Sparkles className="w-4 h-4" />
-                      <span>Analisis Dengan AI</span>
+                      <span>Ekstrak Teks Dengan AI</span>
                     </>
                   )}
                 </button>
               </div>
+            </div>
+          )}
+
+          {extractedTextResult && (
+            <div className="p-4 rounded-2xl border border-indigo-200 bg-indigo-50/40 space-y-2.5">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="text-xs font-extrabold text-indigo-950 flex items-center gap-1.5">
+                  <FileText className="w-4 h-4 text-indigo-600" />
+                  <span>Teks Penuh Diekstrak (OCR / Sumber)</span>
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCopyExtractedText}
+                    className="px-3 py-1.5 rounded-xl bg-white hover:bg-indigo-50 border border-indigo-200 text-xs font-bold text-indigo-700 flex items-center gap-1.5 cursor-pointer"
+                  >
+                    {copiedExtractedText ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                        <span className="text-emerald-700">Disalin</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Salin Teks</span>
+                      </>
+                    )}
+                  </button>
+                  {activeTab !== 'paste' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPastedText(extractedTextResult);
+                        setActiveTab('paste');
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold cursor-pointer"
+                    >
+                      Sunting di Tampal Teks
+                    </button>
+                  )}
+                </div>
+              </div>
+              <pre className="text-xs text-slate-800 whitespace-pre-wrap bg-white p-3.5 rounded-xl border border-indigo-100 max-h-52 overflow-y-auto font-sans leading-relaxed">
+                {extractedTextResult}
+              </pre>
             </div>
           )}
 
