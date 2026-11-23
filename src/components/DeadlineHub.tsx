@@ -90,7 +90,7 @@ const FILTER_TABS: Array<{
   {
     id: 'all',
     label: 'Semua',
-    heading: 'Semua Pengumuman & Tarikh Akhir',
+    heading: 'Pengumuman & Tarikh Akhir',
   },
   {
     id: 'latest',
@@ -459,7 +459,7 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
     if (activeFilter === 'inactive') return 'Rekod Tidak Aktif (Admin)';
     return (
       FILTER_TABS.find((t) => t.id === activeFilter)?.heading ||
-      'Semua Pengumuman & Tarikh Akhir'
+      'Pengumuman & Tarikh Akhir'
     );
   }, [activeFilter]);
 
@@ -619,9 +619,6 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
             <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
               DEADLINE
             </h2>
-            <p className="text-xs sm:text-sm text-slate-600">
-              Pusat rujukan tarikh akhir dan tindakan rasmi warga KPMBP.
-            </p>
           </div>
 
           {isAdminMode && (
