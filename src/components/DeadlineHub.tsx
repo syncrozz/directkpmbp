@@ -7,6 +7,7 @@
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Archive,
   ArchiveRestore,
@@ -249,6 +250,54 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [openMenuId]);
+
+  // Lock background page scroll and support Escape key while the announcement detail modal is open
+  useEffect(() => {
+    if (!detailRecord || typeof document === 'undefined' || typeof window === 'undefined') return;
+
+    const savedScrollY = window.scrollY;
+    const htmlEl = document.documentElement;
+    const bodyEl = document.body;
+
+    const prevHtmlOverflow = htmlEl.style.overflow;
+    const prevBodyOverflow = bodyEl.style.overflow;
+    const prevBodyPosition = bodyEl.style.position;
+    const prevBodyTop = bodyEl.style.top;
+    const prevBodyLeft = bodyEl.style.left;
+    const prevBodyRight = bodyEl.style.right;
+    const prevBodyWidth = bodyEl.style.width;
+    const prevBodyOverscroll = bodyEl.style.overscrollBehavior;
+
+    htmlEl.style.overflow = 'hidden';
+    bodyEl.style.overflow = 'hidden';
+    bodyEl.style.position = 'fixed';
+    bodyEl.style.top = `-${savedScrollY}px`;
+    bodyEl.style.left = '0';
+    bodyEl.style.right = '0';
+    bodyEl.style.width = '100%';
+    bodyEl.style.overscrollBehavior = 'none';
+
+    const handleDetailEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !editingRecord && !deleteTarget && !isAuditDrawerOpen && !isCaptureModalOpen) {
+        event.preventDefault();
+        setDetailRecord(null);
+      }
+    };
+
+    document.addEventListener('keydown', handleDetailEscape);
+    return () => {
+      htmlEl.style.overflow = prevHtmlOverflow;
+      bodyEl.style.overflow = prevBodyOverflow;
+      bodyEl.style.position = prevBodyPosition;
+      bodyEl.style.top = prevBodyTop;
+      bodyEl.style.left = prevBodyLeft;
+      bodyEl.style.right = prevBodyRight;
+      bodyEl.style.width = prevBodyWidth;
+      bodyEl.style.overscrollBehavior = prevBodyOverscroll;
+      document.removeEventListener('keydown', handleDetailEscape);
+      window.scrollTo(0, savedScrollY);
+    };
+  }, [detailRecord, editingRecord, deleteTarget, isAuditDrawerOpen, isCaptureModalOpen]);
 
   useEffect(() => {
     if (handledDeepLinkRef.current || isLoading || deadlines.length === 0) return;
@@ -1166,62 +1215,73 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
         )}
       </section>
 
-      {/* Detail Modal */}
-      {detailRecord && (() => {
-        const detailStatus = resolveDeadlineDisplayStatus(detailRecord, now).displayStatus;
-        const detailMeta = STATUS_META[detailStatus];
-        const detailPublishedAt = getOriginalPublishedAt(detailRecord);
-        const detailUpdated = isDeadlineUpdated(detailRecord);
-        const detailPublishedDisplay = formatKLDateTimeDisplay(detailPublishedAt);
-        const detailUpdatedDisplay = detailUpdated
-          ? formatKLDateTimeDisplay(detailRecord.updatedAt)
-          : '';
+      {/* Detail Modal — Rendered via React Portal at document.body level to escape <main> stacking contexts */}
+      {detailRecord && typeof document !== 'undefined' && createPortal(
+        (() => {
+          const detailStatus = resolveDeadlineDisplayStatus(detailRecord, now).displayStatus;
+          const detailMeta = STATUS_META[detailStatus];
+          const detailPublishedAt = getOriginalPublishedAt(detailRecord);
+          const detailUpdated = isDeadlineUpdated(detailRecord);
+          const detailPublishedDisplay = formatKLDateTimeDisplay(detailPublishedAt);
+          const detailUpdatedDisplay = detailUpdated
+            ? formatKLDateTimeDisplay(detailRecord.updatedAt)
+            : '';
 
-        return (
-          <div
-            className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5 overflow-y-auto"
-            onClick={() => setDetailRecord(null)}
-          >
+          return (
             <div
-              className="w-full max-w-2xl bg-white rounded-3xl shadow-2xl border border-slate-200 max-h-[90vh] flex flex-col overflow-hidden text-left"
-              onClick={(e) => e.stopPropagation()}
-              role="dialog"
-              aria-modal="true"
+              className="fixed inset-0 z-[100] bg-slate-950/65 backdrop-blur-sm flex items-stretch sm:items-center justify-center p-0 sm:p-5 overflow-hidden"
+              onClick={() => setDetailRecord(null)}
             >
-              <div className="px-6 py-4 border-b border-slate-100 flex items-start justify-between gap-3">
-                <div className="space-y-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-bold text-indigo-700">
-                      {detailRecord.category}
-                    </span>
-                    <span
-                      className={`px-2 py-0.5 rounded-md text-[11px] font-bold border ${detailMeta.badgeClass}`}
-                    >
-                      {detailMeta.label}
-                    </span>
-                    {detailUpdated && (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700">
-                        <RefreshCw className="w-3 h-3" />
-                        <span>Dikemas Kini</span>
+              <div
+                className="w-full h-[100dvh] max-h-[100dvh] sm:h-auto sm:max-w-2xl sm:max-h-[90dvh] bg-white rounded-none sm:rounded-3xl shadow-2xl border-0 sm:border sm:border-slate-200 flex flex-col overflow-hidden text-left"
+                onClick={(e) => e.stopPropagation()}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="deadline-detail-modal-title"
+              >
+                <div className="px-4 sm:px-6 pt-[max(1rem,env(safe-area-inset-top))] pb-3.5 sm:py-4 border-b border-slate-100 bg-white flex items-start justify-between gap-3 shrink-0">
+                  <div className="space-y-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-bold text-indigo-700">
+                        {detailRecord.category}
                       </span>
-                    )}
+                      <span
+                        className={`px-2 py-0.5 rounded-md text-[11px] font-bold border ${detailMeta.badgeClass}`}
+                      >
+                        {detailMeta.label}
+                      </span>
+                      {detailUpdated && (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700">
+                          <RefreshCw className="w-3 h-3" />
+                          <span>Dikemas Kini</span>
+                        </span>
+                      )}
+                    </div>
+                    <h3
+                      id="deadline-detail-modal-title"
+                      className="text-base sm:text-lg font-extrabold text-slate-900 break-words"
+                    >
+                      {detailRecord.title}
+                    </h3>
                   </div>
-                  <h3 className="text-base sm:text-lg font-extrabold text-slate-900 break-words">
-                    {detailRecord.title}
-                  </h3>
+
+                  <button
+                    type="button"
+                    onClick={() => setDetailRecord(null)}
+                    aria-label="Tutup butiran"
+                    className="w-10 h-10 sm:w-9 sm:h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 cursor-pointer shrink-0 flex items-center justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setDetailRecord(null)}
-                  aria-label="Tutup butiran"
-                  className="p-2 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 cursor-pointer shrink-0"
+                <div
+                  className={`flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain px-4 sm:px-6 py-4 sm:py-6 space-y-4 text-xs sm:text-sm ${
+                    detailRecord.actionUrl
+                      ? ''
+                      : 'pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:pb-6'
+                  }`}
                 >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="p-6 overflow-y-auto space-y-4 text-xs sm:text-sm min-h-0">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 text-xs">
                   <div>
                     <span className="text-slate-500 font-semibold block">
@@ -1433,12 +1493,12 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
               </div>
 
               {detailRecord.actionUrl && (
-                <div className="px-6 py-3.5 border-t border-slate-100 bg-slate-50 flex justify-end">
+                <div className="px-4 sm:px-6 pt-3.5 pb-[max(0.875rem,env(safe-area-inset-bottom))] sm:py-3.5 border-t border-slate-100 bg-slate-50 flex justify-end shrink-0">
                   <a
                     href={detailRecord.actionUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold inline-flex items-center gap-2"
+                    className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold inline-flex items-center justify-center gap-2"
                   >
                     <span>{detailRecord.actionLabel || 'Buka Pautan Tindakan'}</span>
                     <ExternalLink className="w-3.5 h-3.5" />
@@ -1448,7 +1508,9 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
             </div>
           </div>
         );
-      })()}
+      })(),
+      document.body
+      )}
 
       {/* Admin Manual Create / Edit Modal */}
       {editingRecord && isAdminMode && (
