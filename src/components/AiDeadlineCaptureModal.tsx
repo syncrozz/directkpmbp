@@ -353,7 +353,7 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
       } else if (res.updatedCount > 0) {
         setNoticeMsg(`Rekod sedia ada berjaya dikemas kini daripada draf "${draft.title}".`);
       } else {
-        setNoticeMsg(`Tarikh akhir "${draft.title}" berjaya diterbitkan ke Deadline Hub.`);
+        setNoticeMsg(`Tarikh akhir "${draft.title}" berjaya diterbitkan ke Deadline.`);
       }
     } catch (err: any) {
       setErrorMsg(err?.message || 'Gagal menerbitkan rekod.');
@@ -792,7 +792,7 @@ export const AiDeadlineCaptureModal: React.FC<AiDeadlineCaptureModalProps> = ({
                     )}
                   </div>
                   <p className="text-[11px] text-slate-500">
-                    Rekod hanya diterbitkan ke Deadline Hub selepas disemak dan diluluskan oleh Master Admin.
+                    Rekod hanya diterbitkan ke Deadline selepas disemak dan diluluskan oleh Master Admin.
                   </p>
                 </div>
 

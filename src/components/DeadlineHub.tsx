@@ -479,7 +479,7 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
             <div className="min-w-0 space-y-1">
               <div className="flex items-center gap-2.5 flex-wrap">
                 <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight">
-                  SYNCROZZ DEADLINE HUB
+                  DEADLINE
                 </h2>
                 <span className="text-[11px] font-mono font-bold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-lg tabular-nums">
                   MYT {klNowParts.dateStr} • {klNowParts.timeStr.slice(0, 5)}
@@ -774,7 +774,7 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
           </h3>
           <p className="text-xs text-slate-500 leading-relaxed">
             {deadlines.length === 0
-              ? 'Belum ada tarikh akhir diterbitkan dalam Syncrozz Deadline Hub.'
+              ? 'Belum ada tarikh akhir diterbitkan dalam Deadline.'
               : 'Tiada tarikh akhir yang sepadan dengan tapisan atau kata kunci semasa.'}
           </p>
           {isAdminMode && deadlines.length === 0 && (
@@ -1435,7 +1435,7 @@ export const DeadlineHub: React.FC<DeadlineHubProps> = ({
               <div className="flex items-center gap-2">
                 <History className="w-5 h-5 text-indigo-600" />
                 <h3 className="text-base font-extrabold text-slate-900">
-                  Log Audit Deadline Hub ({auditLogs.length})
+                  Log Audit Deadline ({auditLogs.length})
                 </h3>
               </div>
               <button

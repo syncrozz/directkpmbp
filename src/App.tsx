@@ -493,9 +493,14 @@ export default function App() {
         setActiveHub(res.activeNavId);
         if (
           typeof window !== 'undefined' &&
-          (res.resolvedDestination === 'daftar' || res.resolvedDestination === 'deadline-hub')
+          (res.resolvedDestination === 'daftar' ||
+            res.resolvedDestination === 'deadline' ||
+            res.resolvedDestination === 'deadline-hub')
         ) {
-          const targetPath = res.resolvedDestination === 'deadline-hub' ? '/deadline_hub' : '/daftar';
+          const targetPath =
+            res.resolvedDestination === 'deadline' || res.resolvedDestination === 'deadline-hub'
+              ? '/deadline'
+              : '/daftar';
           if (window.location.pathname !== targetPath || window.location.hash) {
             window.history.replaceState({ navId: res.activeNavId }, '', targetPath);
           }
@@ -854,7 +859,7 @@ export default function App() {
           ? '!bg-[radial-gradient(circle,rgba(245,158,11,0.18)_0%,rgba(249,115,22,0.06)_100%)]'
           : resolvedDestination === 'jadual-pensyarah'
           ? '!bg-[radial-gradient(circle,rgba(244,63,94,0.18)_0%,rgba(236,72,153,0.06)_100%)]'
-          : resolvedDestination === 'deadline-hub' || resolvedDestination === 'nav_deadline_hub'
+          : resolvedDestination === 'deadline' || resolvedDestination === 'deadline-hub' || resolvedDestination === 'nav_deadline_hub'
           ? '!bg-[radial-gradient(circle,rgba(14,165,233,0.18)_0%,rgba(79,70,229,0.06)_100%)]'
           : resolvedDestination === 'daftar'
           ? '!bg-[radial-gradient(circle,rgba(168,85,247,0.18)_0%,rgba(217,70,239,0.06)_100%)]'
@@ -1397,7 +1402,7 @@ export default function App() {
               setSelectedStaff(staff);
             }}
           />
-        ) : resolvedDestination === 'deadline-hub' || resolvedDestination === 'nav_deadline_hub' ? (
+        ) : resolvedDestination === 'deadline' || resolvedDestination === 'deadline-hub' || resolvedDestination === 'nav_deadline_hub' ? (
           <DeadlineHub
             staffList={staffList}
             isAdminMode={isAdminMode}

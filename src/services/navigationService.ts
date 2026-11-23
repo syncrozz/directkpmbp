@@ -42,6 +42,7 @@ import {
 export const LOCAL_STORAGE_NAV_KEY = 'kpmbp_navigation_items_v4';
 export const UPPK_GRADING_MIGRATED_KEY = 'kpmbp_uppk_grading_migrated_v1';
 export const DEADLINE_HUB_NAV_MIGRATED_KEY = 'kpmbp_deadline_hub_nav_migrated_v1';
+export const DEADLINE_RENAME_MIGRATED_KEY = 'kpmbp_deadline_rename_migrated_v1';
 
 /**
  * Default Initial Navigation Structure (SES v4.4 Section 2)
@@ -182,11 +183,11 @@ export const DEFAULT_NAVIGATION_ITEMS: NavigationItem[] = [
   },
   {
     id: 'nav_deadline_hub',
-    name: 'Deadline Hub',
+    name: 'Deadline',
     icon: 'CalendarClock',
     type: 'parent',
-    destination: 'deadline-hub',
-    slug: 'deadline_hub',
+    destination: 'deadline',
+    slug: 'deadline',
     order: 3,
     isActive: true,
     createdAt: '2026-01-01T00:00:00.000Z',
@@ -202,7 +203,7 @@ export const KNOWN_MODULE_DESTINATIONS = [
   { id: 'platform', name: 'Platform (Hab Platform Luar & Aplikasi)' },
   { id: 'jadual', name: 'Jadual Pelajar (Jadual Waktu Kelas)' },
   { id: 'jadual-pensyarah', name: 'Jadual Pensyarah (Jadual Waktu Pensyarah)' },
-  { id: 'deadline-hub', name: 'Deadline Hub (Pengurusan Tarikh Akhir AI)' },
+  { id: 'deadline', name: 'Deadline (Pengurusan Tarikh Akhir AI)' },
   { id: 'daftar', name: 'Pendaftaran Staf Baharu' },
 ] as const;
 
@@ -213,7 +214,7 @@ export const AVAILABLE_NAV_ICONS = [
   { name: 'UserCheck', label: 'Staf / Pengguna' },
   { name: 'BookOpen', label: 'Buku / Rujukan' },
   { name: 'Calendar', label: 'Kalendar / Jadual' },
-  { name: 'CalendarClock', label: 'Tarikh Akhir / Deadline Hub' },
+  { name: 'CalendarClock', label: 'Tarikh Akhir / Deadline' },
   { name: 'GraduationCap', label: 'Akademik / Pensyarah' },
   { name: 'FileText', label: 'Dokumen / Panduan' },
   { name: 'Link', label: 'Pautan / Portal' },
@@ -279,8 +280,8 @@ export function validateNavigationDestination(dest: string, displayType?: string
     return { valid: true };
   }
 
-  // Known modules check
-  const isKnown = KNOWN_MODULE_DESTINATIONS.some((m) => m.id === trimmed);
+  // Known modules check (including legacy 'deadline-hub' alias)
+  const isKnown = KNOWN_MODULE_DESTINATIONS.some((m) => m.id === trimmed) || trimmed === 'deadline-hub';
   if (isKnown) {
     return { valid: true };
   }
@@ -297,7 +298,7 @@ export function validateNavigationDestination(dest: string, displayType?: string
 
   return {
     valid: false,
-    error: `Destinasi "${trimmed}" tidak sah. Pilih modul sedia ada (directory, platform, jadual, jadual-pensyarah, deadline-hub, daftar) atau pautan sah (https://..., #...).`,
+    error: `Destinasi "${trimmed}" tidak sah. Pilih modul sedia ada (directory, platform, jadual, jadual-pensyarah, deadline, daftar) atau pautan sah (https://..., #...).`,
   };
 }
 
@@ -748,15 +749,15 @@ export function resolveNavigationFromUrl(
   }
 
   if (
-    cleanToken === 'deadline-hub' ||
-    cleanToken === 'deadline_hub' ||
+    cleanToken === 'deadline' ||
     cleanToken === 'deadlines' ||
-    cleanToken === 'deadline'
+    cleanToken === 'deadline-hub' ||
+    cleanToken === 'deadline_hub'
   ) {
     const deadlineItem = items.find(
-      (i) => i.destination === 'deadline-hub' || i.id === 'nav_deadline_hub'
+      (i) => i.destination === 'deadline' || i.destination === 'deadline-hub' || i.id === 'nav_deadline_hub'
     );
-    return createResult(deadlineItem, 'nav_deadline_hub', 'deadline-hub');
+    return createResult(deadlineItem, 'nav_deadline_hub', 'deadline');
   }
 
   if (cleanToken === 'daftar') {
@@ -1006,18 +1007,19 @@ export function ensureRujukanPlatformNavigation(items: NavigationItem[]): Naviga
 }
 
 /**
- * One-time idempotent migration adding Deadline Hub parent tab to existing configured
+ * One-time idempotent migration adding Deadline parent tab to existing configured
  * navigation caches/Firestore docs without resurrecting it if explicitly deleted later.
  */
 export function migrateDeadlineHubIfNeeded(items: NavigationItem[]): { items: NavigationItem[]; migrated: boolean } {
-  const alreadyHasDeadlineHub = items.some(
+  const alreadyHasDeadline = items.some(
     (i) =>
       i.id === 'nav_deadline_hub' ||
+      i.destination === 'deadline' ||
       i.destination === 'deadline-hub' ||
-      (i.slug && i.slug.toLowerCase() === 'deadline_hub')
+      (i.slug && (i.slug.toLowerCase() === 'deadline' || i.slug.toLowerCase() === 'deadline_hub'))
   );
 
-  if (alreadyHasDeadlineHub) {
+  if (alreadyHasDeadline) {
     return { items, migrated: false };
   }
 
@@ -1025,19 +1027,66 @@ export function migrateDeadlineHubIfNeeded(items: NavigationItem[]): { items: Na
     .filter((i) => i.type === 'parent')
     .reduce((max, p) => Math.max(max, Number.isFinite(p.order) ? p.order : 0), -1);
 
-  const defaultDeadlineHub = DEFAULT_NAVIGATION_ITEMS.find((i) => i.id === 'nav_deadline_hub');
-  if (!defaultDeadlineHub) {
+  const defaultDeadline = DEFAULT_NAVIGATION_ITEMS.find((i) => i.id === 'nav_deadline_hub');
+  if (!defaultDeadline) {
     return { items, migrated: false };
   }
 
   const nextItem: NavigationItem = {
-    ...defaultDeadlineHub,
+    ...defaultDeadline,
     order: maxParentOrder + 1,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
 
   return { items: [...items, nextItem], migrated: true };
+}
+
+/**
+ * Idempotent migration renaming legacy "Deadline Hub" (slug: "deadline_hub")
+ * navigation entries to "Deadline" (slug: "deadline", destination: "deadline").
+ */
+export function migrateDeadlineRenameIfNeeded(items: NavigationItem[]): { items: NavigationItem[]; migrated: boolean } {
+  let migrated = false;
+  const updated = items.map((item) => {
+    const isDeadlineEntry =
+      item.id === 'nav_deadline_hub' ||
+      item.destination === 'deadline-hub' ||
+      (item.slug && (item.slug.toLowerCase() === 'deadline_hub' || item.slug.toLowerCase() === 'deadline-hub')) ||
+      item.name.trim().toLowerCase() === 'deadline hub';
+
+    if (!isDeadlineEntry) {
+      return item;
+    }
+
+    const nextName = item.name.trim().toLowerCase() === 'deadline hub' ? 'Deadline' : item.name;
+    const nextSlug =
+      !item.slug ||
+      item.slug.toLowerCase() === 'deadline_hub' ||
+      item.slug.toLowerCase() === 'deadline-hub'
+        ? 'deadline'
+        : item.slug;
+    const nextDestination = item.destination === 'deadline-hub' ? 'deadline' : item.destination;
+
+    if (
+      nextName !== item.name ||
+      nextSlug !== item.slug ||
+      nextDestination !== item.destination
+    ) {
+      migrated = true;
+      return {
+        ...item,
+        name: nextName,
+        slug: nextSlug,
+        destination: nextDestination,
+        updatedAt: new Date().toISOString(),
+      };
+    }
+
+    return item;
+  });
+
+  return { items: updated, migrated };
 }
 
 /**
@@ -1068,6 +1117,7 @@ export function subscribeToNavigation(callback: (items: NavigationItem[]) => voi
           if (!alreadyDeadlineMigratedLocal) {
             workingItems = migrateDeadlineHubIfNeeded(workingItems).items;
           }
+          workingItems = migrateDeadlineRenameIfNeeded(workingItems).items;
           initialItems = normalizeNavigationList(ensureRujukanPlatformNavigation(workingItems));
         }
       }
@@ -1088,7 +1138,8 @@ export function subscribeToNavigation(callback: (items: NavigationItem[]) => voi
         }
         const migration = migrateUppkGradingIfNeeded(DEFAULT_NAVIGATION_ITEMS);
         const deadlineMigration = migrateDeadlineHubIfNeeded(migration.items);
-        const defaults = normalizeNavigationList(ensureRujukanPlatformNavigation(deadlineMigration.items));
+        const renameMigration = migrateDeadlineRenameIfNeeded(deadlineMigration.items);
+        const defaults = normalizeNavigationList(ensureRujukanPlatformNavigation(renameMigration.items));
         if (typeof window !== 'undefined') {
           localStorage.setItem(LOCAL_STORAGE_NAV_KEY, JSON.stringify(defaults));
         }
@@ -1102,6 +1153,7 @@ export function subscribeToNavigation(callback: (items: NavigationItem[]) => voi
       const isConfigured = Boolean(data?.isConfigured);
       const alreadyMigratedRemote = Boolean(data?.uppkGradingMigrated);
       const alreadyDeadlineMigratedRemote = Boolean(data?.deadlineHubNavMigrated);
+      const alreadyDeadlineRenameRemote = Boolean(data?.deadlineRenameMigrated);
       const baseItems = isConfigured
         ? rawItems
         : rawItems.length > 0
@@ -1123,9 +1175,16 @@ export function subscribeToNavigation(callback: (items: NavigationItem[]) => voi
         if (deadlineMigration.migrated) anyMigrationPerformed = true;
       }
 
+      const renameMigration = migrateDeadlineRenameIfNeeded(workingItems);
+      workingItems = renameMigration.items;
+      if (renameMigration.migrated) anyMigrationPerformed = true;
+
       const normalizedItems = normalizeNavigationList(ensureRujukanPlatformNavigation(workingItems));
 
-      if ((anyMigrationPerformed || !alreadyDeadlineMigratedRemote) && auth.currentUser) {
+      if (
+        (anyMigrationPerformed || !alreadyDeadlineMigratedRemote || !alreadyDeadlineRenameRemote) &&
+        auth.currentUser
+      ) {
         // Persist one-time container/module migration to Firestore once an admin session is active
         saveNavigationItems(normalizedItems).catch((err) => {
           console.warn('[NavigationService] Background auto-migration persist notice:', err?.message || err);
@@ -1139,6 +1198,9 @@ export function subscribeToNavigation(callback: (items: NavigationItem[]) => voi
         }
         if (alreadyDeadlineMigratedRemote) {
           localStorage.setItem(DEADLINE_HUB_NAV_MIGRATED_KEY, '1');
+        }
+        if (alreadyDeadlineRenameRemote) {
+          localStorage.setItem(DEADLINE_RENAME_MIGRATED_KEY, '1');
         }
       }
 
@@ -1174,6 +1236,7 @@ export async function saveNavigationItems(items: NavigationItem[]): Promise<bool
       isConfigured: true,
       uppkGradingMigrated: true,
       deadlineHubNavMigrated: true,
+      deadlineRenameMigrated: true,
       updatedAt: new Date().toISOString(),
       updatedBy: auth.currentUser?.email || 'admin',
     },
@@ -1184,6 +1247,7 @@ export async function saveNavigationItems(items: NavigationItem[]): Promise<bool
     localStorage.setItem(LOCAL_STORAGE_NAV_KEY, JSON.stringify(normalized));
     localStorage.setItem(UPPK_GRADING_MIGRATED_KEY, '1');
     localStorage.setItem(DEADLINE_HUB_NAV_MIGRATED_KEY, '1');
+    localStorage.setItem(DEADLINE_RENAME_MIGRATED_KEY, '1');
   }
 
   return true;

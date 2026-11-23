@@ -486,7 +486,8 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
   const handleEdit = (item: NavigationItem) => {
     setEditingItem(item);
     const isParentEmptyPage = item.type === 'parent' && item.displayType === 'empty_page';
-    const isStandardModule = KNOWN_MODULE_DESTINATIONS.some((m) => m.id === item.destination);
+    const normalizedDest = item.destination === 'deadline-hub' ? 'deadline' : item.destination;
+    const isStandardModule = KNOWN_MODULE_DESTINATIONS.some((m) => m.id === normalizedDest);
     const itemDisplayType: NavigationDisplayType = item.displayType || (item.driveUrl ? 'drive' : 'module');
 
     let initialParentFilterId = '';
@@ -510,7 +511,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
       displayType: itemDisplayType,
       driveUrl: item.driveUrl || '',
       displayTitle: item.displayTitle || '',
-      destination: isParentEmptyPage ? 'empty_page' : isStandardModule ? item.destination : 'custom',
+      destination: isParentEmptyPage ? 'empty_page' : isStandardModule ? normalizedDest : 'custom',
       customDestination: isParentEmptyPage || isStandardModule ? '' : item.destination,
       useCustomDestination: !isParentEmptyPage && !isStandardModule && itemDisplayType !== 'drive' && itemDisplayType !== 'empty_page',
       isActive: item.isActive,
@@ -2673,7 +2674,7 @@ export const NavigationManagerModal: React.FC<NavigationManagerModalProps> = ({
                             />
                           )}
                           <p className="text-[10px] text-slate-400">
-                            Modul sasaran dalam aplikasi: <code>directory</code>, <code>platform</code>, <code>jadual</code>, <code>jadual-pensyarah</code>, <code>daftar</code>.
+                            Modul sasaran dalam aplikasi: <code>directory</code>, <code>platform</code>, <code>jadual</code>, <code>jadual-pensyarah</code>, <code>deadline</code>, <code>daftar</code>.
                           </p>
                         </div>
                       )}

@@ -469,7 +469,7 @@ export async function extractDeadlinesWithGemini(
         targetAudience: d.targetAudience,
       }));
 
-    const promptText = `Anda ialah enjin pengekstrakan tarikh akhir rasmi untuk sistem institusi Kolej Profesional MARA Bandar Penawar (DIRECT KPMBP — SYNCROZZ DEADLINE HUB).
+    const promptText = `Anda ialah enjin pengekstrakan tarikh akhir rasmi untuk sistem institusi Kolej Profesional MARA Bandar Penawar (DIRECT KPMBP — DEADLINE).
 
 KONTEKS MASA SEMASA:
 - Zon masa rasmi: Asia/Kuala_Lumpur (UTC+8)
