@@ -138,6 +138,50 @@ export interface PlatformSubscriptionResult {
   errorMessage?: string;
 }
 
+export interface PortalLink {
+  id: string;
+  title: string;
+  desc: string;
+  url: string;
+  audience: 'Pelajar' | 'Staf' | 'Kedua-dua';
+  category?: string;
+  imageUrl?: string;
+  iconUrl?: string;
+  faviconUrl?: string;
+  detectedMeta?: {
+    title?: string;
+    description?: string;
+    ogTitle?: string;
+    ogDescription?: string;
+    ogImage?: string;
+    ogUrl?: string;
+    ogSiteName?: string;
+    favicon?: string;
+    pwaIcon?: string;
+    manifestName?: string;
+  };
+  sortOrder?: number;
+  isActive?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+export type PortalSyncStatus =
+  | 'loading'
+  | 'ready_empty'
+  | 'ready_migrated'
+  | 'permission_denied'
+  | 'error_network';
+
+export interface PortalSubscriptionResult {
+  portals: PortalLink[];
+  isMigrated: boolean;
+  status: PortalSyncStatus;
+  source: 'firestore' | 'fallback';
+  errorMessage?: string;
+}
+
 export type NavigationType = 'parent' | 'child' | 'grandchild' | 'delta';
 export type NavigationDisplayType = 'module' | 'drive' | 'empty_page';
 
