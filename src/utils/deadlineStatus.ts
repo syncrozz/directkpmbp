@@ -156,6 +156,90 @@ export function computeDeadlineStatus(
   return 'UPCOMING';
 }
 
+export const AUTO_ARCHIVE_GRACE_PERIOD_MS = 24 * 60 * 60 * 1000; // 24 complete hours
+export const SYSTEM_AUTO_ARCHIVE_ACTOR = 'system:auto-archive';
+export const SYSTEM_AUTO_ARCHIVE_REASON = 'Auto-archived after 24-hour grace period';
+
+export type AutoArchiveIneligibilityReason =
+  | 'NOT_ACTIVE'
+  | 'INVALID_DEADLINE_DATETIME'
+  | 'NOT_EXPIRED_YET'
+  | 'WITHIN_GRACE_PERIOD';
+
+export interface AutoArchiveEligibilityResult {
+  eligible: boolean;
+  reason: 'ELIGIBLE_GRACE_ELAPSED' | AutoArchiveIneligibilityReason;
+  expiryTimestampMs: number | null;
+  archiveEligibleAtMs: number | null;
+  elapsedSinceExpiryMs: number | null;
+}
+
+/**
+ * Evaluates whether a deadline record is eligible for automatic archiving
+ * strictly after 24 complete hours (86,400,000 ms) have elapsed from its actual
+ * Asia/Kuala_Lumpur expiry timestamp (23:59:59+08:00 for date-only records, or exact HH:mm:00+08:00).
+ */
+export function evaluateAutoArchiveEligibility(
+  record: {
+    dueDate?: string;
+    dueTime?: string;
+    status?: DeadlineStoredStatus;
+  },
+  now: Date = new Date()
+): AutoArchiveEligibilityResult {
+  if (record.status !== 'ACTIVE') {
+    return {
+      eligible: false,
+      reason: 'NOT_ACTIVE',
+      expiryTimestampMs: getKualaLumpurTimestampMs(record.dueDate, record.dueTime),
+      archiveEligibleAtMs: null,
+      elapsedSinceExpiryMs: null,
+    };
+  }
+
+  const expiryTimestampMs = getKualaLumpurTimestampMs(record.dueDate, record.dueTime);
+  if (expiryTimestampMs === null) {
+    return {
+      eligible: false,
+      reason: 'INVALID_DEADLINE_DATETIME',
+      expiryTimestampMs: null,
+      archiveEligibleAtMs: null,
+      elapsedSinceExpiryMs: null,
+    };
+  }
+
+  const archiveEligibleAtMs = expiryTimestampMs + AUTO_ARCHIVE_GRACE_PERIOD_MS;
+  const elapsedSinceExpiryMs = now.getTime() - expiryTimestampMs;
+
+  if (elapsedSinceExpiryMs <= 0) {
+    return {
+      eligible: false,
+      reason: 'NOT_EXPIRED_YET',
+      expiryTimestampMs,
+      archiveEligibleAtMs,
+      elapsedSinceExpiryMs,
+    };
+  }
+
+  if (elapsedSinceExpiryMs < AUTO_ARCHIVE_GRACE_PERIOD_MS) {
+    return {
+      eligible: false,
+      reason: 'WITHIN_GRACE_PERIOD',
+      expiryTimestampMs,
+      archiveEligibleAtMs,
+      elapsedSinceExpiryMs,
+    };
+  }
+
+  return {
+    eligible: true,
+    reason: 'ELIGIBLE_GRACE_ELAPSED',
+    expiryTimestampMs,
+    archiveEligibleAtMs,
+    elapsedSinceExpiryMs,
+  };
+}
+
 /**
  * Formats remaining time / countdown in Malay cleanly using Asia/Kuala_Lumpur boundaries.
  */

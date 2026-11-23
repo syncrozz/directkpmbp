@@ -20,10 +20,14 @@ RUN npx playwright-core install chromium --with-deps \
 
 # Copy minimal server runtime files
 COPY firebase-applet-config.json server.ts ./
+COPY src/types.ts ./src/types.ts
+COPY src/utils/deadlineStatus.ts ./src/utils/deadlineStatus.ts
 COPY src/services/serverCors.ts ./src/services/serverCors.ts
 COPY src/services/serverMetadata.ts ./src/services/serverMetadata.ts
 COPY src/services/serverFirebaseAuth.ts ./src/services/serverFirebaseAuth.ts
 COPY src/services/serverSnapshot.ts ./src/services/serverSnapshot.ts
+COPY src/services/serverDeadlineAi.ts ./src/services/serverDeadlineAi.ts
+COPY src/services/serverDeadlineArchive.ts ./src/services/serverDeadlineArchive.ts
 COPY public/favicon.svg ./public/favicon.svg
 
 RUN chown -R node:node /app

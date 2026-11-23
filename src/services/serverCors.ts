@@ -229,7 +229,9 @@ export function createCorsMiddleware(explicitAllowedOriginsEnv?: string) {
 
     const normalizedOrigin = new URL(originValue).origin;
     const allowedMethods =
-      requestPath === '/api/platform/snapshot' ? 'POST, OPTIONS' : 'GET, POST, OPTIONS';
+      requestPath === '/api/platform/snapshot' || requestPath === '/api/deadlines/auto-archive'
+        ? 'POST, OPTIONS'
+        : 'GET, POST, OPTIONS';
 
     res.setHeader('Access-Control-Allow-Origin', normalizedOrigin);
     res.setHeader('Access-Control-Allow-Methods', allowedMethods);

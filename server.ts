@@ -6,6 +6,11 @@ import { verifyMasterAdminRequest } from './src/services/serverFirebaseAuth.ts';
 import { captureHomepageSnapshot } from './src/services/serverSnapshot.ts';
 import { createCorsMiddleware } from './src/services/serverCors.ts';
 import { extractDeadlinesWithGemini, DeadlineAiError } from './src/services/serverDeadlineAi.ts';
+import {
+  DeadlineArchiveError,
+  runDeadlineAutoArchive,
+  verifyAutoArchiveTriggerRequest,
+} from './src/services/serverDeadlineArchive.ts';
 
 async function startServer() {
   const app = express();
@@ -470,6 +475,73 @@ async function startServer() {
       success: false,
       code: 'METHOD_NOT_ALLOWED',
       error: 'Kaedah HTTP tidak dibenarkan untuk AI Deadline Capture. Sila gunakan POST.',
+    });
+  });
+
+  // Deadline Hub Auto-Archive Scheduler endpoint (Cloud Scheduler secret/OIDC or Master Admin ONLY)
+  app.post('/api/deadlines/auto-archive', async (req, res) => {
+    const authResult = await verifyAutoArchiveTriggerRequest(req);
+    if (!authResult.authorized) {
+      return res.status(authResult.status).json({
+        success: false,
+        code:
+          authResult.status === 401
+            ? 'UNAUTHENTICATED'
+            : authResult.status === 503
+            ? 'SCHEDULER_AUTH_UNCONFIGURED'
+            : 'FORBIDDEN',
+        error:
+          authResult.error ||
+          'Akses ditolak. Hanya penjadual berotorisasi atau Master Admin dibenarkan.',
+      });
+    }
+
+    try {
+      const dryRun = Boolean(req.body?.dryRun === true || req.query?.dryRun === 'true');
+      const summary = await runDeadlineAutoArchive({
+        triggeredBy: authResult.actor || 'scheduler',
+        dryRun,
+      });
+
+      return res.status(200).json({
+        success: true,
+        data: summary,
+      });
+    } catch (err: any) {
+      if (err instanceof DeadlineArchiveError) {
+        return res.status(err.statusCode).json({
+          success: false,
+          code: err.code,
+          error: err.message,
+        });
+      }
+
+      const rawCode = String(err?.code || '');
+      const rawMsg = String(err?.message || err || '');
+      const isPermissionDenied =
+        rawCode === '7' ||
+        rawCode.toLowerCase().includes('permission-denied') ||
+        rawMsg.toLowerCase().includes('permission_denied') ||
+        rawMsg.toLowerCase().includes('missing or insufficient permissions');
+
+      console.error('[DeadlineAutoArchive] Execution error:', rawCode || 'ERR', rawMsg.slice(0, 180));
+
+      return res.status(isPermissionDenied ? 503 : 500).json({
+        success: false,
+        code: isPermissionDenied ? 'FIRESTORE_IAM_REQUIRED' : 'AUTO_ARCHIVE_FAILED',
+        error: isPermissionDenied
+          ? 'Akaun perkhidmatan pelayan memerlukan peranan IAM Firestore (roles/datastore.user) untuk melaksanakan arkib automatik.'
+          : 'Ralat dalaman pelayan semasa melaksanakan arkib automatik tarikh akhir.',
+      });
+    }
+  });
+
+  app.all('/api/deadlines/auto-archive', (_req, res) => {
+    res.setHeader('Allow', 'POST, OPTIONS');
+    return res.status(405).json({
+      success: false,
+      code: 'METHOD_NOT_ALLOWED',
+      error: 'Kaedah HTTP tidak dibenarkan untuk arkib automatik. Sila gunakan POST.',
     });
   });
 
