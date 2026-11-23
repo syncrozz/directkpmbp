@@ -7,7 +7,6 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Search,
   Filter, 
-  X, 
   RotateCcw, 
   UserCheck, 
   Sparkles,
@@ -17,30 +16,34 @@ import {
   Lock,
   Pencil,
   FileSpreadsheet,
-  ChevronDown,
   GraduationCap,
   Layers,
-  LogOut
+  LogOut,
+  ExternalLink
 } from 'lucide-react';
-import { Staff, DivisionType, StaffCommittee, AuthorizedAdmin, NavigationItem } from './types';
+import { Staff, DivisionType, StaffCommittee, AuthorizedAdmin, NavigationItem, PlatformLink, PlatformSyncStatus, StudentTimetable } from './types';
 import { INITIAL_STAFF_DATA } from './data/initialStaff';
 import { STAFF_GRADE_MAP, determineBahagian } from './utils/staffGrade';
-import { getDistrictState } from './utils/stateMapping';
 import { generateDefaultCommitteesForStaff, deduplicateCommittees } from './utils/committeeService';
-import { formatIC, cleanIC } from './utils/icFormatter';
+import { formatIC } from './utils/icFormatter';
+import { buildStaffSearchIndex, searchStaffIndex } from './services/globalSearchService';
+import { fetchStudentTimetables } from './services/timetableService';
+import { fetchAvailableTimetableIds, FALLBACK_LECTURER_TIMETABLE_IDS } from './services/lecturerTimetableService';
+import { subscribeToPlatformLinks } from './services/platformService';
 import { StaffCard } from './components/StaffCard';
 import { ProfileModal } from './components/ProfileModal';
 import { CommitteeModal } from './components/CommitteeModal';
 import { SyncSettings } from './components/SyncSettings';
 import { AddEditStaffModal } from './components/AddEditStaffModal';
-import { CampusReferenceHub } from './components/CampusReferenceHub';
 import { PlatformHub } from './components/PlatformHub';
 import { AdminPinModal } from './components/AdminPinModal';
 import { SelfRegistrationPage } from './components/SelfRegistrationPage';
 import { StudentTimetableHub } from './components/StudentTimetableHub';
 import { LecturerTimetableHub } from './components/LecturerTimetableHub';
+import { DeadlineHub } from './components/DeadlineHub';
 import { DynamicNavigationBar } from './components/DynamicNavigationBar';
-import { NavigationManagerModal } from './components/NavigationManagerModal';
+import { GlobalSmartSearch } from './components/GlobalSmartSearch';
+import { NavigationManagerModal, NavigationManagerContext } from './components/NavigationManagerModal';
 import { DriveContentViewer } from './components/DriveContentViewer';
 import { EmptyPageContainer } from './components/EmptyPageContainer';
 import { 
@@ -58,18 +61,21 @@ import {
   fetchStaffListFromFirestore, 
   fetchCommitteesFromFirestore, 
   saveStaffListToFirestore, 
+  saveStaffListToFirestoreDetailed,
   saveCommitteesToFirestore,
+  saveCommitteesToFirestoreDetailed,
   signOutAdmin,
   subscribeToAuthChanges
 } from './config/firebase';
 import {
   generateThumbnailForItem,
-  generateBulkThumbnails,
-  isEligibleDrivePdf
+  isEligibleDrivePdf,
+  extractGoogleDriveFileId,
+  applyValidatedThumbnailOutcome
 } from './services/pdfThumbnailService';
 
 export default function App() {
-  // Navigation State ('directory' | 'platform' | 'rujukan' | 'jadual' | 'jadual-pensyarah' | 'daftar' | custom item ID)
+  // Navigation State ('directory' | 'platform' | 'jadual' | 'jadual-pensyarah' | 'daftar' | custom item ID)
   const resolveLeafItem = (item: NavigationItem, allItems: NavigationItem[]): NavigationItem => {
     let target = item;
     if (target.type === 'parent') {
@@ -88,6 +94,19 @@ export default function App() {
         target = gcs[0];
       }
     }
+    if (
+      target.type === 'grandchild' &&
+      target.displayType !== 'empty_page' &&
+      !target.driveUrl &&
+      target.destination === target.id
+    ) {
+      const deltas = allItems
+        .filter((i) => i.type === 'delta' && i.parentId === target.id && i.isActive)
+        .sort((a, b) => a.order - b.order);
+      if (deltas.length > 0) {
+        target = deltas[0];
+      }
+    }
     return target;
   };
 
@@ -103,7 +122,12 @@ export default function App() {
 
   // Dynamic Hierarchical Navigation State (SES v4.4)
   const [navigationItems, setNavigationItems] = useState<NavigationItem[]>(DEFAULT_NAVIGATION_ITEMS);
+  const navigationItemsRef = useRef<NavigationItem[]>(navigationItems);
+  useEffect(() => {
+    navigationItemsRef.current = navigationItems;
+  }, [navigationItems]);
   const [isNavManagerOpen, setIsNavManagerOpen] = useState(false);
+  const [navManagerContext, setNavManagerContext] = useState<NavigationManagerContext | null>(null);
 
   // Authoritative real-time Firestore synchronization for navigation architecture
   useEffect(() => {
@@ -121,41 +145,41 @@ export default function App() {
       return resolveLeafItem(byId, navigationItems);
     }
 
-    // 2. Match by exact hierarchical slug (e.g. "borang/bayaran_penceramah")
+    // 2. Match by exact hierarchical slug (e.g. "borang/kertas_kerja/lampiran_f")
     const byHierarchicalSlug = navigationItems.find(
       (item) => getHierarchicalSlug(item, navigationItems).toLowerCase() === activeHub.toLowerCase()
     );
-    if (byHierarchicalSlug) return byHierarchicalSlug;
+    if (byHierarchicalSlug) {
+      return resolveLeafItem(byHierarchicalSlug, navigationItems);
+    }
 
     // 3. Match by leaf slug
     const bySlug = navigationItems.find(
       (item) => item.slug && item.slug.toLowerCase() === activeHub.toLowerCase()
     );
     if (bySlug) {
-      if (bySlug.type === 'child' && bySlug.displayType !== 'empty_page' && !bySlug.driveUrl) {
-        const childGrandchildren = navigationItems.filter(
-          (item) => item.type === 'grandchild' && item.parentId === bySlug.id && item.isActive
-        );
-        if (childGrandchildren.length > 0 && !bySlug.driveUrl && bySlug.destination === bySlug.id) {
-          return childGrandchildren[0];
-        }
-      }
-      return bySlug;
+      return resolveLeafItem(bySlug, navigationItems);
     }
 
-    // 4. Grandchild match by destination
+    // 4. Delta match by destination
+    const deltaMatch = navigationItems.find(
+      (item) => item.type === 'delta' && item.destination === activeHub
+    );
+    if (deltaMatch) return deltaMatch;
+
+    // 5. Grandchild match by destination
     const grandchildMatch = navigationItems.find(
       (item) => item.type === 'grandchild' && item.destination === activeHub
     );
     if (grandchildMatch) return grandchildMatch;
 
-    // 5. Child match by destination
+    // 6. Child match by destination
     const childMatch = navigationItems.find(
       (item) => item.type === 'child' && item.destination === activeHub
     );
     if (childMatch) return childMatch;
 
-    // 6. Parent match by destination
+    // 7. Parent match by destination
     return navigationItems.find((item) => item.destination === activeHub);
   }, [navigationItems, activeHub]);
 
@@ -226,6 +250,70 @@ export default function App() {
     }
   };
 
+  // Authoritative Global Search Datasets & Direct Timetable Targets (SES v4.5)
+  const [studentTimetables, setStudentTimetables] = useState<StudentTimetable[]>([]);
+  const [availableLecturerIds, setAvailableLecturerIds] = useState<Set<string>>(
+    () => new Set(FALLBACK_LECTURER_TIMETABLE_IDS)
+  );
+  const [platformLinks, setPlatformLinks] = useState<PlatformLink[]>([]);
+  const [platformSyncStatus, setPlatformSyncStatus] = useState<PlatformSyncStatus>('loading');
+  const [platformSyncError, setPlatformSyncError] = useState<string | null>(null);
+  const [isPlatformsLoading, setIsPlatformsLoading] = useState<boolean>(true);
+  const [selectedStudentTarget, setSelectedStudentTarget] = useState<{ classCode: string; seq: number } | null>(null);
+  const [selectedLecturerTarget, setSelectedLecturerTarget] = useState<{ staffId: string; seq: number } | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    fetchStudentTimetables()
+      .then((res) => {
+        if (isMounted && Array.isArray(res.data)) {
+          setStudentTimetables(res.data);
+        }
+      })
+      .catch(() => {});
+
+    fetchAvailableTimetableIds()
+      .then((res) => {
+        if (isMounted && res.ids && res.ids.size > 0) {
+          setAvailableLecturerIds(res.ids);
+        }
+      })
+      .catch(() => {});
+
+    const unsubscribePlatforms = subscribeToPlatformLinks((result) => {
+      if (!isMounted) return;
+      setPlatformLinks(result.platforms);
+      setPlatformSyncStatus(result.status);
+      setPlatformSyncError(result.errorMessage || null);
+      setIsPlatformsLoading(false);
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribePlatforms();
+    };
+  }, []);
+
+  const handleSelectStudentTimetable = (classCode: string) => {
+    setSelectedStudentTarget((prev) => ({
+      classCode,
+      seq: (prev?.seq ?? 0) + 1,
+    }));
+    setSearchQuery('');
+    setDebouncedSearchQuery('');
+    handleSelectDestination('jadual');
+  };
+
+  const handleSelectLecturerTimetable = (staffId: string) => {
+    setSelectedLecturerTarget((prev) => ({
+      staffId,
+      seq: (prev?.seq ?? 0) + 1,
+    }));
+    setSearchQuery('');
+    setDebouncedSearchQuery('');
+    handleSelectDestination('jadual-pensyarah');
+  };
+
   // Staff Directory State
   const [staffList, setStaffList] = useState<Staff[]>([]);
   const [selectedStaff, setSelectedStaff] = useState<Staff | null>(null);
@@ -280,7 +368,6 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [selectedDivision, setSelectedDivision] = useState<DivisionType>('Semua');
-  const [selectedDepartment, setSelectedDepartment] = useState('Semua');
   const [showMobileFilters, setShowMobileFilters] = useState(false);
 
   // Debounce search input by 250ms for high performance
@@ -404,6 +491,15 @@ export default function App() {
         }
       } else if (res.activeNavId) {
         setActiveHub(res.activeNavId);
+        if (
+          typeof window !== 'undefined' &&
+          (res.resolvedDestination === 'daftar' || res.resolvedDestination === 'deadline-hub')
+        ) {
+          const targetPath = res.resolvedDestination === 'deadline-hub' ? '/deadline_hub' : '/daftar';
+          if (window.location.pathname !== targetPath || window.location.hash) {
+            window.history.replaceState({ navId: res.activeNavId }, '', targetPath);
+          }
+        }
       } else {
         setActiveHub(res.resolvedDestination || 'directory');
       }
@@ -462,7 +558,8 @@ export default function App() {
     setSearchQuery('');
     setDebouncedSearchQuery('');
     setSelectedDivision('Semua');
-    setSelectedDepartment('Semua');
+    setSelectedStudentTarget(null);
+    setSelectedLecturerTarget(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -592,8 +689,57 @@ export default function App() {
     }
   };
 
-  const handleResetStaffData = () => {
-    saveStaffList(INITIAL_STAFF_DATA);
+  const handleResetStaffData = async (): Promise<{
+    ok: boolean;
+    firestoreConfirmed: boolean;
+    partialFailure?: boolean;
+    message: string;
+    affectedIds: string[];
+    remainingCount: number;
+  }> => {
+    if (!auth.currentUser) {
+      return {
+        ok: false,
+        firestoreConfirmed: false,
+        partialFailure: false,
+        message: 'Operasi disekat: Sila log masuk sebagai Master Admin sebelum melaksanakan Reset Data Staf.',
+        affectedIds: [],
+        remainingCount: staffList.length,
+      };
+    }
+
+    const baseIds = new Set(
+      INITIAL_STAFF_DATA.map((s) => (s.ID || s.staff_id || '').toUpperCase().trim()).filter(Boolean)
+    );
+    const removedIds = staffList
+      .map((s) => (s.ID || s.staff_id || '').toUpperCase().trim())
+      .filter((id) => id && !baseIds.has(id));
+
+    const saveRes = await saveStaffListToFirestoreDetailed(INITIAL_STAFF_DATA);
+    if (!saveRes.firestoreConfirmed) {
+      return {
+        ok: false,
+        firestoreConfirmed: false,
+        partialFailure: saveRes.partialFailure,
+        message: saveRes.partialFailure
+          ? `⚠ Reset Data Staf separa berlaku di Firestore (${saveRes.errorDetail || 'sebahagian dokumen tidak dapat dibersihkan'}). Sila semak semula.`
+          : `Reset Data Staf gagal disahkan oleh Firestore (${saveRes.errorDetail || 'ralat rangkaian/izin'}). Data pengeluaran kekal tidak diubah.`,
+        affectedIds: removedIds,
+        remainingCount: staffList.length,
+      };
+    }
+
+    setStaffList(INITIAL_STAFF_DATA);
+    localStorage.setItem('kpmbp_smarthub_staff', JSON.stringify(INITIAL_STAFF_DATA));
+
+    return {
+      ok: true,
+      firestoreConfirmed: true,
+      partialFailure: false,
+      message: `✓ Reset Data Staf disahkan di Firestore. ${INITIAL_STAFF_DATA.length} rekod asas dipulihkan (${removedIds.length} rekod tambahan dipadam).`,
+      affectedIds: removedIds,
+      remainingCount: INITIAL_STAFF_DATA.length,
+    };
   };
 
   const handleImportCommitteeData = (importedCommittees: StaffCommittee[]) => {
@@ -605,104 +751,90 @@ export default function App() {
     });
   };
 
-  const handleResetCommitteeData = () => {
-    localStorage.removeItem('kpmbp_smarthub_committees');
-    loadCommitteesData(staffList);
+  const handleResetCommitteeData = async (): Promise<{
+    ok: boolean;
+    firestoreConfirmed: boolean;
+    partialFailure?: boolean;
+    message: string;
+    affectedIds: string[];
+    remainingCount: number;
+  }> => {
+    if (!auth.currentUser) {
+      return {
+        ok: false,
+        firestoreConfirmed: false,
+        partialFailure: false,
+        message: 'Operasi disekat: Sila log masuk sebagai Master Admin sebelum melaksanakan Reset Jawatankuasa.',
+        affectedIds: [],
+        remainingCount: committees.length,
+      };
+    }
+
+    const defaultCommittees = deduplicateCommittees(generateDefaultCommitteesForStaff(staffList));
+    const defaultIds = new Set(defaultCommittees.map((c) => c.id));
+    const replacedIds = committees
+      .filter((c) => !defaultIds.has(c.id))
+      .map((c) => c.id);
+
+    const saveRes = await saveCommitteesToFirestoreDetailed(defaultCommittees);
+    if (!saveRes.firestoreConfirmed) {
+      return {
+        ok: false,
+        firestoreConfirmed: false,
+        partialFailure: saveRes.partialFailure,
+        message: saveRes.partialFailure
+          ? `⚠ Reset Jawatankuasa separa berlaku di Firestore (${saveRes.errorDetail || 'sebahagian dokumen tidak dapat dibersihkan'}). Sila semak semula.`
+          : `Reset Jawatankuasa gagal disahkan oleh Firestore (${saveRes.errorDetail || 'ralat rangkaian/izin'}). Rekod sedia ada kekal tidak diubah.`,
+        affectedIds: replacedIds,
+        remainingCount: committees.length,
+      };
+    }
+
+    setCommittees(defaultCommittees);
+    localStorage.setItem('kpmbp_smarthub_committees', JSON.stringify(defaultCommittees));
+
+    return {
+      ok: true,
+      firestoreConfirmed: true,
+      partialFailure: false,
+      message: `✓ Reset Jawatankuasa disahkan di Firestore. ${defaultCommittees.length} rekod jawatankuasa lalai dijana semula.`,
+      affectedIds: replacedIds,
+      remainingCount: defaultCommittees.length,
+    };
   };
 
-  // Build pre-computed searchable index on staff dataset load/change
-  const indexedStaffList = useMemo(() => {
-    return staffList.map((staff) => {
-      const district = String(staff.DaerahAsal || '');
-      const state = getDistrictState(district);
+  // Build pre-computed searchable index via shared Unified Search engine
+  const indexedStaffList = useMemo(
+    () => buildStaffSearchIndex(staffList, isAdminMode),
+    [staffList, isAdminMode]
+  );
 
-      // Collect all vehicle plates (PlatNo1, PlatNo2, PlatNo3)
-      const allPlates = [
-        staff.PlatNo1,
-        staff.PlatNo2,
-        staff.PlatNo3,
-        staff.NoPlat,
-      ].filter(Boolean) as string[];
+  // Global debounced staff search matches (unrestricted by Directory tab/department filters)
+  const searchMatchedStaff = useMemo(
+    () => searchStaffIndex(indexedStaffList, debouncedSearchQuery),
+    [indexedStaffList, debouncedSearchQuery]
+  );
 
-      const platesNormalized = allPlates.map((p) => String(p).toLowerCase().trim());
-      const platesNoSpace = allPlates.map((p) => String(p).toLowerCase().replace(/\s+/g, ''));
-
-      // Combine searchable staff fields matching the 17 official columns
-      const searchableText = [
-        staff.Nama,
-        staff.NamaPendek,
-        staff.StaffID,
-        staff.ID,
-        staff.staff_id,
-        staff.Kategori,
-        staff.Bahagian,
-        staff.Jawatan,
-        staff.Unit,
-        staff.DepartmentID,
-        staff.Gred,
-        staff.grade,
-        staff.Email,
-        staff.Telefon,
-        staff.Sambungan,
-        ...platesNormalized,
-        ...platesNoSpace,
-        staff.TahunLahir,
-        staff['Tahun Lahir'],
-        district,
-        state,
-        staff.Kelulusan,
-        staff.Pengkhususan,
-        ...(isAdminMode && (staff.IC || staff.NoKP) ? [
-          formatIC(staff.IC || staff.NoKP),
-          cleanIC(staff.IC || staff.NoKP)
-        ] : []),
-      ]
-        .filter(Boolean)
-        .map((val) => String(val).toLowerCase().trim())
-        .join(' ');
-
-      return {
-        staff,
-        searchableText,
-        platesNoSpace,
-      };
-    });
-  }, [staffList, isAdminMode]);
-
-  // Filters calculation using pre-computed index & debounced search query
-  const uniqueDepartments = ['Semua', ...Array.from(new Set(staffList.map((s) => s.DepartmentID)))];
-
+  // Filters calculation using shared debounced search matches + Directory Staff division tabs
   const filteredStaff = useMemo(() => {
-    const q = debouncedSearchQuery.toLowerCase().trim();
-    const qNoSpace = q.replace(/\s+/g, '');
+    return searchMatchedStaff.filter((staff) => {
+      if (selectedDivision !== 'Semua' && staff.Bahagian !== selectedDivision) {
+        return false;
+      }
 
-    return indexedStaffList
-      .filter(({ staff, searchableText, platesNoSpace }) => {
-        if (q) {
-          const matchesQuery =
-            searchableText.includes(q) ||
-            searchableText.includes(qNoSpace) ||
-            platesNoSpace.some((plate) => plate.includes(qNoSpace));
-          if (!matchesQuery) return false;
-        }
+      return true;
+    });
+  }, [searchMatchedStaff, selectedDivision]);
 
-        if (selectedDivision !== 'Semua' && staff.Bahagian !== selectedDivision) {
-          return false;
-        }
-
-        if (selectedDepartment !== 'Semua' && staff.DepartmentID !== selectedDepartment) {
-          return false;
-        }
-
-        return true;
-      })
-      .map((item) => item.staff);
-  }, [indexedStaffList, debouncedSearchQuery, selectedDivision, selectedDepartment]);
+  const handleClearSearch = () => {
+    setSearchQuery('');
+    setDebouncedSearchQuery('');
+  };
 
   const resetFilters = () => {
     setSearchQuery('');
+    setDebouncedSearchQuery('');
     setSelectedDivision('Semua');
-    setSelectedDepartment('Semua');
     setShowMobileFilters(false);
   };
 
@@ -722,6 +854,8 @@ export default function App() {
           ? '!bg-[radial-gradient(circle,rgba(245,158,11,0.18)_0%,rgba(249,115,22,0.06)_100%)]'
           : resolvedDestination === 'jadual-pensyarah'
           ? '!bg-[radial-gradient(circle,rgba(244,63,94,0.18)_0%,rgba(236,72,153,0.06)_100%)]'
+          : resolvedDestination === 'deadline-hub' || resolvedDestination === 'nav_deadline_hub'
+          ? '!bg-[radial-gradient(circle,rgba(14,165,233,0.18)_0%,rgba(79,70,229,0.06)_100%)]'
           : resolvedDestination === 'daftar'
           ? '!bg-[radial-gradient(circle,rgba(168,85,247,0.18)_0%,rgba(217,70,239,0.06)_100%)]'
           : ''
@@ -834,6 +968,7 @@ export default function App() {
                         type="button"
                         onClick={() => {
                           setIsAdminProfileOpen(false);
+                          setNavManagerContext(null);
                           setIsNavManagerOpen(true);
                         }}
                         className="w-full px-2.5 py-2 text-xs font-bold text-slate-700 hover:text-indigo-600 hover:bg-slate-50 rounded-xl transition-all flex items-center gap-2 cursor-pointer"
@@ -904,7 +1039,10 @@ export default function App() {
             {/* Dynamic Navigation Architecture Manager Button (Hanya muncul semasa Admin Mode Aktif) */}
             {isAdminMode && (
               <button
-                onClick={() => setIsNavManagerOpen(true)}
+                onClick={() => {
+                  setNavManagerContext(null);
+                  setIsNavManagerOpen(true);
+                }}
                 title="Pengurusan Navigasi Dinamik"
                 aria-label="Pengurusan Navigasi Dinamik"
                 className={`relative p-2 sm:p-2.5 rounded-xl sm:rounded-2xl transition-all border cursor-pointer flex items-center justify-center shrink-0 ${
@@ -927,8 +1065,37 @@ export default function App() {
         activeHub={activeHub}
         onSelectDestination={handleSelectDestination}
         isAdminMode={isAdminMode}
-        onOpenNavManager={() => setIsNavManagerOpen(true)}
+        onOpenNavManager={() => {
+          setNavManagerContext(null);
+          setIsNavManagerOpen(true);
+        }}
       />
+
+      {/* Unified Global Smart Search Bar — Single Search Interface Directly Below Main Navigation */}
+      <section
+        aria-label="Carian Global Platform"
+        className="relative z-[34] bg-white/75 backdrop-blur-md border-b border-slate-200/70 shadow-2xs"
+      >
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2.5 sm:py-3">
+          <GlobalSmartSearch
+            items={navigationItems}
+            query={searchQuery}
+            debouncedQuery={debouncedSearchQuery}
+            onQueryChange={setSearchQuery}
+            onClearSearch={handleClearSearch}
+            onSelectDestination={handleSelectDestination}
+            staffList={staffList}
+            staffMatches={searchQuery.trim() ? searchMatchedStaff : []}
+            studentTimetables={studentTimetables}
+            availableLecturerIds={availableLecturerIds}
+            platformLinks={platformLinks}
+            isStaffSearching={staffList.length > 0}
+            onSelectStaff={(staff) => setSelectedStaff(staff)}
+            onSelectStudentTimetable={handleSelectStudentTimetable}
+            onSelectLecturerTimetable={handleSelectLecturerTimetable}
+          />
+        </div>
+      </section>
 
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 relative z-10">
@@ -936,14 +1103,35 @@ export default function App() {
           <EmptyPageContainer
             item={activeNavItem}
             parentItem={navigationItems.find((p) => p.id === activeNavItem.parentId)}
-            grandchildren={navigationItems.filter(
-              (gc) => gc.type === 'grandchild' && gc.parentId === activeNavItem.id && gc.isActive
-            )}
+            grandchildren={navigationItems.filter((item) => {
+              if (!item.isActive || item.parentId !== activeNavItem.id) return false;
+              if (activeNavItem.type === 'parent') return item.type === 'child';
+              if (activeNavItem.type === 'child') return item.type === 'grandchild';
+              if (activeNavItem.type === 'grandchild') return item.type === 'delta';
+              return false;
+            })}
             allItems={navigationItems}
             onSelectGrandchild={(gc) => handleSelectDestination(gc.id || gc.destination)}
             onSelectParent={(pId) => handleSelectDestination(pId)}
             isAdminMode={isAdminMode}
-            onOpenNavManager={() => setIsNavManagerOpen(true)}
+            onOpenNavManager={() => {
+              if (activeNavItem.type === 'child') {
+                setNavManagerContext({
+                  mode: 'contextual-charlie',
+                  bravoParentId: activeNavItem.id,
+                  autoOpenAdd: true,
+                });
+              } else if (activeNavItem.type === 'grandchild') {
+                setNavManagerContext({
+                  mode: 'contextual-delta',
+                  charlieParentId: activeNavItem.id,
+                  autoOpenAdd: true,
+                });
+              } else {
+                setNavManagerContext(null);
+              }
+              setIsNavManagerOpen(true);
+            }}
           />
         ) : activeNavItem && (activeNavItem.displayType === 'drive' || Boolean(activeNavItem.driveUrl)) ? (
           <DriveContentViewer
@@ -956,113 +1144,92 @@ export default function App() {
             onNavigate={(dest) => handleSelectDestination(dest)}
             isAdminMode={isAdminMode}
             onUpdateConfig={async (newUrl, newTitle) => {
+              const trimmedUrl = newUrl.trim();
+              const isSameUrl = (activeNavItem.driveUrl || '').trim() === trimmedUrl;
+              const nextFileId = extractGoogleDriveFileId(trimmedUrl) || undefined;
+              const isEligible = isEligibleDrivePdf({ ...activeNavItem, driveUrl: trimmedUrl });
+              const shouldRefreshThumb =
+                isEligible &&
+                (!isSameUrl ||
+                  !activeNavItem.thumbnailUrl ||
+                  activeNavItem.thumbnailStatus === 'failed' ||
+                  activeNavItem.thumbnailStatus === 'error');
+
               const updated = navigationItems.map((n) =>
                 n.id === activeNavItem.id
                   ? {
                       ...n,
-                      driveUrl: newUrl,
+                      driveUrl: trimmedUrl,
                       displayTitle: newTitle || n.name,
-                      thumbnailStatus: 'generating' as const,
+                      thumbnailUrl: isSameUrl ? n.thumbnailUrl : undefined,
+                      thumbnailFileId: nextFileId,
+                      thumbnailGeneratedAt: isSameUrl ? n.thumbnailGeneratedAt : undefined,
+                      thumbnailError: undefined,
+                      thumbnailStatus: shouldRefreshThumb
+                        ? ('generating' as const)
+                        : isSameUrl
+                        ? (n.thumbnailStatus || 'idle')
+                        : ('idle' as const),
                       updatedAt: new Date().toISOString(),
                     }
                   : n
               );
               setNavigationItems(updated);
+              navigationItemsRef.current = updated;
               await saveNavigationItems(updated);
 
-              // Auto-generate thumbnail for updated URL
+              // Auto-generate thumbnail in background (strictly non-fatal)
               const target = updated.find((it) => it.id === activeNavItem.id);
-              if (target && isEligibleDrivePdf(target)) {
-                generateThumbnailForItem(target, true).then(async (res) => {
-                  if (res.success) {
-                    const withThumb = updated.map((it) => (it.id === target.id ? res.item : it));
-                    setNavigationItems(withThumb);
-                    await saveNavigationItems(withThumb);
-                  }
-                }).catch(console.warn);
+              if (target && shouldRefreshThumb) {
+                const baselineGeneratedAt = target.thumbnailGeneratedAt;
+                generateThumbnailForItem(target, true)
+                  .then(async (res) => {
+                    const mergeItem = (list: NavigationItem[]) =>
+                      list.map((it) =>
+                        it.id === target.id
+                          ? applyValidatedThumbnailOutcome(it, res.item, baselineGeneratedAt)
+                          : it
+                      );
+                    const mergedForSave = mergeItem(navigationItemsRef.current);
+                    navigationItemsRef.current = mergedForSave;
+                    setNavigationItems((prev) => mergeItem(prev));
+                    try {
+                      await saveNavigationItems(mergedForSave);
+                    } catch (saveThumbErr: any) {
+                      console.warn('[App] Non-fatal thumbnail status save notice:', saveThumbErr?.message || saveThumbErr);
+                    }
+                  })
+                  .catch((thumbErr) => {
+                    console.warn('[App] Non-fatal thumbnail generation notice:', thumbErr?.message || thumbErr);
+                  });
               }
             }}
           />
         ) : resolvedDestination === 'directory' ? (
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-5">
             
-            {/* Unified Search & Directory Control Bar */}
-            <div className="glass-panel rounded-3xl p-4 md:p-5 border border-white/55 shadow-sm space-y-3.5 text-left sticky top-2 z-30 bg-white/95 backdrop-blur-md transition-all">
+            {/* Directory Filter & Category Control Bar (One Search consolidated into GlobalSmartSearch above) */}
+            <div className="glass-panel rounded-2xl sm:rounded-3xl p-3 sm:p-4 border border-white/60 shadow-xs space-y-3 text-left bg-white/95 backdrop-blur-md transition-all">
               
-              {/* Row 1: Search Box & Jabatan Selector */}
-              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                
-                {/* Prominent Search Bar */}
-                <div className="relative flex-1">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-500 w-4 h-4 pointer-events-none" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Cari nama, no. plat, gred, jabatan..."
-                    className="w-full pl-11 pr-10 py-3 bg-white/90 border border-indigo-200/80 rounded-2xl text-xs md:text-sm font-medium text-slate-800 placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:outline-none transition-all shadow-2xs"
-                  />
-                  {searchQuery && (
-                    <button
-                      onClick={() => setSearchQuery('')}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-full transition-all cursor-pointer"
-                      title="Padam carian"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-
-                {/* Jabatan Selector (always on desktop; on mobile hidden while searching unless expanded) */}
-                <div className={`relative min-w-[200px] ${searchQuery.trim() && !showMobileFilters ? 'hidden sm:block' : 'block'}`}>
-                  <select
-                    value={selectedDepartment}
-                    onChange={(e) => setSelectedDepartment(e.target.value)}
-                    className="w-full pl-4 pr-10 py-3 bg-white/90 border border-slate-200/80 rounded-2xl text-xs font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 focus:outline-none appearance-none cursor-pointer shadow-2xs"
-                  >
-                    <option value="Semua">Semua Bahagian</option>
-                    {uniqueDepartments.filter(d => d !== 'Semua').map((dept) => (
-                      <option key={dept} value={dept}>
-                        {dept}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="absolute inset-y-0 right-3.5 flex items-center pointer-events-none text-slate-500">
-                    <Filter className="w-3.5 h-3.5" />
-                  </div>
-                </div>
-
-                {/* Reset Filters button */}
-                {(searchQuery || selectedDivision !== 'Semua' || selectedDepartment !== 'Semua') && (
-                  <button
-                    onClick={resetFilters}
-                    className={`px-3.5 py-3 text-xs text-indigo-700 hover:text-indigo-950 font-bold items-center justify-center gap-1.5 bg-indigo-50/80 hover:bg-indigo-100/80 rounded-2xl border border-indigo-200/80 transition-all cursor-pointer whitespace-nowrap shadow-2xs ${
-                      searchQuery.trim() && !showMobileFilters ? 'hidden sm:flex' : 'flex'
-                    }`}
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    <span>Set Semula</span>
-                  </button>
-                )}
-              </div>
-
               {/* Mobile Search Live Toolbar: Appears when typing on mobile for instant feedback without layout shift */}
               {searchQuery.trim() && (
-                <div className="flex sm:hidden items-center justify-between pt-1 pb-0.5 text-xs">
+                <div className="flex sm:hidden items-center justify-between pt-0.5 pb-0.5 text-xs">
                   <div className="flex items-center gap-1.5 font-extrabold text-indigo-950 bg-indigo-50/90 px-3 py-1.5 rounded-xl border border-indigo-200/70 shadow-2xs">
                     <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
                     <span>{filteredStaff.length} staf ditemui</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => (document.activeElement as HTMLElement)?.blur()}
-                      className="px-3 py-1.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 active:scale-95 rounded-xl cursor-pointer transition-all flex items-center gap-1 shadow-2xs"
-                      title="Tutup papan kekunci maya untuk paparan luas"
-                    >
-                      <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
-                      <span>Tutup Kekunci</span>
-                    </button>
+                    {(searchQuery || selectedDivision !== 'Semua') && (
+                      <button
+                        type="button"
+                        onClick={resetFilters}
+                        className="px-2.5 py-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-xl border border-indigo-200/80 cursor-pointer transition-all flex items-center gap-1 shadow-2xs"
+                        title="Set Semula Saringan"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        <span>Set Semula</span>
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => setShowMobileFilters(!showMobileFilters)}
@@ -1079,66 +1246,84 @@ export default function App() {
                 </div>
               )}
 
-              {/* Row 2: Horizontal Division (Bahagian) Filter Tabs (collapsed on mobile during search to bring results up) */}
-              <div className={`items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none border-t border-slate-100/80 pt-3 ${
+              {/* Preserved Directory Filters: Division Category Tabs + Reset */}
+              <div className={`flex-col lg:flex-row lg:items-center lg:justify-between gap-3 ${
                 searchQuery.trim() && !showMobileFilters ? 'hidden sm:flex' : 'flex'
               }`}>
-                {(['Semua', 'Pengurusan', 'Akademik', 'Sokongan Akademik', 'Pentadbiran'] as DivisionType[])
-                  .filter((div) => {
-                    if (div === 'Semua') return true;
-                    // Sembunyikan kategori sekiranya tiada staf (bilangan 0 seperti Sokongan Akademik)
-                    const count = staffList.filter((s) => s.Bahagian === div).length;
-                    return count > 0;
-                  })
-                  .map((div) => {
-                  const isActive = selectedDivision === div;
-                  const count = div === 'Semua' 
-                    ? staffList.length 
-                    : staffList.filter(s => s.Bahagian === div).length;
+                
+                {/* Horizontal Division (Bahagian) Filter Tabs */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none min-w-0 flex-1">
+                  {(['Semua', 'Pengurusan', 'Akademik', 'Sokongan Akademik', 'Pentadbiran'] as DivisionType[])
+                    .filter((div) => {
+                      if (div === 'Semua') return true;
+                      // Sembunyikan kategori sekiranya tiada staf (bilangan 0 seperti Sokongan Akademik)
+                      const count = staffList.filter((s) => s.Bahagian === div).length;
+                      return count > 0;
+                    })
+                    .map((div) => {
+                    const isActive = selectedDivision === div;
+                    const count = div === 'Semua' 
+                      ? staffList.length 
+                      : staffList.filter(s => s.Bahagian === div).length;
 
-                  let pastelStyle = '';
-                  let badgeStyle = '';
+                    let pastelStyle = '';
+                    let badgeStyle = '';
 
-                  if (div === 'Semua') {
-                    pastelStyle = isActive
-                      ? 'bg-rose-100/95 text-rose-950 border-2 border-rose-400 shadow-xs font-black'
-                      : 'bg-rose-50/80 text-rose-900 hover:bg-rose-100/70 border border-rose-200/70 font-extrabold';
-                    badgeStyle = isActive ? 'bg-rose-200 text-rose-950' : 'bg-rose-100 text-rose-900';
-                  } else if (div === 'Pengurusan') {
-                    pastelStyle = isActive
-                      ? 'bg-purple-100/95 text-purple-950 border-2 border-purple-400 shadow-xs font-black'
-                      : 'bg-purple-50/80 text-purple-900 hover:bg-purple-100/70 border border-purple-200/70 font-extrabold';
-                    badgeStyle = isActive ? 'bg-purple-200 text-purple-950' : 'bg-purple-100 text-purple-900';
-                  } else if (div === 'Akademik') {
-                    pastelStyle = isActive
-                      ? 'bg-amber-100/95 text-amber-950 border-2 border-amber-400 shadow-xs font-black'
-                      : 'bg-amber-50/80 text-amber-900 hover:bg-amber-100/70 border border-amber-200/70 font-extrabold';
-                    badgeStyle = isActive ? 'bg-amber-200 text-amber-950' : 'bg-amber-100 text-amber-900';
-                  } else if (div === 'Sokongan Akademik') {
-                    pastelStyle = isActive
-                      ? 'bg-sky-100/95 text-sky-950 border-2 border-sky-400 shadow-xs font-black'
-                      : 'bg-sky-50/80 text-sky-900 hover:bg-sky-100/70 border border-sky-200/70 font-extrabold';
-                    badgeStyle = isActive ? 'bg-sky-200 text-sky-950' : 'bg-sky-100 text-sky-900';
-                  } else if (div === 'Pentadbiran') {
-                    pastelStyle = isActive
-                      ? 'bg-emerald-100/95 text-emerald-950 border-2 border-emerald-400 shadow-xs font-black'
-                      : 'bg-emerald-50/80 text-emerald-900 hover:bg-emerald-100/70 border border-emerald-200/70 font-extrabold';
-                    badgeStyle = isActive ? 'bg-emerald-200 text-emerald-950' : 'bg-emerald-100 text-emerald-900';
-                  }
+                    if (div === 'Semua') {
+                      pastelStyle = isActive
+                        ? 'bg-rose-100/95 text-rose-950 border-2 border-rose-400 shadow-xs font-black'
+                        : 'bg-rose-50/80 text-rose-900 hover:bg-rose-100/70 border border-rose-200/70 font-extrabold';
+                      badgeStyle = isActive ? 'bg-rose-200 text-rose-950' : 'bg-rose-100 text-rose-900';
+                    } else if (div === 'Pengurusan') {
+                      pastelStyle = isActive
+                        ? 'bg-purple-100/95 text-purple-950 border-2 border-purple-400 shadow-xs font-black'
+                        : 'bg-purple-50/80 text-purple-900 hover:bg-purple-100/70 border border-purple-200/70 font-extrabold';
+                      badgeStyle = isActive ? 'bg-purple-200 text-purple-950' : 'bg-purple-100 text-purple-900';
+                    } else if (div === 'Akademik') {
+                      pastelStyle = isActive
+                        ? 'bg-amber-100/95 text-amber-950 border-2 border-amber-400 shadow-xs font-black'
+                        : 'bg-amber-50/80 text-amber-900 hover:bg-amber-100/70 border border-amber-200/70 font-extrabold';
+                      badgeStyle = isActive ? 'bg-amber-200 text-amber-950' : 'bg-amber-100 text-amber-900';
+                    } else if (div === 'Sokongan Akademik') {
+                      pastelStyle = isActive
+                        ? 'bg-sky-100/95 text-sky-950 border-2 border-sky-400 shadow-xs font-black'
+                        : 'bg-sky-50/80 text-sky-900 hover:bg-sky-100/70 border border-sky-200/70 font-extrabold';
+                      badgeStyle = isActive ? 'bg-sky-200 text-sky-950' : 'bg-sky-100 text-sky-900';
+                    } else if (div === 'Pentadbiran') {
+                      pastelStyle = isActive
+                        ? 'bg-emerald-100/95 text-emerald-950 border-2 border-emerald-400 shadow-xs font-black'
+                        : 'bg-emerald-50/80 text-emerald-900 hover:bg-emerald-100/70 border border-emerald-200/70 font-extrabold';
+                      badgeStyle = isActive ? 'bg-emerald-200 text-emerald-950' : 'bg-emerald-100 text-emerald-900';
+                    }
 
-                  return (
+                    return (
+                      <button
+                        key={div}
+                        onClick={() => setSelectedDivision(div)}
+                        className={`px-4 py-2 rounded-2xl text-xs font-extrabold whitespace-nowrap transition-all flex items-center gap-2 cursor-pointer ${pastelStyle}`}
+                      >
+                        <span>{div}</span>
+                        <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md ${badgeStyle}`}>
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Reset Filters */}
+                {(searchQuery || selectedDivision !== 'Semua') && (
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 shrink-0">
                     <button
-                      key={div}
-                      onClick={() => setSelectedDivision(div)}
-                      className={`px-4 py-2 rounded-2xl text-xs font-extrabold whitespace-nowrap transition-all flex items-center gap-2 cursor-pointer ${pastelStyle}`}
+                      onClick={resetFilters}
+                      className="px-3.5 py-2.5 text-xs text-indigo-700 hover:text-indigo-950 font-bold flex items-center justify-center gap-1.5 bg-indigo-50/80 hover:bg-indigo-100/80 rounded-2xl border border-indigo-200/80 transition-all cursor-pointer whitespace-nowrap shadow-2xs"
                     >
-                      <span>{div}</span>
-                      <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md ${badgeStyle}`}>
-                        {count}
-                      </span>
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>Set Semula</span>
                     </button>
-                  );
-                })}
+                  </div>
+                )}
+
               </div>
 
             </div>
@@ -1195,45 +1380,39 @@ export default function App() {
               )}
             </div>
 
-            {/* Mobile Floating Result Quick Dismiss Pill (Optional helper when searching on mobile) */}
-            {searchQuery.trim() && filteredStaff.length > 0 && (
-              <div className="sm:hidden fixed bottom-4 inset-x-4 z-40 flex justify-center pointer-events-none">
-                <button
-                  type="button"
-                  onClick={() => (document.activeElement as HTMLElement)?.blur()}
-                  className="pointer-events-auto bg-slate-900/90 hover:bg-slate-900 text-white text-xs font-bold px-4 py-2.5 rounded-full shadow-xl backdrop-blur-md flex items-center gap-2 border border-slate-700/50 active:scale-95 transition-all cursor-pointer"
-                >
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <span>{filteredStaff.length} staf dijumpai</span>
-                  <span className="text-slate-400">•</span>
-                  <span className="text-indigo-300 font-extrabold flex items-center gap-0.5">
-                    Lihat Penuh <ChevronDown className="w-3.5 h-3.5 inline" />
-                  </span>
-                </button>
-              </div>
-            )}
-
           </div>
         ) : resolvedDestination === 'jadual' ? (
-          <StudentTimetableHub />
+          <StudentTimetableHub
+            initialClassCode={selectedStudentTarget?.classCode}
+            selectionSeq={selectedStudentTarget?.seq}
+            onTimetablesLoaded={setStudentTimetables}
+          />
         ) : resolvedDestination === 'jadual-pensyarah' ? (
           <LecturerTimetableHub
             staffList={staffList}
+            initialStaffId={selectedLecturerTarget?.staffId}
+            selectionSeq={selectedLecturerTarget?.seq}
+            onAvailableIdsLoaded={setAvailableLecturerIds}
             onSelectProfile={(staff) => {
               setSelectedStaff(staff);
             }}
           />
-        ) : resolvedDestination === 'platform' ? (
-          <div className="glass-panel rounded-3xl p-6 md:p-8 border border-white/55 shadow-sm">
-            <PlatformHub isAdminMode={isAdminMode} />
-          </div>
-        ) : resolvedDestination === 'rujukan' ? (
-          <div className="glass-panel rounded-3xl p-6 md:p-8 border border-white/55 shadow-sm">
-            <CampusReferenceHub 
+        ) : resolvedDestination === 'deadline-hub' || resolvedDestination === 'nav_deadline_hub' ? (
+          <DeadlineHub
+            staffList={staffList}
+            isAdminMode={isAdminMode}
+            currentAdmin={currentAdmin}
+            globalSearchQuery={debouncedSearchQuery}
+          />
+        ) : resolvedDestination === 'platform' || resolvedDestination === 'rujukan' ? (
+          <div className="glass-panel rounded-2xl sm:rounded-3xl p-4 sm:p-6 border border-white/60 shadow-xs">
+            <PlatformHub
               isAdminMode={isAdminMode}
-              onNavigateToTimetables={() => {
-                handleSelectDestination('jadual');
-              }}
+              platformsData={platformLinks}
+              syncStatusProp={platformSyncStatus}
+              syncErrorProp={platformSyncError}
+              isLoadingProp={isPlatformsLoading}
+              searchQuery={debouncedSearchQuery}
             />
           </div>
         ) : resolvedDestination === 'daftar' ? (
@@ -1246,6 +1425,40 @@ export default function App() {
               setSelectedStaff(staff);
             }}
           />
+        ) : /^https?:\/\//i.test(resolvedDestination) ? (
+          <div className="glass-panel rounded-3xl p-8 sm:p-10 text-center space-y-5 max-w-lg mx-auto my-10 border border-white/70 shadow-sm">
+            <div className="w-14 h-14 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 mx-auto shadow-2xs">
+              <ExternalLink className="w-6 h-6" />
+            </div>
+            <div className="space-y-1.5">
+              <h3 className="text-lg font-extrabold text-slate-900">
+                {activeNavItem?.displayTitle || activeNavItem?.name || 'Pautan Luar'}
+              </h3>
+              <p className="text-xs text-slate-500 font-medium break-all bg-slate-50/90 px-3 py-2 rounded-xl border border-slate-200/70">
+                {resolvedDestination}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-2.5 pt-1">
+              <a
+                href={resolvedDestination}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-extrabold shadow-sm cursor-pointer transition-all active:scale-95 inline-flex items-center gap-2"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>Buka Pautan Rasmi</span>
+              </a>
+              {activeNavItem?.parentId && (
+                <button
+                  type="button"
+                  onClick={() => handleSelectDestination(activeNavItem.parentId!)}
+                  className="px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold shadow-2xs cursor-pointer transition-all active:scale-95"
+                >
+                  Kembali
+                </button>
+              )}
+            </div>
+          </div>
         ) : (
           <div className="glass-panel rounded-3xl p-10 text-center space-y-4 max-w-lg mx-auto my-12">
             <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 mx-auto">
@@ -1360,19 +1573,24 @@ export default function App() {
         totalCommitteeCount={committees.length}
         staffList={staffList}
         committeeList={committees}
+        adminEmail={currentAdmin?.email}
+        onApplyCleanedStaffList={(cleaned) => {
+          setStaffList(cleaned);
+          localStorage.setItem('kpmbp_smarthub_staff', JSON.stringify(cleaned));
+        }}
         onResetStaffData={handleResetStaffData}
         onResetCommitteeData={handleResetCommitteeData}
         onInstallPWA={handleInstallPWA}
         canInstallPWA={!isPwaInstalled}
         onNavigateToRegistration={() => {
           setIsSettingsOpen(false);
-          setActiveHub('daftar');
-          if (typeof window !== 'undefined') {
-            window.location.hash = '#/daftar';
-          }
+          handleSelectDestination('daftar');
           window.scrollTo({ top: 0, behavior: 'smooth' });
         }}
-        onOpenNavigationManager={() => setIsNavManagerOpen(true)}
+        onOpenNavigationManager={() => {
+          setNavManagerContext(null);
+          setIsNavManagerOpen(true);
+        }}
       />
 
       <AdminPinModal
@@ -1393,9 +1611,13 @@ export default function App() {
       {/* Dynamic Navigation Architecture Management Modal (SES v4.4) */}
       <NavigationManagerModal
         isOpen={isNavManagerOpen}
-        onClose={() => setIsNavManagerOpen(false)}
+        onClose={() => {
+          setIsNavManagerOpen(false);
+          setNavManagerContext(null);
+        }}
         items={navigationItems}
         onItemsChange={setNavigationItems}
+        initialContext={navManagerContext}
       />
 
       {/* Confirmation Dialog for Exiting Admin Mode */}

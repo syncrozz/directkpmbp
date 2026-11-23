@@ -32,8 +32,8 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { PlatformLink, PlatformThumbnailSource, PortalMetadata } from '../types';
-import { requestUrlMetadata } from '../services/portalService';
 import {
+  requestUrlMetadata,
   uploadPlatformAsset,
   requestPlatformHomepageSnapshot,
   cleanupOrphanPlatformAssetUrl,
@@ -369,6 +369,9 @@ export const AddEditPlatformModal: React.FC<AddEditPlatformModalProps> = ({
               : 'Metadata separa dikesan. Anda boleh melengkapkan maklumat secara manual.'
           );
         }
+      } else if (metaOutcome.ok && snapOutcome && !snapOutcome.ok) {
+        setDetectState('partial');
+        setDetectStatus('Metadata platform dikesan, tetapi snapshot halaman utama gagal — fallback digunakan.');
       } else if (snapOutcome && 'thumbnailUrl' in snapOutcome) {
         setDetectState('partial');
         setDetectStatus('Snapshot halaman utama berjaya dijana. Sila semak nama & deskripsi.');

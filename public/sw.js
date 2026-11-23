@@ -1,4 +1,4 @@
-const CACHE_NAME = 'directory-kpmbp-v6';
+const CACHE_NAME = 'directory-kpmbp-v7';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -42,9 +42,15 @@ self.addEventListener('fetch', (event) => {
   // Skip non-http schemes (e.g. chrome-extension:, data:)
   if (!url.protocol.startsWith('http')) return;
 
-  // Skip caching API proxy calls and external database/auth requests
+  // Skip caching API proxy calls, Vite dev module endpoints, and external database/auth requests
   if (
     url.pathname.startsWith('/api') ||
+    url.pathname.startsWith('/@vite') ||
+    url.pathname.startsWith('/@react-refresh') ||
+    url.pathname.startsWith('/@fs') ||
+    url.pathname.startsWith('/@id') ||
+    url.pathname.startsWith('/src/') ||
+    url.pathname.startsWith('/node_modules/') ||
     url.hostname.includes('script.google.com') ||
     url.hostname.includes('googleapis.com') ||
     url.hostname.includes('firestore') ||

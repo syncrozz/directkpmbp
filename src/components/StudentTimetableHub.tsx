@@ -3,34 +3,28 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  Search, 
   X, 
   Download, 
   Share2, 
   Maximize2, 
   RotateCw, 
-  Calendar, 
-  Sparkles, 
   Check, 
-  ExternalLink, 
   BookOpen, 
-  Layers, 
   AlertCircle,
-  Eye,
   Info
 } from 'lucide-react';
 import { StudentTimetable } from '../types';
 import { 
   fetchStudentTimetables, 
-  searchTimetables, 
-  extractProgram,
   EXCLUDED_PROGRAMS
 } from '../services/timetableService';
 
 interface StudentTimetableHubProps {
   initialClassCode?: string;
+  selectionSeq?: number;
+  onTimetablesLoaded?: (data: StudentTimetable[]) => void;
 }
 
 export interface SemesterTheme {
@@ -155,7 +149,11 @@ export function getSemesterTheme(semesterStr?: string, classCode?: string): Seme
   }
 }
 
-export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initialClassCode }) => {
+export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({
+  initialClassCode,
+  selectionSeq = 0,
+  onTimetablesLoaded,
+}) => {
   const [timetables, setTimetables] = useState<StudentTimetable[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -163,8 +161,7 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initia
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [isFromCache, setIsFromCache] = useState(false);
 
-  // Search & Filter State
-  const [searchQuery, setSearchQuery] = useState(initialClassCode || '');
+  // Program Filter & Selection State (Search consolidated into GlobalSmartSearch)
   const [selectedProgram, setSelectedProgram] = useState<string>('Semua');
   const [selectedTimetable, setSelectedTimetable] = useState<StudentTimetable | null>(null);
 
@@ -176,9 +173,6 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initia
   const [downloading, setDownloading] = useState(false);
 
   const isImageLoading = selectedTimetable ? loadedClassCode !== selectedTimetable.classCode : false;
-
-  // Search input ref
-  const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Load timetables on mount
   const loadData = async (forceRefresh = false) => {
@@ -195,6 +189,7 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initia
         (t) => !EXCLUDED_PROGRAMS.has((t.program || '').toUpperCase())
       );
       setTimetables(validData);
+      onTimetablesLoaded?.(validData);
       setIsFromCache(res.fromCache);
       if (res.lastUpdated) {
         setLastUpdated(res.lastUpdated);
@@ -202,11 +197,13 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initia
 
       // If initial class code is provided or none selected yet
       if (initialClassCode) {
+        const normalizedTarget = initialClassCode.toLowerCase().replace(/[\s\-_./]+/g, '').trim();
         const found = validData.find(
-          (t) => t.classCode.toLowerCase() === initialClassCode.toLowerCase().trim()
+          (t) => t.classCode.toLowerCase().replace(/[\s\-_./]+/g, '').trim() === normalizedTarget
         );
         if (found) {
           setSelectedTimetable(found);
+          setSelectedProgram('Semua');
         } else if (validData.length > 0) {
           setSelectedTimetable(validData[0]);
         }
@@ -226,18 +223,19 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initia
     loadData();
   }, []);
 
-  // Update selected timetable if initialClassCode changes
+  // Automatically select matched class when navigated via Global Smart Search
   useEffect(() => {
     if (initialClassCode && timetables.length > 0) {
+      const normalizedTarget = initialClassCode.toLowerCase().replace(/[\s\-_./]+/g, '').trim();
       const found = timetables.find(
-        (t) => t.classCode.toLowerCase() === initialClassCode.toLowerCase().trim()
+        (t) => t.classCode.toLowerCase().replace(/[\s\-_./]+/g, '').trim() === normalizedTarget
       );
       if (found) {
+        setSelectedProgram('Semua');
         setSelectedTimetable(found);
-        setSearchQuery(found.classCode);
       }
     }
-  }, [initialClassCode, timetables]);
+  }, [initialClassCode, selectionSeq, timetables]);
 
   // Reset image states and safety fallback when selected timetable changes
   useEffect(() => {
@@ -297,10 +295,11 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initia
     }
   }, [programs, selectedProgram]);
 
-  // Filtered timetable records
+  // Filtered timetable records by selected program
   const filteredTimetables = useMemo(() => {
-    return searchTimetables(timetables, searchQuery, selectedProgram);
-  }, [timetables, searchQuery, selectedProgram]);
+    if (selectedProgram === 'Semua') return timetables;
+    return timetables.filter((item) => item.program === selectedProgram);
+  }, [timetables, selectedProgram]);
 
   // Select class
   const handleSelectClass = (item: StudentTimetable) => {
@@ -372,42 +371,45 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initia
   };
 
   return (
-    <div className="space-y-6">
-      {/* Top Search & Filter Bar (Replaces Hero Banner) */}
-      <div className="glass-panel rounded-2xl sm:rounded-3xl p-3 sm:p-5 border border-white/60 shadow-xs space-y-2.5 sm:space-y-3.5 bg-white/95 backdrop-blur-md">
-        {/* Row 1: Unified Single-Row Search Bar + Total Count + Refresh Button */}
-        <div className="flex items-center gap-2 sm:gap-3">
-          <div className="relative flex-1 min-w-0">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-indigo-500 pointer-events-none" />
-            <input
-              ref={searchInputRef}
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Cari kod kelas, cth: DIA1A, DLC1A, DLM3A..."
-              className="w-full pl-9 sm:pl-10 pr-9 py-2 sm:py-2.5 md:py-3 bg-slate-50 hover:bg-slate-50/80 border border-slate-200/90 rounded-xl sm:rounded-2xl text-xs sm:text-sm font-semibold text-slate-800 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all shadow-inner"
-            />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchQuery('');
-                  searchInputRef.current?.focus();
-                }}
-                title="Kosongkan carian"
-                className="absolute right-2.5 sm:right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-200/60 transition-colors cursor-pointer"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
+    <div className="space-y-4 sm:space-y-5">
+      {/* Top Filter & Controls Bar (Search consolidated into GlobalSmartSearch) */}
+      <div className="glass-panel rounded-2xl sm:rounded-3xl p-3 sm:p-4 border border-white/60 shadow-xs space-y-2.5 bg-white/95 backdrop-blur-md">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+          {/* Program Filter Pills */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 pt-0.5 scrollbar-none min-w-0 flex-1">
+            {programs.map((prog) => {
+              const isSelected = selectedProgram === prog;
+              const count = programCounts[prog] || 0;
+              return (
+                <button
+                  key={prog}
+                  type="button"
+                  onClick={() => setSelectedProgram(prog)}
+                  className={`px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1 sm:gap-1.5 ${
+                    isSelected
+                      ? 'bg-indigo-600 text-white shadow-xs shadow-indigo-200'
+                      : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200/80'
+                  }`}
+                >
+                  <span>{prog}</span>
+                  <span
+                    className={`text-[9.5px] sm:text-[10px] px-1.5 py-0.2 rounded-md ${
+                      isSelected ? 'bg-indigo-700/60 text-white' : 'bg-slate-100 text-slate-500'
+                    }`}
+                  >
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
           </div>
 
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 justify-end">
             <div className="bg-slate-100/80 border border-slate-200/80 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl text-center shadow-2xs">
               <span className="text-xs sm:text-sm font-black text-slate-800 leading-none">
                 {isLoading ? '...' : timetables.length}
               </span>
-              <span className="text-[10px] text-slate-500 font-bold ml-1 hidden xs:inline">Kelas</span>
+              <span className="text-[10px] text-slate-500 font-bold ml-1">Kelas</span>
             </div>
 
             <button
@@ -421,35 +423,6 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initia
             </button>
           </div>
         </div>
-
-        {/* Row 2: Program Filter Pills (Horizontal swipeable on mobile) */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 pt-0.5 scrollbar-none -mx-1 px-1">
-          {programs.map((prog) => {
-            const isSelected = selectedProgram === prog;
-            const count = programCounts[prog] || 0;
-            return (
-              <button
-                key={prog}
-                type="button"
-                onClick={() => setSelectedProgram(prog)}
-                className={`px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1 sm:gap-1.5 ${
-                  isSelected
-                    ? 'bg-indigo-600 text-white shadow-xs shadow-indigo-200'
-                    : 'bg-white hover:bg-slate-100 text-slate-600 border border-slate-200/80'
-                }`}
-              >
-                <span>{prog}</span>
-                <span
-                  className={`text-[9.5px] sm:text-[10px] px-1.5 py-0.2 rounded-md ${
-                    isSelected ? 'bg-indigo-700/60 text-white' : 'bg-slate-100 text-slate-500'
-                  }`}
-                >
-                  {count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
       </div>
 
       {/* Main Grid: Class Selector (Left) + Timetable Viewer (Right) */}
@@ -462,13 +435,8 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initia
           <div className="glass-panel rounded-3xl p-4 md:p-5 border border-white/60 shadow-xs space-y-3">
             <div className="flex items-center justify-between px-1">
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                Senarai Padanan ({filteredTimetables.length})
+                Senarai Kelas ({filteredTimetables.length})
               </span>
-              {selectedTimetable && (
-                <span className="text-xs font-medium text-indigo-600">
-                  Dipilih: <span className="font-extrabold">{selectedTimetable.classCode}</span>
-                </span>
-              )}
             </div>
 
             {isLoading ? (
@@ -482,19 +450,16 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initia
                 <div className="space-y-1">
                   <h4 className="text-sm font-bold text-slate-800">Tiada Jadual Ditemui</h4>
                   <p className="text-xs text-slate-500 max-w-xs mx-auto">
-                    Tiada kelas sepadan dengan <span className="font-mono font-bold text-indigo-600">"{searchQuery}"</span>. Sila semak semula ejaan kod kelas anda.
+                    Tiada kelas tersedia untuk program <span className="font-mono font-bold text-indigo-600">{selectedProgram}</span>.
                   </p>
                 </div>
-                {searchQuery && (
+                {selectedProgram !== 'Semua' && (
                   <button
                     type="button"
-                    onClick={() => {
-                      setSearchQuery('');
-                      setSelectedProgram('Semua');
-                    }}
+                    onClick={() => setSelectedProgram('Semua')}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-colors cursor-pointer"
                   >
-                    Reset Carian
+                    Papar Semua Program
                   </button>
                 )}
               </div>
@@ -545,11 +510,11 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initia
               </div>
             )}
 
-            {/* Source of truth footer note */}
+            {/* Source footer note */}
             <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
               <span className="inline-flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                Sumber: syncrozz/syncrozz-assets
+                Arkib Jadual Pelajar
               </span>
               {lastUpdated && <span>Kemas kini: {lastUpdated}</span>}
             </div>
@@ -570,32 +535,30 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initia
                   <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${getSemesterTheme(selectedTimetable.semester, selectedTimetable.classCode).badgeViewer}`}>
                     {selectedTimetable.program} • {selectedTimetable.semester}
                   </span>
+                </div>
 
-                  {/* 2 Buttons placed directly beside the program & semester badge */}
-                  <div className="flex items-center gap-1.5 ml-1">
-                    {/* Fullscreen Button */}
-                    <button
-                      type="button"
-                      onClick={() => setIsFullscreenOpen(true)}
-                      title="Buka paparan skrin penuh"
-                      aria-label="Buka paparan skrin penuh"
-                      className="p-2 rounded-xl text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer flex items-center justify-center"
-                    >
-                      <Maximize2 className="w-4 h-4" />
-                    </button>
+                {/* Right-Aligned Action Controls (Consistent Across All Viewers) */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setIsFullscreenOpen(true)}
+                    title="Buka paparan skrin penuh"
+                    aria-label="Buka paparan skrin penuh"
+                    className="p-2 rounded-xl text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer flex items-center justify-center"
+                  >
+                    <Maximize2 className="w-4 h-4" />
+                  </button>
 
-                    {/* Download Button */}
-                    <button
-                      type="button"
-                      onClick={handleDownload}
-                      disabled={downloading}
-                      title="Muat turun imej resolusi asal"
-                      aria-label="Muat turun imej resolusi asal"
-                      className="p-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs shadow-indigo-200 transition-colors disabled:opacity-50 cursor-pointer flex items-center justify-center"
-                    >
-                      <Download className={`w-4 h-4 ${downloading ? 'animate-bounce' : ''}`} />
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={handleDownload}
+                    disabled={downloading}
+                    title="Muat turun imej resolusi asal"
+                    aria-label="Muat turun imej resolusi asal"
+                    className="p-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs shadow-indigo-200 transition-colors disabled:opacity-50 cursor-pointer flex items-center justify-center"
+                  >
+                    <Download className={`w-4 h-4 ${downloading ? 'animate-bounce' : ''}`} />
+                  </button>
                 </div>
               </div>
 
@@ -662,16 +625,6 @@ export const StudentTimetableHub: React.FC<StudentTimetableHubProps> = ({ initia
                       className="w-full h-auto max-h-[75vh] object-contain rounded-xl shadow-2xs cursor-zoom-in transition-transform duration-200"
                       onClick={() => setIsFullscreenOpen(true)}
                     />
-
-                    {/* Hover Click Hint */}
-                    <button
-                      type="button"
-                      onClick={() => setIsFullscreenOpen(true)}
-                      className="absolute bottom-4 right-4 bg-slate-900/75 hover:bg-slate-900 text-white px-3 py-1.5 rounded-xl text-xs font-semibold backdrop-blur-sm shadow-md transition-all opacity-90 sm:opacity-0 sm:group-hover:opacity-100 flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      <span>Klik untuk Skrin Penuh</span>
-                    </button>
                   </div>
                 )}
               </div>

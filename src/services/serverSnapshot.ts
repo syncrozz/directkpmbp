@@ -91,22 +91,60 @@ function releaseCaptureSlot(): void {
   if (next) next();
 }
 
-export function resolveChromiumExecutablePath(): string | null {
-  const candidates = [
-    process.env.CHROMIUM_EXECUTABLE_PATH,
-    process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
-    (() => {
-      try {
-        return chromium.executablePath();
-      } catch {
-        return undefined;
+function findPlaywrightDirExecutables(baseDir: string): string[] {
+  const found: string[] = [];
+  if (!baseDir || !fs.existsSync(baseDir)) {
+    return found;
+  }
+  try {
+    const entries = fs.readdirSync(baseDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const subDir = `${baseDir}/${entry.name}`;
+      const candidates = [
+        `${subDir}/chrome-headless-shell`,
+        `${subDir}/chrome-headless-shell-linux64/chrome-headless-shell`,
+        `${subDir}/chrome-linux64/chrome`,
+        `${subDir}/chrome-linux/chrome`,
+      ];
+      for (const candidate of candidates) {
+        if (fs.existsSync(candidate)) {
+          found.push(candidate);
+        }
       }
-    })(),
+    }
+  } catch {
+    // Ignore unreadable cache directories
+  }
+  return found;
+}
+
+/**
+ * Automatically discovers headless Chromium executable without requiring manual env vars:
+ * 1. Playwright `chromium.executablePath()`
+ * 2. Supported container, Playwright cache, and system fallback paths
+ */
+export function resolveChromiumExecutablePath(): string | null {
+  let playwrightExecutable: string | undefined;
+  try {
+    playwrightExecutable = chromium.executablePath();
+  } catch {
+    playwrightExecutable = undefined;
+  }
+
+  const homeDir = process.env.HOME || '';
+  const configuredBrowsersDir = (process.env.PLAYWRIGHT_BROWSERS_PATH || '').trim();
+  const candidates: Array<string | undefined> = [
+    playwrightExecutable,
+    ...(configuredBrowsersDir ? findPlaywrightDirExecutables(configuredBrowsersDir) : []),
     '/ms-playwright/chrome-headless-shell-linux64/chrome-headless-shell',
-    '/ms-playwright/chromium_headless_shell-1247/chrome-headless-shell-linux64/chrome-headless-shell',
+    ...findPlaywrightDirExecutables('/ms-playwright'),
+    ...(homeDir ? findPlaywrightDirExecutables(`${homeDir}/.cache/ms-playwright`) : []),
     '/usr/bin/chromium',
     '/usr/bin/chromium-browser',
     '/usr/bin/google-chrome',
+    '/usr/bin/google-chrome-stable',
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
   ];
 
   for (const candidate of candidates) {
@@ -170,7 +208,8 @@ async function executeSnapshotCapture(validatedHref: string): Promise<HomepageSn
       success: false,
       code: 'BROWSER_UNAVAILABLE',
       statusCode: 503,
-      error: 'Runtime pelayar headless Chromium tidak tersedia pada pelayan ini.',
+      error:
+        'Pelayar headless Chromium tidak ditemui secara automatik pada pelayan ini (Playwright dan laluan sistem tiada binari yang sah). Pastikan Chromium dipasang melalui Playwright atau pakej sistem.',
     };
   }
 

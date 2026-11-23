@@ -27,40 +27,46 @@
 - **Scaling:** `--min-instances 0` (scales to zero when idle; set `1` only if zero cold-start latency is desired), `--max-instances 3`
 - **Ingress / IAM:** Deploy with `--allow-unauthenticated` at the Cloud Run HTTP layer so Vercel browser clients can invoke the endpoint after CORS preflight (`OPTIONS`) and authenticate at the application layer via Firebase Bearer ID Token (`verifyMasterAdminRequest`).
 
-### Required Cloud Run Environment Variables
+### Environment Variable Classification (SES v4.5)
 
-| Variable | Required | Example / Value | Notes |
+- **REQUIRED (Manual in AI Studio):** *None.* AI Studio and local development run out-of-the-box without manual environment prompts (`firebase-applet-config.json` provides Firebase client/Auth verifier config, Chromium is auto-discovered, and Snapshot requests default to same-origin `/api/platform/snapshot`).
+- **OPTIONAL (Safe defaults):** `PORT` (`3000` local / `8080` Docker), `NODE_ENV` (`development` local / `production` Docker), `DISABLE_HMR` (platform-managed).
+- **DEPLOYMENT-ONLY (Infrastructure-specific):** `ALLOWED_ORIGINS` (Cloud Run Production), `VITE_SNAPSHOT_API_BASE_URL` (Vercel Production).
+
+### Cloud Run Snapshot Backend Environment Variables
+
+| Variable | Classification | Example / Value | Notes |
 | :--- | :--- | :--- | :--- |
-| `PORT` | Managed by Cloud Run | `8080` | `Dockerfile` defaults to `8080`; Cloud Run injects `PORT` automatically |
-| `NODE_ENV` | Yes | `production` | Disables Vite middleware and runs API-only fallback |
-| `ALLOWED_ORIGINS` | **Yes (Production)** | `https://directkpmbp.syncrozz.com,https://syncrozz-platform.web.app` | Comma-separated exact origins. Wildcard `*` is rejected by `serverCors.ts`. Include exact Vercel production & preview URLs as needed. |
-| `PLAYWRIGHT_BROWSERS_PATH` | Baked in Dockerfile | `/ms-playwright` | Ensures `node` user resolves installed Chromium binary |
-| `CHROMIUM_EXECUTABLE_PATH` | Optional | *(unset in Cloud Run)* | Auto-resolved via `playwright-core` `chromium.executablePath()` and fallback paths |
+| `PORT` | Optional (Managed by Cloud Run) | `8080` | `Dockerfile` defaults to `8080`; Cloud Run injects `PORT` automatically |
+| `NODE_ENV` | Deployment-Only (`production`) | `production` | Baked into `Dockerfile`; disables Vite middleware and runs API-only fallback |
+| `ALLOWED_ORIGINS` | **Deployment-Only (Cloud Run Prod)** | `https://directkpmbp.syncrozz.com,https://syncrozz-platform.web.app` | Comma-separated exact origins. Wildcard `*` is rejected by `serverCors.ts`. Include exact Vercel production & preview URLs as needed. |
+| `PLAYWRIGHT_BROWSERS_PATH` | Baked in Dockerfile | `/ms-playwright` | Ensures `node` user resolves Playwright's installed Chromium binary automatically |
 
 ### Health Check Configuration
 - **Endpoint:** `GET /api/health`
 - **Expected Response:** HTTP `200` `{ "status": "ok", "service": "Directory KPMBP" }`
 - **Cloud Run Probe:** Configure HTTP startup/liveness probe path `/api/health` on port `8080`.
 
-### Chromium Resolution Order (`src/services/serverSnapshot.ts`)
-1. `process.env.CHROMIUM_EXECUTABLE_PATH`
-2. `process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH`
-3. `playwright-core` `chromium.executablePath()` (primary resolution in `Dockerfile`)
-4. Container & system fallbacks (`/ms-playwright/chrome-headless-shell-linux64/chrome-headless-shell`, `/usr/bin/chromium`, etc.)
+### Automatic Chromium Resolution Order (`src/services/serverSnapshot.ts`)
+No `CHROMIUM_EXECUTABLE_PATH` or `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` variable is required:
+1. `playwright-core` `chromium.executablePath()` (primary resolution in `Dockerfile`)
+2. Supported container, Playwright cache (`/ms-playwright`, `~/.cache/ms-playwright`), and system Chromium/Chrome fallback paths
+3. Returns a clear `BROWSER_UNAVAILABLE` (`503`) diagnostic error only when Chromium is genuinely unavailable
 
 ---
 
 ## 3. Vercel Frontend Environment Configuration
 
-`src/services/platformService.ts` resolves the snapshot endpoint via `resolveSnapshotEndpointUrl()`:
-- When `VITE_SNAPSHOT_API_BASE_URL` is **unset / empty**: uses same-origin `/api/platform/snapshot` (AI Studio / local `npm run dev`).
-- When `VITE_SNAPSHOT_API_BASE_URL` is **set**: sends `POST <VITE_SNAPSHOT_API_BASE_URL>/api/platform/snapshot` with `Authorization: Bearer <firebase-id-token>` and `Content-Type: application/json`.
+`src/services/platformService.ts` resolves the snapshot endpoint via `resolveSnapshotEndpointUrl()` (`VITE_SNAPSHOT_API_BASE_URL` defaults to `""` when undefined):
+- **AI Studio / Local Development (`VITE_SNAPSHOT_API_BASE_URL` unset):** uses same-origin `/api/platform/snapshot` served by Express `server.ts`.
+- **Vercel Production with `VITE_SNAPSHOT_API_BASE_URL` configured:** sends `POST <VITE_SNAPSHOT_API_BASE_URL>/api/platform/snapshot` with `Authorization: Bearer <firebase-id-token>` and `Content-Type: application/json`.
+- **Vercel Production with `VITE_SNAPSHOT_API_BASE_URL` missing:** immediately returns a clear `SNAPSHOT_ENDPOINT_NOT_CONFIGURED` configuration warning instead of silently posting to a nonexistent Vercel endpoint or fabricating a Cloud Run URL.
 
 | Vercel Environment | Variable | Value |
 | :--- | :--- | :--- |
-| **Production** | `VITE_SNAPSHOT_API_BASE_URL` | *Populate after Cloud Run service is deployed (e.g. `https://<deployed-cloud-run-service-url>`)* |
+| **Production** | `VITE_SNAPSHOT_API_BASE_URL` | *Deployment-Only: populate after Cloud Run service is deployed (e.g. `https://<deployed-cloud-run-service-url>`)* |
 | **Preview** | `VITE_SNAPSHOT_API_BASE_URL` | *Optional: staging or production Cloud Run URL (must also be allowed in Cloud Run `ALLOWED_ORIGINS`)* |
-| **Development** | `VITE_SNAPSHOT_API_BASE_URL` | Leave **unset** to use local `server.ts` `/api/platform/snapshot` |
+| **Development** | `VITE_SNAPSHOT_API_BASE_URL` | Leave **unset** (`""` default) to use local `server.ts` `/api/platform/snapshot` |
 
 > **Important:** Never place server secrets or service account credentials in any `VITE_*` variable.
 

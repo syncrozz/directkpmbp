@@ -74,35 +74,6 @@ export interface StudentTimetable {
   semester?: string;
 }
 
-export interface PortalLink {
-  id: string;
-  title: string;
-  desc: string;
-  url: string;
-  audience: 'Pelajar' | 'Staf' | 'Kedua-dua';
-  category: string;
-  imageUrl?: string;
-  iconUrl?: string;
-  faviconUrl?: string;
-  detectedMeta?: {
-    title?: string;
-    description?: string;
-    ogTitle?: string;
-    ogDescription?: string;
-    ogImage?: string;
-    ogUrl?: string;
-    ogSiteName?: string;
-    favicon?: string;
-    pwaIcon?: string;
-    manifestName?: string;
-  };
-  sortOrder: number;
-  isActive: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  updatedBy?: string;
-}
-
 export interface PortalMetadata {
   url: string;
   finalUrl?: string;
@@ -117,21 +88,6 @@ export interface PortalMetadata {
   manifestUrl?: string;
   manifestName?: string;
   manifestIcons?: Array<{ src: string; sizes?: string; type?: string }>;
-}
-
-export type PortalSyncStatus = 
-  | 'loading'          // Initial loading state
-  | 'ready_empty'      // State A: Successfully queried Firestore, collection empty (eligible for migration)
-  | 'ready_migrated'   // State B: Successfully queried Firestore, contains records (migration complete)
-  | 'permission_denied'// State C: Firestore permission denied (do not show migration banner)
-  | 'error_network';   // State D: Network or connection failure (do not show migration banner)
-
-export interface PortalSubscriptionResult {
-  portals: PortalLink[];
-  isMigrated: boolean;
-  status: PortalSyncStatus;
-  errorMessage?: string;
-  source: 'firestore' | 'fallback';
 }
 
 export type PlatformThumbnailSource =
@@ -182,7 +138,7 @@ export interface PlatformSubscriptionResult {
   errorMessage?: string;
 }
 
-export type NavigationType = 'parent' | 'child' | 'grandchild';
+export type NavigationType = 'parent' | 'child' | 'grandchild' | 'delta';
 export type NavigationDisplayType = 'module' | 'drive' | 'empty_page';
 
 export type ThumbnailStatus =
@@ -199,9 +155,9 @@ export interface NavigationItem {
   id: string; // Stable unique identifier e.g. "nav_directory"
   name: string; // Display name e.g. "Directory Staff"
   icon: string; // Icon identifier e.g. "UserCheck", "BookOpen", "Calendar"
-  type: NavigationType; // 'parent' | 'child' | 'grandchild'
-  parentId?: string | null; // ID of immediate parent: null for parent, Parent ID for child, Child ID for grandchild
-  destination: string; // Module identifier or route ('directory' | 'rujukan' | 'jadual' | 'jadual-pensyarah' | 'daftar' | custom URL | navId)
+  type: NavigationType; // 'parent' | 'child' | 'grandchild' | 'delta'
+  parentId?: string | null; // ID of immediate parent: null for parent (Alfa), Parent ID for child (Bravo), Child ID for grandchild (Charlie), Grandchild ID for delta (Delta)
+  destination: string; // Module identifier or route ('directory' | 'platform' | 'jadual' | 'jadual-pensyarah' | 'daftar' | custom URL | navId)
   order: number; // Display order index within its parent container
   isActive: boolean; // Active toggle
   createdAt?: string; // ISO string
@@ -224,7 +180,169 @@ export interface NavigationItem {
     sizeBytes?: number;
     lastModified?: string;
   };
+  keywords?: string[];
+  searchableKeywords?: string;
 }
+
+export type DeadlineCategory =
+  | 'Akademik'
+  | 'HEA'
+  | 'HEP'
+  | 'Pengurusan'
+  | 'Pentadbiran'
+  | 'Penilaian'
+  | 'Pencalonan'
+  | 'Dokumentasi'
+  | 'Other';
+
+export type DeadlineComputedStatus =
+  | 'UPCOMING'
+  | 'DUE_TODAY'
+  | 'EXPIRED'
+  | 'INACTIVE'
+  | 'ARCHIVED';
+
+export type DeadlineStoredStatus = 'ACTIVE' | 'INACTIVE' | 'ARCHIVED';
+
+export type DeadlineSourceType = 'SCREENSHOT' | 'PDF' | 'PASTED_TEXT';
+
+export interface DeadlineAttachment {
+  name: string;
+  url: string;
+  type?: string;
+}
+
+export interface DeadlineSourceEvidence {
+  type: DeadlineSourceType;
+  fileNames?: string[];
+  mimeTypes?: string[];
+  storagePaths?: string[];
+  textExcerpt?: string;
+  pastedText?: string;
+  uploadedAt: string;
+  uploadedBy?: string;
+}
+
+export interface DeadlineConfidence {
+  overall: number;
+  date: number;
+  time: number;
+  action: number;
+  audience: number;
+  url: number;
+}
+
+export interface DeadlineDuplicateMatch {
+  matchedExistingId: string;
+  matchedTitle: string;
+  matchedDueDate: string;
+  matchedDueTime?: string;
+  matchedRequiredAction?: string;
+  matchedActionUrl?: string;
+  matchedTargetAudience?: string[];
+  similarityLevel: 'none' | 'possible' | 'high';
+  score: number;
+  reasons: string[];
+  recommendation: 'create_new' | 'update_existing' | 'ignore';
+  rationale: string;
+}
+
+export interface DeadlineRecord {
+  id: string;
+  title: string;
+  description: string;
+  requiredAction: string;
+  category: DeadlineCategory;
+  targetAudience: string[];
+  targetDepartments: string[];
+  targetStaffIds: string[];
+  dueDate: string; // YYYY-MM-DD (Asia/Kuala_Lumpur)
+  dueTime: string; // HH:mm (24h) or ""
+  timezone: 'Asia/Kuala_Lumpur';
+  actionUrl: string;
+  actionLabel: string;
+  attachments: DeadlineAttachment[];
+  instructions: string;
+  status: DeadlineStoredStatus;
+  isPublished: boolean;
+  sourceType: DeadlineSourceType;
+  sourceSummary?: string;
+  sourceEvidencePaths?: string[];
+  confidenceScore?: number;
+  createdAt: string;
+  createdBy: string;
+  updatedAt: string;
+  updatedBy: string;
+  publishedAt?: string;
+  publishedBy?: string;
+  archivedAt?: string;
+}
+
+export interface DeadlineDraft {
+  id: string;
+  submissionBatchId: string;
+  sourceType: DeadlineSourceType;
+  sourceEvidence: DeadlineSourceEvidence;
+  title: string;
+  description: string;
+  requiredAction: string;
+  category: DeadlineCategory;
+  targetAudience: string[];
+  targetDepartments: string[];
+  targetStaffIds: string[];
+  dueDate: string;
+  dueTime: string;
+  timezone: 'Asia/Kuala_Lumpur';
+  announcementDate?: string;
+  actionUrl: string;
+  actionLabel: string;
+  attachments: DeadlineAttachment[];
+  instructions: string;
+  sourceExcerpt: string;
+  confidence: DeadlineConfidence;
+  missingFields: string[];
+  ambiguousFields: string[];
+  ambiguityReason?: string;
+  requiresReview: boolean;
+  duplicateMatch?: DeadlineDuplicateMatch | null;
+  reviewStatus: 'pending' | 'approved' | 'rejected' | 'published' | 'ignored';
+  resolutionAction: 'create' | 'update_existing' | 'ignore';
+  targetExistingDeadlineId?: string;
+  updateReason?: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  createdAt: string;
+  createdBy: string;
+  updatedAt: string;
+}
+
+export type DeadlineAuditAction =
+  | 'CREATED'
+  | 'PUBLISHED'
+  | 'UPDATED_FROM_AI'
+  | 'UPDATED_MANUAL'
+  | 'ARCHIVED'
+  | 'RESTORED'
+  | 'STATUS_CHANGED'
+  | 'IGNORED_DRAFT'
+  | 'DELETED';
+
+export interface DeadlineAuditLog {
+  id: string;
+  deadlineId: string;
+  deadlineTitle: string;
+  draftId?: string;
+  action: DeadlineAuditAction;
+  previousValues?: Record<string, any>;
+  updatedValues?: Record<string, any>;
+  reason?: string;
+  sourceType?: DeadlineSourceType;
+  sourceRef?: string;
+  performedBy: string;
+  performedByUid?: string;
+  performedAt: string;
+}
+
 
 
 

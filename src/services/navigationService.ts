@@ -35,26 +35,27 @@ import {
   Award,
   Briefcase,
   Building,
-  CheckCircle2
+  CheckCircle2,
+  CalendarClock
 } from 'lucide-react';
 
 export const LOCAL_STORAGE_NAV_KEY = 'kpmbp_navigation_items_v4';
 export const UPPK_GRADING_MIGRATED_KEY = 'kpmbp_uppk_grading_migrated_v1';
+export const DEADLINE_HUB_NAV_MIGRATED_KEY = 'kpmbp_deadline_hub_nav_migrated_v1';
 
 /**
  * Default Initial Navigation Structure (SES v4.4 Section 2)
  * 
  * PARENT NAVIGATION
  * 1. Directory Staff (destination: 'directory')
- * 2. Rujukan Kolej (destination: 'rujukan')
+ * 2. Rujukan Kolej (destination: 'platform')
  * 3. Jadual (destination: 'jadual')
  * 
  * CHILD NAVIGATION — RUJUKAN KOLEJ
  * 1. Platform (destination: 'platform')
- * 2. Portal Kolej (destination: 'rujukan')
- * 3. Borang (destination: 'nav_rujukan_borang')
- * 4. Procedure (destination: 'nav_rujukan_procedure')
- * 5. UPPK2 (destination: 'nav_rujukan_uppk2')
+ * 2. Borang (destination: 'nav_rujukan_borang')
+ * 3. Procedure (destination: 'nav_rujukan_procedure')
+ * 4. UPPK2 (destination: 'nav_rujukan_uppk2')
  *
  * CHILD NAVIGATION — JADUAL
  * 1. Jadual Pelajar (destination: 'jadual')
@@ -78,7 +79,7 @@ export const DEFAULT_NAVIGATION_ITEMS: NavigationItem[] = [
     name: 'Rujukan Kolej',
     icon: 'BookOpen',
     type: 'parent',
-    destination: 'rujukan',
+    destination: 'platform',
     slug: 'rujukan',
     order: 1,
     isActive: true,
@@ -100,20 +101,6 @@ export const DEFAULT_NAVIGATION_ITEMS: NavigationItem[] = [
     updatedAt: '2026-01-01T00:00:00.000Z',
   },
   {
-    id: 'nav_rujukan_portal',
-    name: 'Portal Kolej',
-    icon: 'Link',
-    type: 'child',
-    parentId: 'nav_rujukan',
-    destination: 'rujukan',
-    slug: 'portal_kolej',
-    displayType: 'module',
-    order: 1,
-    isActive: true,
-    createdAt: '2026-01-01T00:00:00.000Z',
-    updatedAt: '2026-01-01T00:00:00.000Z',
-  },
-  {
     id: 'nav_rujukan_borang',
     name: 'Borang',
     icon: 'FileText',
@@ -122,7 +109,7 @@ export const DEFAULT_NAVIGATION_ITEMS: NavigationItem[] = [
     destination: 'nav_rujukan_borang',
     slug: 'borang',
     displayType: 'empty_page',
-    order: 2,
+    order: 1,
     isActive: true,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
@@ -136,7 +123,7 @@ export const DEFAULT_NAVIGATION_ITEMS: NavigationItem[] = [
     destination: 'nav_rujukan_procedure',
     slug: 'procedure',
     displayType: 'empty_page',
-    order: 3,
+    order: 2,
     isActive: true,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
@@ -150,7 +137,7 @@ export const DEFAULT_NAVIGATION_ITEMS: NavigationItem[] = [
     destination: 'nav_rujukan_uppk2',
     slug: 'uppk2',
     displayType: 'empty_page',
-    order: 4,
+    order: 3,
     isActive: true,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
@@ -193,6 +180,18 @@ export const DEFAULT_NAVIGATION_ITEMS: NavigationItem[] = [
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
   },
+  {
+    id: 'nav_deadline_hub',
+    name: 'Deadline Hub',
+    icon: 'CalendarClock',
+    type: 'parent',
+    destination: 'deadline-hub',
+    slug: 'deadline_hub',
+    order: 3,
+    isActive: true,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  },
 ];
 
 /**
@@ -201,9 +200,9 @@ export const DEFAULT_NAVIGATION_ITEMS: NavigationItem[] = [
 export const KNOWN_MODULE_DESTINATIONS = [
   { id: 'directory', name: 'Directory Staff (Direktori Kakitangan)' },
   { id: 'platform', name: 'Platform (Hab Platform Luar & Aplikasi)' },
-  { id: 'rujukan', name: 'Portal Kolej / Rujukan Kolej (Portal, Takwim, Panduan)' },
   { id: 'jadual', name: 'Jadual Pelajar (Jadual Waktu Kelas)' },
   { id: 'jadual-pensyarah', name: 'Jadual Pensyarah (Jadual Waktu Pensyarah)' },
+  { id: 'deadline-hub', name: 'Deadline Hub (Pengurusan Tarikh Akhir AI)' },
   { id: 'daftar', name: 'Pendaftaran Staf Baharu' },
 ] as const;
 
@@ -214,6 +213,7 @@ export const AVAILABLE_NAV_ICONS = [
   { name: 'UserCheck', label: 'Staf / Pengguna' },
   { name: 'BookOpen', label: 'Buku / Rujukan' },
   { name: 'Calendar', label: 'Kalendar / Jadual' },
+  { name: 'CalendarClock', label: 'Tarikh Akhir / Deadline Hub' },
   { name: 'GraduationCap', label: 'Akademik / Pensyarah' },
   { name: 'FileText', label: 'Dokumen / Panduan' },
   { name: 'Link', label: 'Pautan / Portal' },
@@ -241,6 +241,7 @@ export function renderNavIcon(iconName: string, className = 'w-4 h-4'): React.Re
     UserCheck,
     BookOpen,
     Calendar,
+    CalendarClock,
     GraduationCap,
     FileText,
     Link: LinkIcon,
@@ -296,7 +297,7 @@ export function validateNavigationDestination(dest: string, displayType?: string
 
   return {
     valid: false,
-    error: `Destinasi "${trimmed}" tidak sah. Pilih modul sedia ada (directory, platform, rujukan, jadual, jadual-pensyarah, daftar) atau pautan sah (https://..., #...).`,
+    error: `Destinasi "${trimmed}" tidak sah. Pilih modul sedia ada (directory, platform, jadual, jadual-pensyarah, deadline-hub, daftar) atau pautan sah (https://..., #...).`,
   };
 }
 
@@ -393,7 +394,23 @@ export function canDeleteChild(
 }
 
 /**
- * Generates a stable unique ID for a navigation item (Parent, Child, or Grandchild)
+ * Checks whether a Grandchild (Charlie) Navigation item can be safely deleted (SES v4.5 4-Level Architecture)
+ * A Charlie item with Delta children cannot be deleted until its deltas are deleted or reassigned.
+ */
+export function canDeleteGrandchild(
+  grandchildId: string,
+  allItems: NavigationItem[]
+): { canDelete: boolean; deltasCount: number; deltasNames: string[] } {
+  const deltas = allItems.filter((item) => item.type === 'delta' && item.parentId === grandchildId);
+  return {
+    canDelete: deltas.length === 0,
+    deltasCount: deltas.length,
+    deltasNames: deltas.map((d) => d.name),
+  };
+}
+
+/**
+ * Generates a stable unique ID for a navigation item (Parent, Child, Grandchild, or Delta)
  */
 export function generateNavId(name: string, type: NavigationType): string {
   const clean = name
@@ -402,7 +419,14 @@ export function generateNavId(name: string, type: NavigationType): string {
     .replace(/_+/g, '_')
     .slice(0, 16);
   const rand = Math.random().toString(36).substring(2, 6);
-  const prefix = type === 'parent' ? 'nav_p_' : type === 'grandchild' ? 'nav_gc_' : 'nav_c_';
+  const prefix =
+    type === 'parent'
+      ? 'nav_p_'
+      : type === 'grandchild'
+      ? 'nav_gc_'
+      : type === 'delta'
+      ? 'nav_d_'
+      : 'nav_c_';
   return `${prefix}${clean || 'item'}_${rand}`;
 }
 
@@ -424,9 +448,10 @@ export function slugify(text: string): string {
 /**
  * Resolves the hierarchical slug for a navigation item.
  * Walks up the parentId chain, omitting root 'parent' (Alfa) hubs as per SES specification:
- * - Alfa (Level 1 Parent) -> Excluded from child/grandchild path (e.g. Rujukan Kolej)
+ * - Alfa (Level 1 Parent) -> Excluded from child/grandchild/delta path (e.g. Rujukan Kolej)
  * - Bravo (Level 2 Child) -> /anak_slug (e.g. /borang)
- * - Charlie (Level 3 Grandchild) -> /anak_slug/cucu_slug (e.g. /borang/bayaran_penceramah, /borang/lampiran_a)
+ * - Charlie (Level 3 Grandchild) -> /anak_slug/cucu_slug (e.g. /borang/kertas_kerja)
+ * - Delta (Level 4 Delta) -> /anak_slug/cucu_slug/delta_slug (e.g. /borang/kertas_kerja/lampiran_f)
  */
 export function getHierarchicalSlug(
   item: NavigationItem,
@@ -536,13 +561,15 @@ export function validateNavigationSlug(
     return { valid: false, error: `Slug "${trimmed}" adalah laluan terpelihara sistem. Sila pilih slug yang lain.` };
   }
 
-  // Calculate projected hierarchical slug to prevent nested URL collision
+  // Calculate projected hierarchical slug to prevent nested URL collision (supports Level 3 Charlie & Level 4 Delta)
   let projectedHierarchical = trimmed;
-  if (type === 'grandchild' && parentId) {
-    const pChild = allItems.find((c) => c.id === parentId);
-    const pSlug = pChild?.slug ? slugify(pChild.slug) : slugify(pChild?.name || '');
-    if (pSlug) {
-      projectedHierarchical = `${pSlug}/${trimmed}`;
+  if ((type === 'grandchild' || type === 'delta') && parentId) {
+    const parentItem = allItems.find((i) => i.id === parentId);
+    if (parentItem && parentItem.type !== 'parent') {
+      const parentHierarchical = getHierarchicalSlug(parentItem, allItems);
+      if (parentHierarchical) {
+        projectedHierarchical = `${parentHierarchical}/${trimmed}`;
+      }
     }
   }
 
@@ -569,17 +596,18 @@ export interface ResolvedNavigationResult {
   matchedItem?: NavigationItem;
   parentItem?: NavigationItem;
   grandParentItem?: NavigationItem;
+  ancestors?: NavigationItem[];
   canonicalPath?: string;
 }
 
 /**
- * Centralized Navigation Destination Resolver (SES v4.4 Specification)
+ * Centralized Navigation Destination Resolver (SES v4.5 Specification)
  * 
- * Supports Multi-level Hierarchical URL matching:
- * 1. Match exact hierarchical slug (e.g. "borang/bayaran_penceramah")
- * 2. Match hierarchical slug with Alfa included (e.g. "rujukan/borang/bayaran_penceramah")
+ * Supports Multi-level Hierarchical URL matching (Alfa -> Bravo -> Charlie -> Delta):
+ * 1. Match exact hierarchical slug (e.g. "borang/kertas_kerja/lampiran_f", "borang/kertas_kerja", "borang")
+ * 2. Match hierarchical slug with Alfa included (e.g. "rujukan/borang/kertas_kerja/lampiran_f")
  * 3. Match unique navigation ID (Internal identity)
- * 4. Backward Compatibility: Match single leaf slug (e.g. "bayaran_penceramah" -> redirect to "/borang/bayaran_penceramah")
+ * 4. Backward Compatibility: Match single leaf slug (e.g. "bayaran_penceramah" -> resolves to target)
  * 5. Match standard module destinations
  * 6. Match legacy routes
  */
@@ -609,18 +637,25 @@ export function resolveNavigationFromUrl(
   // Clean and normalize token (remove leading/trailing slashes, lowercase)
   const cleanToken = token.replace(/^\/+|\/+$/g, '').toLowerCase();
 
-  const buildHierarchy = (item?: NavigationItem): { parentItem?: NavigationItem; grandParentItem?: NavigationItem } => {
+  const buildHierarchy = (
+    item?: NavigationItem
+  ): { parentItem?: NavigationItem; grandParentItem?: NavigationItem; ancestors?: NavigationItem[] } => {
     if (!item) return {};
-    if (item.type === 'grandchild') {
-      const parent = items.find((i) => i.id === item.parentId);
-      const grandParent = items.find((i) => i.id === parent?.parentId);
-      return { parentItem: parent, grandParentItem: grandParent };
+    const ancestors: NavigationItem[] = [];
+    const visited = new Set<string>([item.id]);
+    let curParentId = item.parentId;
+    while (curParentId && !visited.has(curParentId)) {
+      visited.add(curParentId);
+      const p = items.find((i) => i.id === curParentId);
+      if (!p) break;
+      ancestors.unshift(p);
+      curParentId = p.parentId;
     }
-    if (item.type === 'child') {
-      const parent = items.find((i) => i.id === item.parentId);
-      return { parentItem: parent };
-    }
-    return {};
+    return {
+      parentItem: ancestors.length > 0 ? ancestors[ancestors.length - 1] : undefined,
+      grandParentItem: ancestors.length > 1 ? ancestors[ancestors.length - 2] : undefined,
+      ancestors,
+    };
   };
 
   const createResult = (item?: NavigationItem, fallbackNavId?: string, fallbackDest?: string): ResolvedNavigationResult => {
@@ -707,15 +742,21 @@ export function resolveNavigationFromUrl(
     return createResult(jadualItem, 'nav_jadual_pelajar', 'jadual');
   }
 
-  if (cleanToken === 'platform') {
-    const platformItem = items.find((i) => i.destination === 'platform');
+  if (cleanToken === 'platform' || cleanToken === 'rujukan' || cleanToken === 'portal_kolej' || cleanToken === 'portal-kolej') {
+    const platformItem = items.find((i) => i.destination === 'platform' && i.type === 'child') || items.find((i) => i.destination === 'platform');
     return createResult(platformItem, 'nav_rujukan_platform', 'platform');
   }
 
-  if (cleanToken === 'rujukan' || cleanToken === 'portal_kolej' || cleanToken === 'portal-kolej') {
-    const rujukanChild = items.find((i) => i.destination === 'rujukan' && i.type === 'child');
-    const rujukanItem = rujukanChild || items.find((i) => i.destination === 'rujukan');
-    return createResult(rujukanItem, rujukanItem?.id || 'nav_rujukan', 'rujukan');
+  if (
+    cleanToken === 'deadline-hub' ||
+    cleanToken === 'deadline_hub' ||
+    cleanToken === 'deadlines' ||
+    cleanToken === 'deadline'
+  ) {
+    const deadlineItem = items.find(
+      (i) => i.destination === 'deadline-hub' || i.id === 'nav_deadline_hub'
+    );
+    return createResult(deadlineItem, 'nav_deadline_hub', 'deadline-hub');
   }
 
   if (cleanToken === 'daftar') {
@@ -731,7 +772,7 @@ export function resolveNavigationFromUrl(
 }
 
 /**
- * Normalizes 3-Level navigation ordering (Parent -> Child -> Grandchild)
+ * Normalizes 4-Level navigation ordering (Parent -> Child -> Grandchild -> Delta)
  */
 export function normalizeNavigationList(items: NavigationItem[]): NavigationItem[] {
   const sanitizeItem = (i: NavigationItem): NavigationItem => {
@@ -798,7 +839,32 @@ export function normalizeNavigationList(items: NavigationItem[]): NavigationItem
     });
   });
 
-  return [...parents, ...groupedChildren, ...groupedGrandchildren];
+  // Level 4: Deltas grouped by Grandchild
+  const deltas = items
+    .filter((i) => i.type === 'delta')
+    .sort((a, b) => {
+      if (a.parentId === b.parentId) return a.order - b.order;
+      return (a.parentId || '').localeCompare(b.parentId || '');
+    });
+
+  const groupedDeltas: NavigationItem[] = [];
+  const grandchildGroups = new Map<string, NavigationItem[]>();
+
+  deltas.forEach((d) => {
+    const gcId = d.parentId || 'orphan';
+    if (!grandchildGroups.has(gcId)) {
+      grandchildGroups.set(gcId, []);
+    }
+    grandchildGroups.get(gcId)!.push(d);
+  });
+
+  grandchildGroups.forEach((group) => {
+    group.forEach((item, index) => {
+      groupedDeltas.push({ ...sanitizeItem(item), order: index });
+    });
+  });
+
+  return [...parents, ...groupedChildren, ...groupedGrandchildren, ...groupedDeltas];
 }
 
 /**
@@ -867,18 +933,31 @@ export function migrateUppkGradingIfNeeded(items: NavigationItem[]): { items: Na
  * without automatically writing or overwriting Firestore documents.
  */
 export function ensureRujukanPlatformNavigation(items: NavigationItem[]): NavigationItem[] {
-  const rujukanParent = items.find(
-    (i) => i.type === 'parent' && (i.id === 'nav_rujukan' || i.destination === 'rujukan' || i.slug === 'rujukan')
+  // Remove deprecated Portal Kolej child items superseded by Platform and normalize legacy 'rujukan' destinations
+  const cleanedItems = items
+    .filter(
+      (i) =>
+        !(
+          i.type === 'child' &&
+          (i.id === 'nav_rujukan_portal' ||
+            i.slug === 'portal_kolej' ||
+            (i.destination === 'rujukan' && i.name.trim().toLowerCase() === 'portal kolej'))
+        )
+    )
+    .map((i) => (i.destination === 'rujukan' ? { ...i, destination: 'platform' } : i));
+
+  const rujukanParent = cleanedItems.find(
+    (i) => i.type === 'parent' && (i.id === 'nav_rujukan' || i.slug === 'rujukan')
   );
   if (!rujukanParent) {
-    return items;
+    return cleanedItems;
   }
 
-  const existingChildren = items.filter(
+  const existingChildren = cleanedItems.filter(
     (i) => i.type === 'child' && i.parentId === rujukanParent.id
   );
 
-  // If Rujukan Kolej had 0 children (e.g. legacy 5-item default cache), populate the 5 default tabs in memory
+  // If Rujukan Kolej had 0 children, populate the default tabs in memory
   if (existingChildren.length === 0) {
     const defaultRujukanChildren = DEFAULT_NAVIGATION_ITEMS.filter(
       (d) => d.type === 'child' && d.parentId === 'nav_rujukan'
@@ -887,30 +966,30 @@ export function ensureRujukanPlatformNavigation(items: NavigationItem[]): Naviga
       parentId: rujukanParent.id,
     }));
 
-    const existingIds = new Set(items.map((i) => i.id));
+    const existingIds = new Set(cleanedItems.map((i) => i.id));
     const missing = defaultRujukanChildren.filter((d) => !existingIds.has(d.id));
-    return [...items, ...missing];
+    return [...cleanedItems, ...missing];
   }
 
   // Otherwise check whether any Platform entry already exists (including explicitly hidden ones)
-  const hasPlatformItem = items.some(
+  const hasPlatformItem = cleanedItems.some(
     (i) =>
       i.id === 'nav_rujukan_platform' ||
-      i.destination === 'platform' ||
+      i.destination === 'platform' && i.type === 'child' ||
       (i.slug && i.slug.toLowerCase() === 'platform')
   );
 
   if (hasPlatformItem) {
-    return items;
+    return cleanedItems;
   }
 
   const defaultPlatform = DEFAULT_NAVIGATION_ITEMS.find((d) => d.id === 'nav_rujukan_platform');
   if (!defaultPlatform) {
-    return items;
+    return cleanedItems;
   }
 
   // Prepend Platform as the first child of Rujukan Kolej in memory
-  const shiftedItems = items.map((i) =>
+  const shiftedItems = cleanedItems.map((i) =>
     i.type === 'child' && i.parentId === rujukanParent.id
       ? { ...i, order: i.order + 1 }
       : i
@@ -924,6 +1003,41 @@ export function ensureRujukanPlatformNavigation(items: NavigationItem[]): Naviga
       order: 0,
     },
   ];
+}
+
+/**
+ * One-time idempotent migration adding Deadline Hub parent tab to existing configured
+ * navigation caches/Firestore docs without resurrecting it if explicitly deleted later.
+ */
+export function migrateDeadlineHubIfNeeded(items: NavigationItem[]): { items: NavigationItem[]; migrated: boolean } {
+  const alreadyHasDeadlineHub = items.some(
+    (i) =>
+      i.id === 'nav_deadline_hub' ||
+      i.destination === 'deadline-hub' ||
+      (i.slug && i.slug.toLowerCase() === 'deadline_hub')
+  );
+
+  if (alreadyHasDeadlineHub) {
+    return { items, migrated: false };
+  }
+
+  const maxParentOrder = items
+    .filter((i) => i.type === 'parent')
+    .reduce((max, p) => Math.max(max, Number.isFinite(p.order) ? p.order : 0), -1);
+
+  const defaultDeadlineHub = DEFAULT_NAVIGATION_ITEMS.find((i) => i.id === 'nav_deadline_hub');
+  if (!defaultDeadlineHub) {
+    return { items, migrated: false };
+  }
+
+  const nextItem: NavigationItem = {
+    ...defaultDeadlineHub,
+    order: maxParentOrder + 1,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  return { items: [...items, nextItem], migrated: true };
 }
 
 /**
@@ -943,15 +1057,18 @@ export function subscribeToNavigation(callback: (items: NavigationItem[]) => voi
     try {
       const cached = localStorage.getItem(LOCAL_STORAGE_NAV_KEY);
       const alreadyMigratedLocal = localStorage.getItem(UPPK_GRADING_MIGRATED_KEY) === '1';
+      const alreadyDeadlineMigratedLocal = localStorage.getItem(DEADLINE_HUB_NAV_MIGRATED_KEY) === '1';
       if (cached) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          if (alreadyMigratedLocal) {
-            initialItems = normalizeNavigationList(ensureRujukanPlatformNavigation(parsed));
-          } else {
-            const migration = migrateUppkGradingIfNeeded(parsed);
-            initialItems = normalizeNavigationList(ensureRujukanPlatformNavigation(migration.items));
+          let workingItems = parsed;
+          if (!alreadyMigratedLocal) {
+            workingItems = migrateUppkGradingIfNeeded(workingItems).items;
           }
+          if (!alreadyDeadlineMigratedLocal) {
+            workingItems = migrateDeadlineHubIfNeeded(workingItems).items;
+          }
+          initialItems = normalizeNavigationList(ensureRujukanPlatformNavigation(workingItems));
         }
       }
     } catch (_e) {
@@ -964,9 +1081,14 @@ export function subscribeToNavigation(callback: (items: NavigationItem[]) => voi
   return onSnapshot(
     navigationDocRef(),
     (snapshot) => {
+      const isFromCache = Boolean(snapshot.metadata?.fromCache);
       if (!snapshot.exists()) {
+        if (isFromCache) {
+          return;
+        }
         const migration = migrateUppkGradingIfNeeded(DEFAULT_NAVIGATION_ITEMS);
-        const defaults = normalizeNavigationList(ensureRujukanPlatformNavigation(migration.items));
+        const deadlineMigration = migrateDeadlineHubIfNeeded(migration.items);
+        const defaults = normalizeNavigationList(ensureRujukanPlatformNavigation(deadlineMigration.items));
         if (typeof window !== 'undefined') {
           localStorage.setItem(LOCAL_STORAGE_NAV_KEY, JSON.stringify(defaults));
         }
@@ -979,32 +1101,44 @@ export function subscribeToNavigation(callback: (items: NavigationItem[]) => voi
 
       const isConfigured = Boolean(data?.isConfigured);
       const alreadyMigratedRemote = Boolean(data?.uppkGradingMigrated);
+      const alreadyDeadlineMigratedRemote = Boolean(data?.deadlineHubNavMigrated);
       const baseItems = isConfigured
         ? rawItems
         : rawItems.length > 0
         ? rawItems
         : DEFAULT_NAVIGATION_ITEMS;
 
-      let normalizedItems: NavigationItem[];
+      let workingItems = baseItems;
+      let anyMigrationPerformed = false;
 
-      if (alreadyMigratedRemote) {
-        normalizedItems = normalizeNavigationList(ensureRujukanPlatformNavigation(baseItems));
-      } else {
-        const migration = migrateUppkGradingIfNeeded(baseItems);
-        normalizedItems = normalizeNavigationList(ensureRujukanPlatformNavigation(migration.items));
+      if (!alreadyMigratedRemote) {
+        const uppkMigration = migrateUppkGradingIfNeeded(workingItems);
+        workingItems = uppkMigration.items;
+        if (uppkMigration.migrated) anyMigrationPerformed = true;
+      }
 
-        if (migration.migrated) {
-          // Persist migrated UPPK container structure to Firestore in background once
-          saveNavigationItems(normalizedItems).catch((err) => {
-            console.warn('[NavigationService] Background auto-migration persist notice:', err?.message || err);
-          });
-        }
+      if (!alreadyDeadlineMigratedRemote) {
+        const deadlineMigration = migrateDeadlineHubIfNeeded(workingItems);
+        workingItems = deadlineMigration.items;
+        if (deadlineMigration.migrated) anyMigrationPerformed = true;
+      }
+
+      const normalizedItems = normalizeNavigationList(ensureRujukanPlatformNavigation(workingItems));
+
+      if ((anyMigrationPerformed || !alreadyDeadlineMigratedRemote) && auth.currentUser) {
+        // Persist one-time container/module migration to Firestore once an admin session is active
+        saveNavigationItems(normalizedItems).catch((err) => {
+          console.warn('[NavigationService] Background auto-migration persist notice:', err?.message || err);
+        });
       }
 
       if (typeof window !== 'undefined') {
         localStorage.setItem(LOCAL_STORAGE_NAV_KEY, JSON.stringify(normalizedItems));
         if (alreadyMigratedRemote) {
           localStorage.setItem(UPPK_GRADING_MIGRATED_KEY, '1');
+        }
+        if (alreadyDeadlineMigratedRemote) {
+          localStorage.setItem(DEADLINE_HUB_NAV_MIGRATED_KEY, '1');
         }
       }
 
@@ -1039,6 +1173,7 @@ export async function saveNavigationItems(items: NavigationItem[]): Promise<bool
       items: normalized,
       isConfigured: true,
       uppkGradingMigrated: true,
+      deadlineHubNavMigrated: true,
       updatedAt: new Date().toISOString(),
       updatedBy: auth.currentUser?.email || 'admin',
     },
@@ -1048,6 +1183,7 @@ export async function saveNavigationItems(items: NavigationItem[]): Promise<bool
   if (typeof window !== 'undefined') {
     localStorage.setItem(LOCAL_STORAGE_NAV_KEY, JSON.stringify(normalized));
     localStorage.setItem(UPPK_GRADING_MIGRATED_KEY, '1');
+    localStorage.setItem(DEADLINE_HUB_NAV_MIGRATED_KEY, '1');
   }
 
   return true;

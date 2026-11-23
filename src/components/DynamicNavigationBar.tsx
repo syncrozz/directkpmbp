@@ -3,17 +3,17 @@
  * SPDX-License-Identifier: Apache-2.0
  * 
  * DIRECTKPMBP — DYNAMIC HIERARCHICAL NAVIGATION BAR
- * SES v4.4 Specification (3-Level Navigation: Parent → Child → Grandchild)
+ * SES v4.5 Specification (4-Level Navigation: Alfa → Bravo → Charlie → Delta)
  * 
- * Renders data-driven Primary (Parent), Secondary (Child), and Tertiary (Grandchild)
- * navigation rows, maintains active state synchronization, responsive horizontal
- * scrolling, and seamless Admin CRUD integration.
+ * Renders data-driven Primary (Parent), Secondary (Child), Tertiary (Grandchild),
+ * and Quaternary (Delta) navigation rows, maintains active state synchronization,
+ * responsive horizontal scrolling, and seamless Admin CRUD integration.
  */
 
 import React, { useMemo } from 'react';
 import { NavigationItem } from '../types';
 import { renderNavIcon, getHierarchicalSlug } from '../services/navigationService';
-import { Layers, ChevronRight } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 
 interface DynamicNavigationBarProps {
   items: NavigationItem[];
@@ -27,8 +27,6 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
   items,
   activeHub,
   onSelectDestination,
-  isAdminMode = false,
-  onOpenNavManager,
 }) => {
   // 1. Filter only active Parents, sorted by order
   const activeParents = useMemo(() => {
@@ -51,7 +49,14 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
       .sort((a, b) => a.order - b.order);
   }, [items]);
 
-  // 4. Map active children by their parentId (Parent ID)
+  // 4. Filter only active Deltas, sorted by order
+  const activeDeltas = useMemo(() => {
+    return items
+      .filter((i) => i.type === 'delta' && i.isActive)
+      .sort((a, b) => a.order - b.order);
+  }, [items]);
+
+  // 5. Map active children by their parentId (Parent ID)
   const childrenMap = useMemo(() => {
     const map = new Map<string, NavigationItem[]>();
     activeChildren.forEach((child) => {
@@ -65,7 +70,7 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
     return map;
   }, [activeChildren]);
 
-  // 5. Map active grandchildren by their parentId (Child ID)
+  // 6. Map active grandchildren by their parentId (Child ID)
   const grandchildrenMap = useMemo(() => {
     const map = new Map<string, NavigationItem[]>();
     activeGrandchildren.forEach((gc) => {
@@ -79,71 +84,92 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
     return map;
   }, [activeGrandchildren]);
 
-  // 6. Determine active hierarchy (Parent -> Child -> Grandchild) based on activeHub
-  const activeParent = useMemo(() => {
-    // Check direct match on parent
-    const directMatch = activeParents.find(
-      (p) =>
-        p.destination === activeHub ||
-        p.id === activeHub ||
-        (p.slug && p.slug.toLowerCase() === activeHub.toLowerCase()) ||
-        getHierarchicalSlug(p, items).toLowerCase() === activeHub.toLowerCase()
-    );
-    if (directMatch) return directMatch;
-
-    // Check match on grandchild
-    const gcMatch = activeGrandchildren.find(
-      (gc) =>
-        gc.destination === activeHub ||
-        gc.id === activeHub ||
-        (gc.slug && gc.slug.toLowerCase() === activeHub.toLowerCase()) ||
-        getHierarchicalSlug(gc, items).toLowerCase() === activeHub.toLowerCase()
-    );
-    if (gcMatch && gcMatch.parentId) {
-      const child = activeChildren.find((c) => c.id === gcMatch.parentId);
-      if (child && child.parentId) {
-        const parent = activeParents.find((p) => p.id === child.parentId);
-        if (parent) return parent;
-      }
-    }
-
-    // Check match on child
-    const childMatch = activeChildren.find(
-      (c) =>
-        c.destination === activeHub ||
-        c.id === activeHub ||
-        (c.slug && c.slug.toLowerCase() === activeHub.toLowerCase()) ||
-        getHierarchicalSlug(c, items).toLowerCase() === activeHub.toLowerCase()
-    );
-    if (childMatch && childMatch.parentId) {
-      const parent = activeParents.find((p) => p.id === childMatch.parentId);
-      if (parent) return parent;
-    }
-
-    // Fallback via any item in hierarchy
-    const anyItem = items.find(
-      (i) =>
-        i.id === activeHub ||
-        i.destination === activeHub ||
-        (i.slug && i.slug.toLowerCase() === activeHub.toLowerCase()) ||
-        getHierarchicalSlug(i, items).toLowerCase() === activeHub.toLowerCase()
-    );
-    if (anyItem) {
-      if (anyItem.type === 'grandchild' && anyItem.parentId) {
-        const child = items.find((c) => c.id === anyItem.parentId);
-        if (child && child.parentId) {
-          const parent = activeParents.find((p) => p.id === child.parentId);
-          if (parent) return parent;
+  // 7. Map active deltas by their parentId (Grandchild ID)
+  const deltasMap = useMemo(() => {
+    const map = new Map<string, NavigationItem[]>();
+    activeDeltas.forEach((delta) => {
+      if (delta.parentId) {
+        if (!map.has(delta.parentId)) {
+          map.set(delta.parentId, []);
         }
+        map.get(delta.parentId)!.push(delta);
       }
-      if (anyItem.type === 'child' && anyItem.parentId) {
-        const parent = activeParents.find((p) => p.id === anyItem.parentId);
-        if (parent) return parent;
-      }
+    });
+    return map;
+  }, [activeDeltas]);
+
+  // 8. Resolve matched item across all 4 levels (ID -> hierarchical slug -> leaf slug -> destination)
+  const matchedActiveChain = useMemo(() => {
+    const hubLower = (activeHub || '').toLowerCase();
+    const matchedItem =
+      items.find((i) => i.id === activeHub) ||
+      items.find((i) => getHierarchicalSlug(i, items).toLowerCase() === hubLower) ||
+      items.find((i) => i.slug && i.slug.toLowerCase() === hubLower) ||
+      items.find((i) => i.destination === activeHub);
+
+    if (!matchedItem) {
+      return {
+        matchedItem: undefined,
+        matchedParent: undefined,
+        matchedChild: undefined,
+        matchedGrandchild: undefined,
+        matchedDelta: undefined,
+      };
     }
 
+    if (matchedItem.type === 'delta') {
+      const gc = matchedItem.parentId ? items.find((i) => i.id === matchedItem.parentId) : undefined;
+      const ch = gc?.parentId ? items.find((i) => i.id === gc.parentId) : undefined;
+      const pr = ch?.parentId ? items.find((i) => i.id === ch.parentId) : undefined;
+      return {
+        matchedItem,
+        matchedParent: pr,
+        matchedChild: ch,
+        matchedGrandchild: gc,
+        matchedDelta: matchedItem,
+      };
+    }
+
+    if (matchedItem.type === 'grandchild') {
+      const ch = matchedItem.parentId ? items.find((i) => i.id === matchedItem.parentId) : undefined;
+      const pr = ch?.parentId ? items.find((i) => i.id === ch.parentId) : undefined;
+      return {
+        matchedItem,
+        matchedParent: pr,
+        matchedChild: ch,
+        matchedGrandchild: matchedItem,
+        matchedDelta: undefined,
+      };
+    }
+
+    if (matchedItem.type === 'child') {
+      const pr = matchedItem.parentId ? items.find((i) => i.id === matchedItem.parentId) : undefined;
+      return {
+        matchedItem,
+        matchedParent: pr,
+        matchedChild: matchedItem,
+        matchedGrandchild: undefined,
+        matchedDelta: undefined,
+      };
+    }
+
+    return {
+      matchedItem,
+      matchedParent: matchedItem,
+      matchedChild: undefined,
+      matchedGrandchild: undefined,
+      matchedDelta: undefined,
+    };
+  }, [items, activeHub]);
+
+  // Determine active Parent (Alfa)
+  const activeParent = useMemo(() => {
+    if (matchedActiveChain.matchedParent) {
+      const activeMatch = activeParents.find((p) => p.id === matchedActiveChain.matchedParent!.id);
+      if (activeMatch) return activeMatch;
+    }
     return activeParents[0] || null;
-  }, [activeParents, activeChildren, activeGrandchildren, activeHub, items]);
+  }, [activeParents, matchedActiveChain]);
 
   // Children of currently selected Parent
   const currentParentChildren = useMemo(() => {
@@ -151,36 +177,20 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
     return childrenMap.get(activeParent.id) || [];
   }, [activeParent, childrenMap]);
 
-  // Determine currently active Child
+  // Determine currently active Child (Bravo)
   const activeChild = useMemo(() => {
     if (!activeParent || currentParentChildren.length === 0) return null;
-
-    // Check if activeHub matches a grandchild under one of currentParentChildren
-    const gcMatch = activeGrandchildren.find(
-      (gc) =>
-        gc.id === activeHub ||
-        gc.destination === activeHub ||
-        (gc.slug && gc.slug.toLowerCase() === activeHub.toLowerCase()) ||
-        getHierarchicalSlug(gc, items).toLowerCase() === activeHub.toLowerCase()
-    );
-    if (gcMatch && gcMatch.parentId) {
-      const child = currentParentChildren.find((c) => c.id === gcMatch.parentId);
-      if (child) return child;
+    if (matchedActiveChain.matchedChild) {
+      const activeMatch = currentParentChildren.find((c) => c.id === matchedActiveChain.matchedChild!.id);
+      if (activeMatch) return activeMatch;
     }
-
-    // Check if activeHub matches a child directly
-    const directChild = currentParentChildren.find(
-      (c) =>
-        c.id === activeHub ||
-        c.destination === activeHub ||
-        (c.slug && c.slug.toLowerCase() === activeHub.toLowerCase()) ||
-        getHierarchicalSlug(c, items).toLowerCase() === activeHub.toLowerCase()
-    );
-    if (directChild) return directChild;
-
-    // Fallback: first child of activeParent
     return currentParentChildren[0] || null;
-  }, [activeParent, currentParentChildren, activeGrandchildren, activeHub, items]);
+  }, [activeParent, currentParentChildren, matchedActiveChain]);
+
+  const isChildContainerViewing = Boolean(
+    activeChild?.displayType === 'empty_page' &&
+      matchedActiveChain.matchedItem?.id === activeChild.id
+  );
 
   // Grandchildren of currently selected Child
   const currentChildGrandchildren = useMemo(() => {
@@ -188,21 +198,42 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
     return grandchildrenMap.get(activeChild.id) || [];
   }, [activeChild, grandchildrenMap]);
 
-  // Determine currently active Grandchild
+  // Determine currently active Grandchild (Charlie)
   const activeGrandchild = useMemo(() => {
-    if (currentChildGrandchildren.length === 0) return null;
-
-    const matched = currentChildGrandchildren.find(
-      (gc) =>
-        gc.id === activeHub ||
-        gc.destination === activeHub ||
-        (gc.slug && gc.slug.toLowerCase() === activeHub.toLowerCase()) ||
-        getHierarchicalSlug(gc, items).toLowerCase() === activeHub.toLowerCase()
-    );
-    if (matched) return matched;
-
+    if (currentChildGrandchildren.length === 0 || isChildContainerViewing) return null;
+    if (matchedActiveChain.matchedGrandchild) {
+      const activeMatch = currentChildGrandchildren.find(
+        (gc) => gc.id === matchedActiveChain.matchedGrandchild!.id
+      );
+      if (activeMatch) return activeMatch;
+    }
     return currentChildGrandchildren[0] || null;
-  }, [currentChildGrandchildren, activeHub, items]);
+  }, [currentChildGrandchildren, isChildContainerViewing, matchedActiveChain]);
+
+  const isGrandchildContainerViewing = Boolean(
+    activeGrandchild?.displayType === 'empty_page' &&
+      matchedActiveChain.matchedItem?.id === activeGrandchild.id
+  );
+
+  // Deltas of currently selected Grandchild (hidden when viewing Bravo container page)
+  const currentGrandchildDeltas = useMemo(() => {
+    if (!activeGrandchild || isChildContainerViewing) return [];
+    return deltasMap.get(activeGrandchild.id) || [];
+  }, [activeGrandchild, isChildContainerViewing, deltasMap]);
+
+  // Determine currently active Delta (Level 4)
+  const activeDelta = useMemo(() => {
+    if (currentGrandchildDeltas.length === 0 || isChildContainerViewing || isGrandchildContainerViewing) {
+      return null;
+    }
+    if (matchedActiveChain.matchedDelta) {
+      const activeMatch = currentGrandchildDeltas.find(
+        (d) => d.id === matchedActiveChain.matchedDelta!.id
+      );
+      if (activeMatch) return activeMatch;
+    }
+    return currentGrandchildDeltas[0] || null;
+  }, [currentGrandchildDeltas, isChildContainerViewing, isGrandchildContainerViewing, matchedActiveChain]);
 
   // Color theme generator for active parent
   const getParentThemeClasses = (destination: string, isSelected: boolean) => {
@@ -219,6 +250,8 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
       case 'jadual':
       case 'jadual-pensyarah':
         return 'bg-gradient-to-r from-amber-500 via-amber-600 to-orange-600 text-white shadow-md shadow-amber-300/60 ring-2 ring-amber-400/30 border-amber-500';
+      case 'deadline-hub':
+        return 'bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-700 text-white shadow-md shadow-sky-300/60 ring-2 ring-sky-400/30 border-sky-600';
       case 'daftar':
         return 'bg-gradient-to-r from-purple-600 via-purple-600 to-violet-700 text-white shadow-md shadow-purple-300/60 ring-2 ring-purple-400/30 border-purple-600';
       default:
@@ -238,6 +271,8 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
       case 'jadual':
       case 'jadual-pensyarah':
         return 'bg-gradient-to-r from-amber-50/80 via-white/70 to-amber-50/40 border-amber-100/90';
+      case 'deadline-hub':
+        return 'bg-gradient-to-r from-sky-50/80 via-white/70 to-indigo-50/40 border-sky-100/90';
       case 'daftar':
         return 'bg-gradient-to-r from-purple-50/80 via-white/70 to-purple-50/40 border-purple-100/90';
       default:
@@ -249,7 +284,6 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
   const handleParentClick = (parent: NavigationItem) => {
     const pChildren = childrenMap.get(parent.id) || [];
     if (pChildren.length > 0) {
-      // Check if current active child is already one of parent's children
       const currentChildIsActive = pChildren.some(
         (c) =>
           c.destination === activeHub ||
@@ -264,51 +298,78 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
         } else {
           const gcs = grandchildrenMap.get(firstChild.id) || [];
           if (gcs.length > 0) {
-            // If first child is in container mode, select its first grandchild
             const firstGc = gcs[0];
-            onSelectDestination(firstGc.id || firstGc.destination);
+            if (firstGc.displayType === 'empty_page') {
+              onSelectDestination(firstGc.id || firstGc.destination);
+            } else {
+              const deltas = deltasMap.get(firstGc.id) || [];
+              if (deltas.length > 0 && !firstGc.driveUrl && firstGc.destination === firstGc.id) {
+                onSelectDestination(deltas[0].id || deltas[0].destination);
+              } else {
+                onSelectDestination(firstGc.id || firstGc.destination);
+              }
+            }
           } else {
             onSelectDestination(firstChild.id || firstChild.destination);
           }
         }
       }
     } else {
-      // Direct access parent
       onSelectDestination(parent.id || parent.destination);
     }
   };
 
-  // Click on Child Navigation item
+  // Click on Child Navigation item (Bravo)
   const handleChildClick = (child: NavigationItem) => {
-    // If the child is an empty_page container, user directly views the container page
     if (child.displayType === 'empty_page') {
       onSelectDestination(child.id || child.destination);
       return;
     }
     const gcs = grandchildrenMap.get(child.id) || [];
     if (gcs.length > 0) {
-      // Container mode: auto-select first grandchild
       const firstGc = gcs[0];
-      onSelectDestination(firstGc.id || firstGc.destination);
+      if (firstGc.displayType === 'empty_page') {
+        onSelectDestination(firstGc.id || firstGc.destination);
+      } else {
+        const deltas = deltasMap.get(firstGc.id) || [];
+        if (deltas.length > 0 && !firstGc.driveUrl && firstGc.destination === firstGc.id) {
+          onSelectDestination(deltas[0].id || deltas[0].destination);
+        } else {
+          onSelectDestination(firstGc.id || firstGc.destination);
+        }
+      }
     } else {
-      // Direct content mode
       onSelectDestination(child.id || child.destination);
     }
   };
 
-  // Click on Grandchild Navigation item
+  // Click on Grandchild Navigation item (Charlie)
   const handleGrandchildClick = (grandchild: NavigationItem) => {
+    if (grandchild.displayType === 'empty_page') {
+      onSelectDestination(grandchild.id || grandchild.destination);
+      return;
+    }
+    const deltas = deltasMap.get(grandchild.id) || [];
+    if (deltas.length > 0 && !grandchild.driveUrl && grandchild.destination === grandchild.id) {
+      onSelectDestination(deltas[0].id || deltas[0].destination);
+      return;
+    }
     onSelectDestination(grandchild.id || grandchild.destination);
   };
 
+  // Click on Delta Navigation item (Delta)
+  const handleDeltaClick = (delta: NavigationItem) => {
+    onSelectDestination(delta.id || delta.destination);
+  };
+
   return (
-    <div className={`transition-all duration-300 border-b relative z-30 backdrop-blur-md ${getContainerBgClasses()}`}>
+    <div className={`transition-all duration-300 border-b relative z-[35] backdrop-blur-md ${getContainerBgClasses()}`}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-2.5 sm:py-3 space-y-2">
-        {/* ROW 1: PRIMARY (PARENT) NAVIGATION */}
+        {/* ROW 1: PRIMARY (PARENT / ALFA) NAVIGATION */}
         <div className="flex items-center justify-between gap-2">
           <nav
             aria-label="Navigasi Utama Platform"
-            className="flex items-center gap-2 overflow-x-auto scrollbar-none py-0.5 shrink-0 max-w-full"
+            className="flex items-center gap-2 overflow-x-auto scrollbar-none py-0.5 min-w-0 flex-1"
           >
             {activeParents.map((parent) => {
               const isSelected = activeParent?.id === parent.id;
@@ -349,23 +410,9 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
               );
             })}
           </nav>
-
-          {/* Admin Navigation Manager Launcher (Hanya dalam Mod Admin) */}
-          {isAdminMode && onOpenNavManager && (
-            <button
-              type="button"
-              onClick={onOpenNavManager}
-              title="Urus Susunan Navigasi Dinamik (SES v4.4)"
-              className="px-3 py-1.5 bg-white/90 hover:bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-xl text-xs font-extrabold shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer shrink-0 active:scale-95"
-            >
-              <Layers className="w-3.5 h-3.5 text-indigo-600" />
-              <span className="hidden sm:inline">Urus Navigasi</span>
-            </button>
-          )}
         </div>
 
-        {/* ROW 2: SECONDARY (CHILD) NAVIGATION */}
-        {/* Dipaparkan HANYA apabila Parent terpilih mempunyai navigasi bravo yang aktif */}
+        {/* ROW 2: SECONDARY (CHILD / BRAVO) NAVIGATION */}
         {currentParentChildren.length > 0 && (
           <div className="pt-1.5 border-t border-slate-200/60 flex items-center gap-2 overflow-x-auto scrollbar-none animate-fadeIn">
             <div className="flex items-center gap-1 text-[11px] font-extrabold text-slate-400 uppercase tracking-wider pl-1 shrink-0">
@@ -416,8 +463,7 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
           </div>
         )}
 
-        {/* ROW 3: TERTIARY (GRANDCHILD) NAVIGATION */}
-        {/* Dipaparkan HANYA apabila Child terpilih mempunyai navigasi charlie yang aktif */}
+        {/* ROW 3: TERTIARY (GRANDCHILD / CHARLIE) NAVIGATION */}
         {currentChildGrandchildren.length > 0 && (
           <div className="pt-1.5 border-t border-violet-200/60 flex items-center gap-2 overflow-x-auto scrollbar-none animate-fadeIn bg-violet-50/40 rounded-xl px-2 py-1">
             <div className="flex items-center gap-1 text-[10.5px] font-extrabold text-violet-600 uppercase tracking-wider pl-1 shrink-0">
@@ -427,18 +473,8 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
 
             <div className="flex items-center gap-1.5 shrink-0 py-0.5">
               {currentChildGrandchildren.map((gc) => {
-                const isChildContainerViewing =
-                  activeChild?.displayType === 'empty_page' &&
-                  (activeHub === activeChild.id ||
-                    activeHub === activeChild.destination ||
-                    (activeChild.slug && activeHub.toLowerCase() === activeChild.slug.toLowerCase()));
-
-                const isGcActive =
-                  !isChildContainerViewing &&
-                  (activeGrandchild?.id === gc.id ||
-                    activeHub === gc.id ||
-                    (gc.slug && activeHub.toLowerCase() === gc.slug.toLowerCase()) ||
-                    activeHub === gc.destination);
+                const gcDeltas = deltasMap.get(gc.id) || [];
+                const isGcActive = !isChildContainerViewing && activeGrandchild?.id === gc.id;
 
                 return (
                   <button
@@ -455,7 +491,57 @@ export const DynamicNavigationBar: React.FC<DynamicNavigationBarProps> = ({
                       {renderNavIcon(gc.icon, `w-3.5 h-3.5 ${isGcActive ? 'text-white' : 'text-violet-600'}`)}
                     </span>
                     <span>{gc.name}</span>
+
+                    {gcDeltas.length > 0 && (
+                      <span
+                        className={`text-[9.5px] px-1.5 py-0.2 rounded-full font-bold ml-0.5 ${
+                          isGcActive
+                            ? 'bg-white/25 text-white'
+                            : 'bg-violet-100 text-violet-700'
+                        }`}
+                      >
+                        {gcDeltas.length}
+                      </span>
+                    )}
+
                     {isGcActive && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse shrink-0" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ROW 4: QUATERNARY (DELTA) NAVIGATION */}
+        {currentGrandchildDeltas.length > 0 && (
+          <div className="pt-1.5 border-t border-teal-200/60 flex items-center gap-2 overflow-x-auto scrollbar-none animate-fadeIn bg-teal-50/45 rounded-xl px-2 py-1">
+            <div className="flex items-center gap-1 text-[10.5px] font-extrabold text-teal-700 uppercase tracking-wider pl-1 shrink-0">
+              <span>{activeGrandchild?.name}</span>
+              <ChevronRight className="w-3 h-3 text-teal-500" />
+            </div>
+
+            <div className="flex items-center gap-1.5 shrink-0 py-0.5">
+              {currentGrandchildDeltas.map((delta) => {
+                const isDeltaActive = !isGrandchildContainerViewing && activeDelta?.id === delta.id;
+
+                return (
+                  <button
+                    key={delta.id}
+                    type="button"
+                    onClick={() => handleDeltaClick(delta)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-extrabold flex items-center gap-1.5 transition-all cursor-pointer border shrink-0 ${
+                      isDeltaActive
+                        ? 'bg-gradient-to-r from-teal-600 to-emerald-600 text-white border-teal-600 shadow-xs ring-2 ring-teal-300/40'
+                        : 'bg-white/95 text-slate-700 hover:text-teal-700 hover:bg-teal-50/80 border-slate-200/90 shadow-2xs'
+                    }`}
+                  >
+                    <span className="shrink-0">
+                      {renderNavIcon(delta.icon, `w-3.5 h-3.5 ${isDeltaActive ? 'text-white' : 'text-teal-600'}`)}
+                    </span>
+                    <span>{delta.name}</span>
+                    {isDeltaActive && (
                       <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse shrink-0" />
                     )}
                   </button>

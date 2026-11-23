@@ -142,7 +142,7 @@ async function runV2HydrationGateway() {
   // GATE 4: SENSITIVE STAFF ARCHIVE / SANITIZED PAYLOAD RESOLUTION
   // -------------------------------------------------------------
   console.log('\n--- [GATE 4: SENSITIVE ARCHIVE RESOLUTION] ---');
-  const runtimeKey = process.env.SZ_DEV_SYNC_KEY;
+  const runtimeKey = (process.env.SZ_DEV_SYNC_KEY || '').trim();
   let staffListToHydrate: any[] = [];
   let staffDocsToHydrate: Record<string, any> = {};
 
@@ -164,9 +164,11 @@ async function runV2HydrationGateway() {
       staffListToHydrate = payload.staff || [];
       staffDocsToHydrate = payload.staffDocs || {};
       console.log(`✓ Sensitive staff archive decrypted: ${staffListToHydrate.length} records.`);
-    } catch (decErr: any) {
+    } catch (_decErr: any) {
       console.warn('⚠ Decryption using provided key failed. Falling back to sanitized snapshot datasets.');
     }
+  } else {
+    console.log('ℹ Encrypted archive decryption disabled (no SZ_DEV_SYNC_KEY configured); proceeding with sanitized snapshot datasets.');
   }
 
   if (staffListToHydrate.length === 0) {

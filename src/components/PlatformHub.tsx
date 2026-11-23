@@ -13,7 +13,6 @@ import React, { useState, useEffect } from 'react';
 import {
   Layers,
   ExternalLink,
-  Search,
   Plus,
   Pencil,
   Trash2,
@@ -38,6 +37,11 @@ import { AddEditPlatformModal } from './AddEditPlatformModal';
 
 interface PlatformHubProps {
   isAdminMode?: boolean;
+  platformsData?: PlatformLink[];
+  syncStatusProp?: PlatformSyncStatus;
+  syncErrorProp?: string | null;
+  isLoadingProp?: boolean;
+  searchQuery?: string;
 }
 
 interface PlatformCardProps {
@@ -245,27 +249,41 @@ const PlatformCard: React.FC<PlatformCardProps> = ({
   );
 };
 
-export const PlatformHub: React.FC<PlatformHubProps> = ({ isAdminMode = false }) => {
-  const [platforms, setPlatforms] = useState<PlatformLink[]>([]);
-  const [syncStatus, setSyncStatus] = useState<PlatformSyncStatus>('loading');
-  const [syncError, setSyncError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
+export const PlatformHub: React.FC<PlatformHubProps> = ({
+  isAdminMode = false,
+  platformsData,
+  syncStatusProp,
+  syncErrorProp,
+  isLoadingProp,
+  searchQuery = '',
+}) => {
+  const [localPlatforms, setLocalPlatforms] = useState<PlatformLink[]>([]);
+  const [localSyncStatus, setLocalSyncStatus] = useState<PlatformSyncStatus>('loading');
+  const [localSyncError, setLocalSyncError] = useState<string | null>(null);
+  const [localIsLoading, setLocalIsLoading] = useState(true);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPlatform, setEditingPlatform] = useState<PlatformLink | null>(null);
   const [platformToDelete, setPlatformToDelete] = useState<PlatformLink | null>(null);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  const hasExternalData = platformsData !== undefined;
+
   useEffect(() => {
+    if (hasExternalData) return;
     const unsubscribe = subscribeToPlatformLinks((result) => {
-      setPlatforms(result.platforms);
-      setSyncStatus(result.status);
-      setSyncError(result.errorMessage || null);
-      setIsLoading(false);
+      setLocalPlatforms(result.platforms);
+      setLocalSyncStatus(result.status);
+      setLocalSyncError(result.errorMessage || null);
+      setLocalIsLoading(false);
     });
     return () => unsubscribe();
-  }, []);
+  }, [hasExternalData]);
+
+  const platforms = hasExternalData ? platformsData : localPlatforms;
+  const syncStatus = syncStatusProp ?? localSyncStatus;
+  const syncError = syncErrorProp ?? localSyncError;
+  const isLoading = isLoadingProp ?? localIsLoading;
 
   const filteredPlatforms = platforms.filter((item) => {
     if (!isAdminMode && item.isActive === false) return false;
@@ -314,57 +332,29 @@ export const PlatformHub: React.FC<PlatformHubProps> = ({ isAdminMode = false })
   };
 
   return (
-    <div className="space-y-6 text-left">
+    <div className="space-y-4 sm:space-y-5 text-left">
       {/* Header Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center flex-wrap gap-2">
           <div className="w-8 h-8 rounded-xl bg-emerald-50/80 border border-emerald-100 flex items-center justify-center text-emerald-700 font-extrabold">
             <Layers className="w-4 h-4" />
           </div>
-          <h3 className="text-xs font-extrabold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+          <h2 className="text-xs font-extrabold text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-            Platform ({filteredPlatforms.length})
-          </h3>
+            Senarai Platform ({filteredPlatforms.length})
+          </h2>
 
-          {syncStatus === 'ready_migrated' || syncStatus === 'ready_empty' ? (
-            <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-              Firestore Dinamik
-            </span>
-          ) : syncStatus === 'permission_denied' ? (
+          {isAdminMode && syncStatus === 'permission_denied' && (
             <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
               Akses Terhad
             </span>
-          ) : null}
+          )}
         </div>
 
-        {/* Search & Admin Add Action */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-          {platforms.length > 0 && (
-            <div className="relative min-w-[200px]">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Cari platform..."
-                className="w-full pl-8 pr-7 py-1.5 bg-white/90 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
-                  aria-label="Kosongkan carian"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-          )}
-
-          {isAdminMode && (
+        {/* Admin Add Action (Search consolidated into GlobalSmartSearch) */}
+        {isAdminMode && (
+          <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
               onClick={() => {
@@ -376,8 +366,8 @@ export const PlatformHub: React.FC<PlatformHubProps> = ({ isAdminMode = false })
               <Plus className="w-3.5 h-3.5" />
               <span>Tambah Platform</span>
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Feedback Banner */}
